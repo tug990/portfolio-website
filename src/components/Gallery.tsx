@@ -5,6 +5,16 @@ import { PROJECTS, type Project } from "@/content/projects";
 import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
 import { Poster } from "@/components/Poster";
+import {
+  BLUE,
+  CYAN,
+  ORANGE,
+  DoorLight,
+  Grain,
+  PrismBurst,
+  drawBurst,
+  drawDoorLight,
+} from "@/components/PrismLight";
 
 /*
   The home page: a walk-through 3D gallery.
@@ -60,11 +70,6 @@ const SAVE_KEY = "insight-gallery-stop"; // which stop you were at (survives res
 
 const EASE_TEXT_IN = "cubic-bezier(0.22, 1, 0.36, 1)";
 const EASE_ZOOM = "cubic-bezier(0.65, 0, 0.35, 1)";
-
-// The light: blue on the left, white in the middle, orange on the right.
-const BLUE = "31,44,255";
-const CYAN = "43,184,255";
-const ORANGE = "255,138,31";
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -316,35 +321,7 @@ export function Gallery() {
   function drawIntro(p: number) {
     const { w: W, h: H } = viewRef.current;
     const s = scene.current;
-    const e = band(p, [0, ZOOM_END]);
-    const zoom = Math.exp(Math.log(90) * Math.pow(e, 1.7)); // 1 → 90, accelerating
-    const sw = Math.min(W, H) * 0.046 * zoom; // the gap of light
-    const sh = H * 0.46 * zoom;
-    const cx = W / 2;
-    const cy = H * 0.6 + (H * 0.5 - H * 0.6) * e; // drifts to the centre as you approach
-    const top = cy - sh * 0.55;
-    const place = (
-      el: HTMLElement | null | undefined,
-      x: number,
-      y: number,
-      w: number,
-      h: number,
-    ) => {
-      if (!el) return;
-      el.style.left = `${x}px`;
-      el.style.top = `${y}px`;
-      el.style.width = `${w}px`;
-      el.style.height = `${h}px`;
-    };
-    place(s.gap, cx - sw / 2, top, sw, sh);
-    place(s.halo, cx - sw * 6, top - sh * 0.25, sw * 12, sh * 1.5);
-    // Each glow is centred in its own box and fades out well inside it, so no edge shows.
-    place(s.blue, cx - sw * 3.4 - sw * 8, top - sh * 0.35, sw * 16, sh * 1.7);
-    place(s.orange, cx + sw * 3.4 - sw * 8, top - sh * 0.35, sw * 16, sh * 1.7);
-    place(s.slabL, cx - sw / 2 - sw * 7, top - sh * 0.06, sw * 7, sh * 1.06);
-    place(s.slabR, cx + sw / 2, top - sh * 0.06, sw * 7, sh * 1.06);
-    place(s.floor, cx - sw * 7, top + sh, sw * 14, sh * 0.6);
-    place(s.dust, cx - sw * 4, top - sh * 0.1, sw * 8, sh * 1.1);
+    drawDoorLight(s, W, H, band(p, [0, ZOOM_END]));
     if (s.dust) s.dust.style.opacity = String(band(p, [0.03, 0.3]) * (1 - band(p, [0.5, 0.6])));
     if (introRef.current) {
       const fade = 1 - band(p, [0.64, 0.7]);
@@ -352,7 +329,10 @@ export function Gallery() {
       introRef.current.style.visibility = fade <= 0 ? "hidden" : "visible";
     }
     if (flashRef.current) {
-      flashRef.current.style.opacity = String(band(p, FLASH_IN) * (1 - band(p, FLASH_OUT)));
+      const f = band(p, FLASH_IN) * (1 - band(p, FLASH_OUT));
+      flashRef.current.style.opacity = String(f);
+      flashRef.current.style.visibility = f <= 0 ? "hidden" : "visible";
+      if (f > 0) drawBurst(s, (p - FLASH_IN[0]) / (FLASH_OUT[1] - FLASH_IN[0]));
     }
     if (s.hint) s.hint.style.opacity = String(1 - band(p, [0, 0.05]));
   }
@@ -702,12 +682,12 @@ export function Gallery() {
       <div
         ref={flashRef}
         aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          opacity: 0,
-          background: `linear-gradient(90deg, rgba(${BLUE},.42), rgba(${CYAN},.12) 22%, transparent 38%, transparent 62%, rgba(${ORANGE},.14) 78%, rgba(${ORANGE},.45)), radial-gradient(ellipse 70% 80% at 50% 50%, #fff 0 45%, rgba(255,255,255,.95) 70%, rgba(255,255,255,.88) 100%)`,
-        }}
-      />
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+        style={{ opacity: 0, visibility: "hidden" }}
+      >
+        <PrismBurst els={scene} />
+        <Grain opacity={0.06} />
+      </div>
 
       {/* Controls once inside */}
       <div
@@ -750,12 +730,6 @@ function IntroDoor({
   scene: React.RefObject<Record<string, HTMLElement | null>>;
   onClick: () => void;
 }) {
-  const set = (name: string) => (el: HTMLElement | null) => {
-    scene.current[name] = el;
-  };
-  // Each piece is positioned by drawIntro() every frame.
-  const abs: CSSProperties = { position: "absolute", left: 0, top: 0, width: 0, height: 0 };
-
   return (
     <div
       ref={rootRef}
@@ -764,95 +738,13 @@ function IntroDoor({
       role="button"
       aria-label="Go through the door into the gallery"
     >
-      {/* Coloured light thrown left and right */}
-      <span
-        ref={set("blue")}
-        aria-hidden
-        style={{
-          ...abs,
-          background: `radial-gradient(ellipse 50% 50% at 50% 50%, rgba(${BLUE},.8), rgba(${BLUE},.3) 40%, transparent 70%)`,
-        }}
-      />
-      <span
-        ref={set("orange")}
-        aria-hidden
-        style={{
-          ...abs,
-          background: `radial-gradient(ellipse 50% 50% at 50% 50%, rgba(${ORANGE},.8), rgba(${ORANGE},.3) 40%, transparent 70%)`,
-        }}
-      />
-      {/* Light pooling on the floor in front of the door */}
-      <span
-        ref={set("floor")}
-        aria-hidden
-        style={{
-          ...abs,
-          clipPath: "polygon(46.5% 0, 53.5% 0, 100% 100%, 0 100%)",
-          background: `linear-gradient(90deg, rgba(${BLUE},.55), transparent 35%, transparent 65%, rgba(${ORANGE},.55)), linear-gradient(180deg, rgba(255,255,255,.95), rgba(255,255,255,.25) 55%, transparent 90%)`,
-        }}
-      />
-      {/* The door leaves, dark, catching coloured light on their inner edges */}
-      <span
-        ref={set("slabL")}
-        aria-hidden
-        style={{
-          ...abs,
-          // Only the edge by the gap shows: light catching the door.
-          background: `linear-gradient(90deg, transparent 80%, rgba(${CYAN},.4) 96%, rgba(255,255,255,.9) 100%)`,
-          maskImage: "linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent)",
-        }}
-      />
-      <span
-        ref={set("slabR")}
-        aria-hidden
-        style={{
-          ...abs,
-          background: `linear-gradient(270deg, transparent 80%, rgba(${ORANGE},.4) 96%, rgba(255,255,255,.9) 100%)`,
-          maskImage: "linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent)",
-        }}
-      />
-      {/* White haze around the gap */}
-      <span
-        ref={set("halo")}
-        aria-hidden
-        style={{
-          ...abs,
-          background:
-            "radial-gradient(ellipse 22% 48% at 50% 50%, rgba(255,255,255,.9), rgba(255,255,255,.25) 50%, transparent 75%)",
-          mixBlendMode: "screen",
-        }}
-      />
-      {/* The gap itself: pure light */}
-      <span
-        ref={set("gap")}
-        aria-hidden
-        style={{
-          ...abs,
-          background: `linear-gradient(90deg, rgba(${CYAN},.9), #fff 22%, #fff 78%, rgba(255,200,150,.95))`,
-          boxShadow: "0 0 24px 6px rgba(255,255,255,.85)",
-        }}
-      />
-      {/* Dust drifting in the light */}
-      <span ref={set("dust")} aria-hidden style={{ ...abs, opacity: 0 }}>
-        {Array.from({ length: 28 }, (_, i) => (
-          <span
-            key={i}
-            className="absolute rounded-full bg-white"
-            style={{
-              left: `${(i * 37) % 100}%`,
-              top: `${20 + ((i * 53) % 70)}%`,
-              width: 2 + (i % 3),
-              height: 2 + (i % 3),
-              opacity: 0.4 + ((i * 13) % 6) / 10,
-              animation: `dust ${6 + (i % 5)}s linear ${-i * 0.7}s infinite`,
-            }}
-          />
-        ))}
-      </span>
-
+      <DoorLight els={scene} />
+      <Grain opacity={0.1} />
       <p
-        ref={set("hint")}
-        className="tracked pointer-events-none absolute inset-x-0 bottom-8 flex flex-col items-center gap-3 text-[10px] text-white/80 mix-blend-difference"
+        ref={(el) => {
+          scene.current.hint = el;
+        }}
+        className="tracked pointer-events-none absolute inset-x-0 top-28 flex flex-col items-center gap-3 text-[10px] text-white/70"
       >
         Scroll to enter
         <span className="h-8 w-px overflow-hidden bg-white/15">
@@ -1276,11 +1168,31 @@ function EndDoor({
         aria-hidden
         style={{
           ...panel(dw * 2.6, dh * 1.3, door.x, floorY - dh * 0.55, -2, "rotateY(180deg)", 4),
-          background: `radial-gradient(ellipse 22% 42% at 50% 55%, rgba(255,255,255,.9), transparent 70%), radial-gradient(ellipse 30% 50% at 36% 52%, rgba(${BLUE},.38), transparent 72%), radial-gradient(ellipse 30% 50% at 64% 52%, rgba(${ORANGE},.38), transparent 72%)`,
+          background: `radial-gradient(ellipse 16% 40% at 50% 55%, rgba(255,255,255,.85), transparent 72%), radial-gradient(ellipse 26% 46% at 40% 50%, rgba(${BLUE},.2), transparent 72%), radial-gradient(ellipse 26% 46% at 60% 50%, rgba(${ORANGE},.2), transparent 72%)`,
           opacity: 0.55,
           pointerEvents: "none",
         }}
-      />
+      >
+        {/* Soft rays leaving the top of the gap: blue up-left, orange up-right */}
+        {[
+          { deg: -152, rgb: BLUE, core: "205,240,255" },
+          { deg: -28, rgb: ORANGE, core: "255,236,212" },
+        ].map((r) => (
+          <span
+            key={r.deg}
+            className="absolute"
+            style={{
+              left: "50%",
+              top: "15.4%",
+              width: "48%",
+              height: "26%",
+              transformOrigin: "0 50%",
+              transform: `translateY(-50%) rotate(${r.deg}deg)`,
+              background: `radial-gradient(ellipse 100% 50% at 0% 50%, rgba(${r.core},.85), rgba(${r.rgb},.45) 30%, rgba(${r.rgb},.12) 60%, transparent 80%)`,
+            }}
+          />
+        ))}
+      </div>
 
       {/* The door. Its leaves sit in 3D, so this keeps preserve-3d. */}
       <Link
@@ -1333,6 +1245,17 @@ function EndDoor({
                 top: "7%",
                 bottom: "9%",
                 border: "1px solid rgba(255,255,255,.06)",
+              }}
+            />
+            {/* As in the logo: light pouring over the top inner corner, blue on the left
+                leaf and orange on the right, white at the gap, fading down into black */}
+            <span
+              className="absolute inset-0"
+              style={{
+                background:
+                  side === 0
+                    ? `radial-gradient(ellipse 130% 42% at 100% 0%, rgba(255,255,255,.95) 0%, rgba(205,240,255,.9) 8%, rgba(${CYAN},.85) 18%, rgba(${BLUE},.7) 34%, rgba(${BLUE},.22) 55%, transparent 72%)`
+                    : `radial-gradient(ellipse 130% 42% at 0% 0%, rgba(255,255,255,.95) 0%, rgba(255,236,212,.9) 8%, rgba(255,170,70,.85) 18%, rgba(${ORANGE},.7) 34%, rgba(220,90,20,.22) 55%, transparent 72%)`,
               }}
             />
             {/* Light catching the inner edge: blue on the left leaf, orange on the right */}
