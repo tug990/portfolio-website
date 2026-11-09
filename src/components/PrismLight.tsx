@@ -1,22 +1,9 @@
-import type { CSSProperties } from "react";
-
 /*
-  The prism light, modelled on the brand images.
+  The prism light you pass through on the way into the gallery, modelled on
+  the banner (banner.webp): white light with soft diagonal rainbow streaks and
+  drifting glass shards. (The door itself is drawn in LogoDoor.tsx.)
 
-  DoorLight is the door photo (hero-door.webp) rebuilt from gradients so it
-  stays sharp however close the camera flies: a white gap; blue light leaking
-  up-left from its top edge and orange up-right, as soft rays; colour hugging
-  the gap's edges and falling off fast into black; haze in the air; and a
-  glossy floor fanning the light towards you.
-
-  PrismBurst is the banner (banner.webp): white light with soft diagonal
-  rainbow streaks and drifting glass shards. It's what you pass through.
-
-  Both get fine film grain on top, like a photo, which also hides the "steps"
-  that large smooth gradients otherwise show.
-
-  Nothing here is scaled with a transform: every frame, draw*() sets real
-  sizes, so the browser redraws the gradients at full sharpness.
+  Also the film grain used across the home page.
 */
 
 export const BLUE = "31,44,255";
@@ -29,214 +16,6 @@ export const GRAIN = `url("data:image/svg+xml,${encodeURIComponent(
 )}")`;
 
 type Els = Record<string, HTMLElement | null>;
-
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const smooth = (t: number) => {
-  const c = clamp(t, 0, 1);
-  return c * c * (3 - 2 * c);
-};
-
-function place(el: HTMLElement | null | undefined, x: number, y: number, w: number, h: number) {
-  if (!el) return;
-  el.style.left = `${x}px`;
-  el.style.top = `${y}px`;
-  el.style.width = `${w}px`;
-  el.style.height = `${h}px`;
-}
-
-// A beam starting at (x, y), `len` long and `thick` across, pointing `deg` (0 = right).
-function ray(
-  el: HTMLElement | null | undefined,
-  x: number,
-  y: number,
-  len: number,
-  thick: number,
-  deg: number,
-) {
-  if (!el) return;
-  place(el, x, y - thick / 2, len, thick);
-  el.style.transform = `rotate(${deg}deg)`;
-}
-
-const abs: CSSProperties = {
-  position: "absolute",
-  left: 0,
-  top: 0,
-  width: 0,
-  height: 0,
-  transformOrigin: "0 50%",
-  pointerEvents: "none",
-};
-
-// A soft cone of light: brightest at its start (left edge), spreading and fading.
-const cone = (stops: string) => `radial-gradient(ellipse 100% 50% at 0% 50%, ${stops})`;
-
-/* ---------- the door ---------- */
-
-export function DoorLight({ els }: { els: React.RefObject<Els> }) {
-  const set = (name: string) => (el: HTMLElement | null) => {
-    els.current[name] = el;
-  };
-  const layer = (name: string, style: CSSProperties) => (
-    <span ref={set(name)} aria-hidden style={{ ...abs, ...style }} />
-  );
-
-  return (
-    <>
-      {/* Faint light in the room around the door */}
-      {layer("ambient", {
-        background:
-          "radial-gradient(ellipse 50% 50% at 50% 58%, rgba(70,80,100,.22), rgba(40,45,60,.08) 45%, transparent 72%)",
-      })}
-
-      {/* The floor: blue to the left, orange to the right, a white streak down the middle */}
-      {layer("floorBlue", {
-        background: `radial-gradient(ellipse 100% 100% at 100% 0%, rgba(150,215,255,.55), rgba(${CYAN},.42) 12%, rgba(${BLUE},.3) 32%, rgba(${BLUE},.1) 55%, transparent 75%)`,
-        // Light fans out from the foot of the door; the far floor stays dark.
-        maskImage:
-          "conic-gradient(from 180deg at 100% 0%, #000 0deg, #000 30deg, transparent 72deg)",
-      })}
-      {layer("floorOrange", {
-        background: `radial-gradient(ellipse 100% 100% at 0% 0%, rgba(255,215,170,.55), rgba(255,160,60,.42) 12%, rgba(${ORANGE},.3) 32%, rgba(220,90,20,.1) 55%, transparent 75%)`,
-        maskImage:
-          "conic-gradient(from 90deg at 0% 0%, transparent 0deg, transparent 18deg, #000 60deg, #000 90deg, transparent 91deg)",
-      })}
-      {layer("floorWhite", {
-        clipPath: "polygon(37.5% 0, 62.5% 0, 100% 100%, 0 100%)",
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,.95), rgba(255,255,255,.5) 22%, rgba(255,255,255,.14) 60%, transparent 92%)",
-        maskImage: "linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent)",
-      })}
-      {/* Concrete texture, only where the light falls */}
-      {layer("floorGrain", {
-        backgroundImage: GRAIN,
-        backgroundSize: "140px 140px",
-        mixBlendMode: "overlay",
-        opacity: 0.55,
-        maskImage: "radial-gradient(ellipse 50% 100% at 50% 0%, #000, transparent 75%)",
-      })}
-
-      {/* Haze in the air, low on the left */}
-      {layer("haze", {
-        background:
-          "radial-gradient(ellipse 50% 50% at 62% 55%, rgba(175,205,240,.2), rgba(120,150,200,.07) 50%, transparent 72%)",
-      })}
-
-      {/* Colour hugging the edges of the gap */}
-      {layer("edgeBlue", {
-        background: `linear-gradient(270deg, rgba(220,242,255,.96) 0%, rgba(${CYAN},.75) 6%, rgba(${BLUE},.5) 24%, rgba(${BLUE},.16) 55%, transparent 100%)`,
-        maskImage:
-          "linear-gradient(180deg, transparent 0%, #000 6%, #000 42%, rgba(0,0,0,.4) 78%, transparent 100%)",
-      })}
-      {layer("edgeOrange", {
-        background: `linear-gradient(90deg, rgba(255,242,225,.96) 0%, rgba(255,172,72,.78) 6%, rgba(${ORANGE},.5) 24%, rgba(220,90,20,.15) 55%, transparent 100%)`,
-        maskImage:
-          "linear-gradient(180deg, transparent 0%, #000 6%, #000 48%, rgba(0,0,0,.4) 80%, transparent 100%)",
-      })}
-
-      {/* Light escaping from the top of the gap: blue up-left, orange up-right */}
-      {layer("rayBlueWide", {
-        background: cone(`rgba(${BLUE},.55), rgba(${BLUE},.2) 42%, transparent 74%`),
-      })}
-      {layer("rayBlue", {
-        background: cone(
-          `rgba(205,240,255,.95), rgba(${CYAN},.7) 22%, rgba(${BLUE},.35) 52%, transparent 82%`,
-        ),
-      })}
-      {layer("rayOrangeWide", {
-        background: cone(`rgba(${ORANGE},.5), rgba(220,90,20,.18) 42%, transparent 74%`),
-      })}
-      {layer("rayOrange", {
-        background: cone(
-          `rgba(255,236,212,.95), rgba(255,165,60,.7) 24%, rgba(${ORANGE},.3) 55%, transparent 82%`,
-        ),
-      })}
-      {/* The top of the opening: a bright wedge slanting up to the left */}
-      {layer("lintel", {
-        clipPath: "polygon(0 0, 100% 100%, 44% 100%)",
-        background: `linear-gradient(90deg, rgba(${CYAN},.75), rgba(210,242,255,.98) 40%, #fff 70%)`,
-        transformOrigin: "0 0",
-      })}
-
-      {/* Warm glow where the light spills over the top-right corner */}
-      {layer("cornerWarm", {
-        background:
-          "radial-gradient(ellipse 50% 50% at 50% 50%, rgba(255,214,160,.7), rgba(255,150,60,.3) 40%, transparent 72%)",
-      })}
-      {/* Bloom around the brightest part */}
-      {layer("bloom", {
-        background:
-          "radial-gradient(ellipse 28% 50% at 50% 50%, rgba(255,255,255,.6), rgba(255,255,255,.14) 55%, transparent 75%)",
-        mixBlendMode: "screen",
-      })}
-      {/* The gap: pure light, cooler on the left edge, warmer on the right */}
-      {layer("gap", {
-        background: "linear-gradient(90deg, #d6f0ff 0%, #fff 15%, #fff 85%, #fff0dd 100%)",
-      })}
-
-      {/* Dust in the beam */}
-      <span ref={set("dust")} aria-hidden style={{ ...abs, opacity: 0 }}>
-        {Array.from({ length: 34 }, (_, i) => (
-          <span
-            key={i}
-            className="absolute rounded-full bg-white"
-            style={{
-              left: `${(i * 37) % 100}%`,
-              top: `${15 + ((i * 53) % 75)}%`,
-              width: 1 + (i % 3),
-              height: 1 + (i % 3),
-              opacity: 0.25 + ((i * 13) % 6) / 10,
-              filter: i % 4 === 0 ? "blur(1px)" : undefined,
-              animation: `dust ${7 + (i % 5)}s linear ${-i * 0.7}s infinite`,
-            }}
-          />
-        ))}
-      </span>
-    </>
-  );
-}
-
-/*
-  Lay the door out for progress e (0 = resting, 1 = the light fills the screen).
-  `zoom` grows from 1 as you fly in; the gap's centre drifts to the screen centre.
-*/
-export function drawDoorLight(s: Els, W: number, H: number, e: number) {
-  const zoom = Math.exp(Math.log(80) * Math.pow(e, 1.7));
-  const g0 = Math.min(H * 0.06, W * 0.1); // gap width at rest
-  const g = g0 * zoom;
-  const h = g * 7.2; // the photo's gap is about seven times taller than wide
-  const restCy = H * 0.8 - (g0 * 7.2) / 2; // at rest the door sits low, as in the photo
-  const cy = restCy + (H / 2 - restCy) * smooth(e);
-  const cx = W / 2;
-  const floorY = cy + h / 2;
-  const gx = cx - g / 2;
-  const gt = floorY - h;
-  const floorH = h * 0.9;
-
-  place(s.ambient, cx - 9 * g, gt - 2 * g, 18 * g, h * 1.7);
-  place(s.floorBlue, cx - 9.5 * g, floorY, 9.5 * g, floorH);
-  place(s.floorOrange, cx, floorY, 9.5 * g, floorH);
-  place(s.floorWhite, cx - 2 * g, floorY, 4 * g, floorH);
-  place(s.floorGrain, cx - 9.5 * g, floorY, 19 * g, floorH);
-  place(s.haze, gx - 4.5 * g, gt + 0.3 * h, 5.5 * g, 0.8 * h);
-  place(s.edgeBlue, gx - 1.9 * g, gt - 0.04 * h, 1.9 * g, 1.04 * h);
-  place(s.edgeOrange, gx + g, gt - 0.04 * h, 1.7 * g, 1.04 * h);
-  // The wedge runs from the gap's top-right corner up-left past its top-left corner;
-  // the blue streams off its far end, the orange off the top-right corner.
-  place(s.lintel, gx - 0.8 * g, gt - 0.5 * g, 1.8 * g, 0.5 * g + 1);
-  ray(s.rayBlueWide, gx - 0.2 * g, gt - 0.15 * g, 6.6 * g, 2.2 * g, -152);
-  ray(s.rayBlue, gx - 0.3 * g, gt - 0.2 * g, 4.2 * g, 0.7 * g, -153);
-  ray(s.rayOrangeWide, gx + g, gt + 0.15 * g, 4.6 * g, 2.6 * g, -28);
-  ray(s.rayOrange, gx + g, gt + 0.05 * g, 2.4 * g, 0.55 * g, -24);
-  place(s.cornerWarm, gx + 0.2 * g, gt - 0.75 * g, 1.8 * g, 1.3 * g);
-  place(s.bloom, cx - 3.5 * g, gt - 0.15 * h, 7 * g, 1.3 * h);
-  place(s.gap, gx, gt, g, h);
-  if (s.gap) {
-    const b = Math.min(48, g * 0.35);
-    s.gap.style.boxShadow = `0 0 ${b}px ${Math.min(10, g * 0.06)}px rgba(255,255,255,.9)`;
-  }
-  place(s.dust, gx - 3 * g, gt - 0.2 * h, 7 * g, 1.2 * h);
-}
 
 /* ---------- the burst of prism light ---------- */
 
@@ -370,3 +149,30 @@ export function Grain({ opacity = 0.08 }: { opacity?: number }) {
     />
   );
 }
+
+/*
+  Moving film grain for the whole home page: an oversized noise layer jumps to
+  a new position several times a second, so the grain flickers like film.
+  Multiply keeps it visible on white without greying anything out.
+*/
+export function FilmGrain({ opacity = 0.16 }: { opacity?: number }) {
+  return (
+    <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <span
+        className="absolute -inset-[50%]"
+        style={{
+          backgroundImage: GRAIN_DARK,
+          backgroundSize: "200px 200px",
+          mixBlendMode: "multiply",
+          opacity,
+          animation: "grain-shift .6s steps(6) infinite",
+        }}
+      />
+    </span>
+  );
+}
+
+// Dark specks of varying strength, for multiplying over light scenes.
+const GRAIN_DARK = `url("data:image/svg+xml,${encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1.6 0 0 0 -.62'/></filter><rect width='100%' height='100%' filter='url(#n)'/></svg>",
+)}")`;

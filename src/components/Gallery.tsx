@@ -9,12 +9,12 @@ import {
   BLUE,
   CYAN,
   ORANGE,
-  DoorLight,
+  FilmGrain,
   Grain,
   PrismBurst,
   drawBurst,
-  drawDoorLight,
 } from "@/components/PrismLight";
+import { LOGO, LogoDoorCanvas, type LogoDoorHandle } from "@/components/LogoDoor";
 
 /*
   The home page: a walk-through 3D gallery.
@@ -92,6 +92,7 @@ export function Gallery() {
   const [lit, setLit] = useState(false);
   const [signs, setSigns] = useState([false, false]); // end-door labels lit
   const [hint, setHint] = useState(true);
+  const [nearStop, setNearStop] = useState(0); // phones hide works far from you, to save memory
 
   const room = useMemo(() => buildRoom(PROJECTS.length, view.w, view.h), [view]);
   // Narrow screens get a wider field of view so the room doesn't feel like a tunnel.
@@ -99,12 +100,14 @@ export function Gallery() {
   const phone = view.w < 700;
   const surfaceK = phone ? 8 : 4; // plain walls, ceiling, floor wash: drawn small
   const doorK = phone ? 2 : 1; // door leaves: flat colour, edges stay sharp anyway
+  const contentK = phone ? 2 : 1; // films and labels: still sharp at the size they appear
 
   const stageRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const introRef = useRef<HTMLDivElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
   const scene = useRef<Record<string, HTMLElement | null>>({});
+  const logoGl = useRef<LogoDoorHandle | null>(null);
   const roomRef = useRef(room);
   const perspRef = useRef(persp);
   const viewRef = useRef(view);
@@ -182,8 +185,8 @@ export function Gallery() {
   }, []);
 
   useEffect(() => {
-    setStageTone(inside ? "light" : "dark");
-  }, [inside]);
+    setStageTone("light"); // the landing is white now, like the logo
+  }, []);
 
   // The room is sized from the screen, so a resize moves every stop: stay at yours.
   useEffect(() => {
@@ -302,6 +305,7 @@ export function Gallery() {
       if (playAt !== c.playing) {
         c.playing = playAt;
         syncVideos(r, playAt);
+        setNearStop(Math.max(playAt, 0));
       }
 
       c.pose = pose;
@@ -321,8 +325,35 @@ export function Gallery() {
   function drawIntro(p: number) {
     const { w: W, h: H } = viewRef.current;
     const s = scene.current;
-    drawDoorLight(s, W, H, band(p, [0, ZOOM_END]));
-    if (s.dust) s.dust.style.opacity = String(band(p, [0.03, 0.3]) * (1 - band(p, [0.5, 0.6])));
+    const e = band(p, [0, ZOOM_END]);
+    // At rest the logo's door fills ~40% of the screen height, above the text.
+    const s0 = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
+    const zoom = Math.exp(Math.log(120) * Math.pow(e, 1.7)); // 1 → 120, accelerating
+    const scale = s0 * zoom;
+    const markY = H * 0.4;
+    const restX = W / 2 + (LOGO.focus.x - LOGO.center.x) * s0;
+    const restY = markY + (LOGO.focus.y - LOGO.center.y) * s0;
+    // Fly into the light at the top of the gap: it drifts to the centre as you approach.
+    const k = smooth(e);
+    const fx = restX + (W / 2 - restX) * k;
+    const fy = restY + (H / 2 - restY) * k;
+    if (logoGl.current?.ok) {
+      logoGl.current.draw(scale, { x: fx, y: fy });
+    } else if (s.fallback) {
+      // No WebGL: the logo image instead (it softens when zoomed, but works everywhere).
+      const w = 1254 * scale;
+      s.fallback.style.width = `${w}px`;
+      s.fallback.style.left = `${fx - LOGO.focus.x * scale}px`;
+      s.fallback.style.top = `${fy - LOGO.focus.y * scale}px`;
+    }
+    // The landing text sits under the door and lifts away as you start to move.
+    if (s.text) {
+      const bottom = markY + (686 - LOGO.center.y) * s0;
+      const out = band(p, [0.01, 0.12]);
+      s.text.style.top = `${bottom + 34}px`;
+      s.text.style.opacity = String(1 - out);
+      s.text.style.transform = `translateY(${out * 40}px)`;
+    }
     if (introRef.current) {
       const fade = 1 - band(p, [0.64, 0.7]);
       introRef.current.style.opacity = String(fade);
@@ -653,6 +684,10 @@ export function Gallery() {
             key={PROJECTS[i].slug}
             project={PROJECTS[i]}
             slot={s}
+            room={room}
+            k={contentK}
+            stacked={phone}
+            hidden={phone && Math.abs(room.stops.findIndex((st) => st.piece === i) - nearStop) > 2}
             interactive={inside}
             frameRef={(el) => {
               frameEls.current[i] = el;
@@ -673,6 +708,7 @@ export function Gallery() {
       <IntroDoor
         rootRef={introRef}
         scene={scene}
+        logoGl={logoGl}
         onClick={() => {
           if (cam.current.drag.dist <= 6) goIn();
         }}
@@ -688,6 +724,9 @@ export function Gallery() {
         <PrismBurst els={scene} />
         <Grain opacity={0.06} />
       </div>
+
+      {/* Film grain over the whole home page */}
+      <FilmGrain opacity={0.1} />
 
       {/* Controls once inside */}
       <div
@@ -724,32 +763,64 @@ export function Gallery() {
 function IntroDoor({
   rootRef,
   scene,
+  logoGl,
   onClick,
 }: {
   rootRef: React.RefObject<HTMLDivElement | null>;
   scene: React.RefObject<Record<string, HTMLElement | null>>;
+  logoGl: React.RefObject<LogoDoorHandle | null>;
   onClick: () => void;
 }) {
+  const set = (name: string) => (el: HTMLElement | null) => {
+    scene.current[name] = el;
+  };
+  const [glOk, setGlOk] = useState(true);
+  useEffect(() => {
+    // The canvas sets up WebGL on mount; check whether it managed.
+    const id = requestAnimationFrame(() => setGlOk(logoGl.current?.ok !== false));
+    return () => cancelAnimationFrame(id);
+  }, [logoGl]);
+
   return (
     <div
       ref={rootRef}
-      className="absolute inset-0 cursor-pointer overflow-hidden bg-black"
+      className="absolute inset-0 cursor-pointer overflow-hidden bg-[#fbfbfa]"
       onClick={onClick}
       role="button"
       aria-label="Go through the door into the gallery"
     >
-      <DoorLight els={scene} />
-      <Grain opacity={0.1} />
+      <LogoDoorCanvas handle={logoGl} className="absolute inset-0 h-full w-full" />
+      {!glOk && (
+        <img
+          ref={set("fallback")}
+          src="/brand/logo-stacked.webp"
+          alt=""
+          className="absolute max-w-none"
+          style={{ clipPath: "inset(0 0 44% 0)" }}
+        />
+      )}
+
+      {/* The landing text, set like the logo's lettering */}
+      <div
+        ref={set("text")}
+        className="pointer-events-none absolute inset-x-0 flex flex-col items-center px-6 text-center text-black"
+        style={{ top: "70%" }}
+      >
+        <p className="tracked text-[clamp(1.05rem,2.6vw,1.9rem)] font-light">{SITE.tagline}</p>
+        <span className="mt-5 block h-px w-16 bg-black/60" />
+        <p className="mt-5 max-w-md text-[13px] leading-relaxed text-black/60">
+          {SITE.description}
+        </p>
+      </div>
+
       <p
-        ref={(el) => {
-          scene.current.hint = el;
-        }}
-        className="tracked pointer-events-none absolute inset-x-0 top-28 flex flex-col items-center gap-3 text-[10px] text-white/70"
+        ref={set("hint")}
+        className="tracked pointer-events-none absolute inset-x-0 bottom-7 flex flex-col items-center gap-3 text-[10px] text-black/50"
       >
         Scroll to enter
-        <span className="h-8 w-px overflow-hidden bg-white/15">
+        <span className="h-8 w-px overflow-hidden bg-black/10">
           <span
-            className="block h-1/2 w-full bg-white/80"
+            className="block h-1/2 w-full bg-black/60"
             style={{ animation: "hint-line 1.8s ease-in-out infinite" }}
           />
         </span>
@@ -770,9 +841,11 @@ function buildRoom(count: number, vw: number, vh: number) {
   const doorDist = 1250;
   const spacing = FRAME_W + 520;
 
-  // Films go round three walls: left (front to back), back (left to right), right (back to front).
-  const nLeft = Math.ceil(count / 3);
-  const nBack = Math.ceil((count - nLeft) / 2);
+  // Three films to a wall (more if there are more than nine): the left wall first
+  // (front to back), then the back wall (left to right), then the right (back to front).
+  const per = Math.max(3, Math.ceil(count / 3));
+  const nLeft = Math.min(per, count);
+  const nBack = Math.min(per, count - nLeft);
   const nRight = count - nLeft - nBack;
   const sideN = Math.max(nLeft, nRight, 1);
 
@@ -781,8 +854,8 @@ function buildRoom(count: number, vw: number, vh: number) {
   const width = Math.max(
     2800,
     Math.round(vw * 1.8),
-    nBack * spacing + 2 * cut + 400,
-    2 * far + 300,
+    nBack * spacing + 2 * cut + 600,
+    2 * far + 1600, // the path stays well clear of the bench in the middle
   );
   const depth = Math.max(3400, 1100 + sideN * spacing + cut + 200);
   const height = Math.max(1150, vh + 260);
@@ -813,9 +886,11 @@ function buildRoom(count: number, vw: number, vh: number) {
   };
 
   // One stop in front of each film. Distance along the path is "s".
+  // On wide screens the label hangs beside the film, so stand centred on both.
+  const along = narrow ? 0 : (LABEL_GAP + LABEL_W) / 2;
   const stops: Stop[] = pieces.map((p, i) => ({
-    x: p.x + Math.sin(rad(p.a)) * far,
-    z: p.z + Math.cos(rad(p.a)) * far,
+    x: p.x + Math.sin(rad(p.a)) * far + Math.cos(rad(p.a)) * along,
+    z: p.z + Math.cos(rad(p.a)) * far - Math.sin(rad(p.a)) * along,
     yaw: -rad(p.a),
     s: 0,
     piece: i,
@@ -1005,13 +1080,34 @@ function panel(
   };
 }
 
-// Each wall gets a slightly different light level so corners read, plus a soft
-// shadow where it meets the floor.
+// Walls are a touch dim, as in a real gallery, so the spotlit pools stand out.
+// Each gets darker corners, a soft shadow where it meets the floor, and a
+// slightly different light level so the room's shape reads.
 const wall = (tone: number) =>
-  `linear-gradient(180deg, rgba(255,255,255,.55) 0%, transparent 35%, transparent 80%, rgba(0,0,0,.07) 96%, rgba(0,0,0,.14) 100%), hsl(40 8% ${tone}%)`;
-const WALL = wall(95);
-const SIDE_WALL = wall(91.5);
-const CORNER_WALL = wall(93);
+  `linear-gradient(90deg, rgba(0,0,0,.09), transparent 7%, transparent 93%, rgba(0,0,0,.09)), linear-gradient(180deg, rgba(0,0,0,.05) 0%, transparent 18%, transparent 78%, rgba(0,0,0,.06) 94%, rgba(0,0,0,.16) 100%), hsl(40 7% ${tone}%)`;
+const WALL = wall(87);
+const SIDE_WALL = wall(84);
+const CORNER_WALL = wall(85.5);
+
+/* Laid out at full size, painted k times smaller and scaled back up (phones). */
+function Lowres({
+  w,
+  h,
+  k,
+  children,
+}: {
+  w: number;
+  h: number;
+  k: number;
+  children: React.ReactNode;
+}) {
+  if (k === 1) return <>{children}</>;
+  return (
+    <div style={{ width: w, height: h, transform: `scale(${1 / k})`, transformOrigin: "0 0" }}>
+      {children}
+    </div>
+  );
+}
 
 function Room({ room, lit, k }: { room: RoomLayout; lit: boolean; k: number }) {
   const { width: W, height: H, depth: D, floorY, ceilY, midY, corner, cut } = room;
@@ -1101,6 +1197,121 @@ function Room({ room, lit, k }: { room: RoomLayout; lit: boolean; k: number }) {
       />
       {/* Entrance wall, facing into the room: the end doors hang on it */}
       <div style={{ ...panel(W, H, 0, midY, 0, "rotateY(180deg)", k), background: WALL }} />
+
+      {/* Shadow gap where each wall meets the floor */}
+      {[
+        { len: D, x: -W / 2 + 1, z: -D / 2, a: 90 },
+        { len: D, x: W / 2 - 1, z: -D / 2, a: -90 },
+        { len: W - cut * 2, x: 0, z: -D + 1, a: 0 },
+        { len: W, x: 0, z: -1, a: 180 },
+      ].map((b, i) => (
+        <div
+          key={`base${i}`}
+          aria-hidden
+          style={{
+            ...panel(b.len, 12, b.x, floorY - 6, b.z, `rotateY(${b.a}deg)`),
+            background: "linear-gradient(180deg, #c9c5bd, #b3aea5)",
+          }}
+        />
+      ))}
+
+      {/* Ceiling track: a rail along each wall, a black spot head over every film */}
+      {[
+        { x: -W / 2 + 700, len: D - 400, along: "z" },
+        { x: W / 2 - 700, len: D - 400, along: "z" },
+      ].map((r, i) => (
+        <div
+          key={`rail${i}`}
+          aria-hidden
+          style={{
+            ...panel(14, r.len, r.x, ceilY + 2, -D / 2 - 100, "rotateX(-90deg)"),
+            background: "#1c1c1c",
+          }}
+        />
+      ))}
+      <div
+        aria-hidden
+        style={{
+          ...panel(W - 1600, 14, 0, ceilY + 2, -D + 700, "rotateX(-90deg)"),
+          background: "#1c1c1c",
+        }}
+      />
+      {room.pieces.map((pc, i) => {
+        // On the rail, 700 out from the wall, angled at the film.
+        const hx = pc.x + Math.sin(rad(pc.a)) * 700;
+        const hz = pc.z + Math.cos(rad(pc.a)) * 700;
+        return (
+          <div
+            key={`spot${i}`}
+            aria-hidden
+            style={{
+              ...panel(46, 90, hx, ceilY + 60, hz, `rotateY(${pc.a + 180}deg) rotateX(-28deg)`),
+              background: "linear-gradient(90deg, #0d0d0d, #2a2a2a 45%, #111)",
+              borderRadius: 10,
+            }}
+          />
+        );
+      })}
+
+      {/* A gallery bench in the middle of the room */}
+      <Bench x={0} z={-D / 2} floorY={floorY} />
+    </>
+  );
+}
+
+/* A long upholstered bench: a box seen from any side, with a shadow beneath. */
+function Bench({ x, z, floorY }: { x: number; z: number; floorY: number }) {
+  const L = 1300; // length
+  const Hh = 190; // height
+  const Dd = 380; // depth
+  const top = floorY - Hh;
+  const side = "linear-gradient(180deg, #2c2c2c, #1b1b1b)";
+  return (
+    <>
+      <div
+        aria-hidden
+        style={{
+          ...panel(L + 500, Dd + 500, x, floorY - 0.8, z, "rotateX(90deg)", 4),
+          background:
+            "radial-gradient(ellipse 48% 44% at 50% 50%, rgba(0,0,0,.28), transparent 72%)",
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          ...panel(L, Dd, x, top, z, "rotateX(90deg)", 2),
+          background: "linear-gradient(180deg, #3a3a3a, #2f2f2f 40%, #262626)",
+          borderRadius: 6,
+        }}
+      />
+      {[1, -1].map((s) => (
+        <div
+          key={`f${s}`}
+          aria-hidden
+          style={{
+            ...panel(
+              L,
+              Hh,
+              x,
+              floorY - Hh / 2,
+              z + (s * Dd) / 2,
+              s > 0 ? "" : "rotateY(180deg)",
+              2,
+            ),
+            background: side,
+          }}
+        />
+      ))}
+      {[1, -1].map((s) => (
+        <div
+          key={`e${s}`}
+          aria-hidden
+          style={{
+            ...panel(Dd, Hh, x + (s * L) / 2, floorY - Hh / 2, z, `rotateY(${s * 90}deg)`, 2),
+            background: side,
+          }}
+        />
+      ))}
     </>
   );
 }
@@ -1328,9 +1539,16 @@ function EndDoor({
 
 /* ---------- a film on the wall ---------- */
 
+const LABEL_W = 260; // the museum label beside each film
+const LABEL_GAP = 70;
+
 function Artwork({
   project,
   slot,
+  room,
+  k,
+  stacked,
+  hidden,
   interactive,
   frameRef,
   videoRef,
@@ -1339,62 +1557,144 @@ function Artwork({
 }: {
   project: Project;
   slot: Piece;
+  room: RoomLayout;
+  k: number;
+  stacked: boolean; // phones: label under the film instead of beside it
+  hidden: boolean;
   interactive: boolean;
   frameRef: (el: HTMLElement | null) => void;
   videoRef: (el: HTMLVideoElement | null) => void;
   onFocus: () => void;
   onClick: (e: React.MouseEvent) => void;
 }) {
-  // Hang it a hair off the wall so it never flickers into it.
-  const off = 3;
-  const x = slot.x + Math.sin(rad(slot.a)) * off;
-  const z = slot.z + Math.cos(rad(slot.a)) * off;
-  const boxH = FRAME_H + 110; // frame plus caption
+  const a = rad(slot.a);
+  // Out from the wall, and along it to the right as you face it.
+  const nx = Math.sin(a);
+  const nz = Math.cos(a);
+  const tx = Math.cos(a);
+  const tz = -Math.sin(a);
+  const at = (out: number, along: number) => ({
+    x: slot.x + nx * out + tx * along,
+    z: slot.z + nz * out + tz * along,
+  });
+  const turn = `rotateY(${slot.a}deg)`;
+  const { floorY, ceilY } = room;
+
+  // The film and its label sit in one row; shift it so the film is centred on its spot.
+  const LABEL_H = 150;
+  const rowW = stacked ? FRAME_W : FRAME_W + LABEL_GAP + LABEL_W;
+  const rowH = stacked ? FRAME_H + 28 + 36 + LABEL_H : FRAME_H + 28;
+  const row = at(4, (rowW - FRAME_W) / 2);
+  const rowY = stacked ? slot.y + 14 + (36 + LABEL_H) / 2 : slot.y + 14;
+
+  // Spotlight: a scallop of light running down from the ceiling, pooling on the film.
+  const spotTop = ceilY;
+  const spotBottom = slot.y + FRAME_H / 2 + 260;
+  const spot = at(1, 0);
+  // Reflection in the polished floor, just in front of the wall.
+  const refl = at(260, 0);
+  const vis: React.CSSProperties = hidden ? { visibility: "hidden" } : {};
 
   return (
-    <div style={panel(FRAME_W, boxH, x, slot.y + 55, z, `rotateY(${slot.a}deg)`)}>
-      <Link
-        to="/projects/$slug"
-        params={{ slug: project.slug }}
-        draggable={false}
-        tabIndex={interactive ? 0 : -1}
-        onFocus={onFocus}
-        onClick={onClick}
-        className="group block outline-none"
-        aria-label={`${project.title}, ${project.year}`}
-      >
-        <span
-          ref={frameRef}
-          className="block overflow-hidden border-[10px] border-[#111] bg-black shadow-[0_30px_40px_-20px_rgba(0,0,0,.4)] transition-transform duration-500 group-hover:-translate-y-2 group-focus-visible:ring-4 group-focus-visible:ring-black/30"
-          style={{ height: FRAME_H }}
-        >
-          {project.trailer ? (
-            <video
-              ref={videoRef}
-              src={project.trailer}
-              poster={project.image}
-              muted
-              loop
-              playsInline
-              preload="none"
-              className="h-full w-full object-cover"
-            />
-          ) : project.image ? (
-            <img
-              src={project.image}
-              alt=""
-              draggable={false}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <Poster title={project.title} live />
-          )}
-        </span>
-        <span className="mt-5 block text-left text-black">
-          <span className="block text-[22px] font-medium leading-tight">{project.title}</span>
-          <span className="mt-1 block text-[16px] text-black/50">{project.tags.join(", ")}</span>
-        </span>
-      </Link>
-    </div>
+    <>
+      <div
+        aria-hidden
+        style={{
+          ...panel(
+            FRAME_W * 2.2,
+            spotBottom - spotTop,
+            spot.x,
+            (spotTop + spotBottom) / 2,
+            spot.z,
+            turn,
+            4,
+          ),
+          background:
+            "radial-gradient(ellipse 26% 48% at 50% 0%, rgba(255,252,246,.9), rgba(255,250,242,.35) 50%, transparent 74%), radial-gradient(ellipse 38% 36% at 50% 62%, #fffdf8, rgba(255,251,244,.85) 35%, rgba(255,250,242,.35) 62%, transparent 80%)",
+          ...vis,
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          ...panel(FRAME_W * 1.1, 520, refl.x, floorY - 0.7, refl.z, `${turn} rotateX(90deg)`, 4),
+          background:
+            "linear-gradient(180deg, rgba(25,25,30,.2), rgba(25,25,30,.06) 40%, transparent 75%)",
+          maskImage: "linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent)",
+          ...vis,
+        }}
+      />
+      <div style={{ ...panel(rowW, rowH, row.x, rowY, row.z, turn, k), ...vis }}>
+        <Lowres w={rowW} h={rowH} k={k}>
+          <Link
+            to="/projects/$slug"
+            params={{ slug: project.slug }}
+            draggable={false}
+            tabIndex={interactive ? 0 : -1}
+            onFocus={onFocus}
+            onClick={onClick}
+            className={cn(
+              "group flex outline-none",
+              stacked ? "flex-col items-start pt-[14px]" : "items-center",
+            )}
+            style={{ gap: stacked ? 36 : LABEL_GAP, width: rowW, height: rowH }}
+            aria-label={`${project.title}, ${project.year}`}
+          >
+            {/* The film, in a thin black bezel */}
+            <span
+              ref={frameRef}
+              className="relative block shrink-0 overflow-hidden bg-black transition-transform duration-500 group-hover:-translate-y-1.5 group-focus-visible:ring-4 group-focus-visible:ring-black/30"
+              style={{
+                width: FRAME_W,
+                height: FRAME_H,
+                border: "14px solid #0b0b0b",
+                boxShadow:
+                  "inset 0 0 0 1px rgba(255,255,255,.06), 0 22px 36px -14px rgba(0,0,0,.45), 0 4px 10px rgba(0,0,0,.18)",
+              }}
+            >
+              {project.trailer ? (
+                <video
+                  ref={videoRef}
+                  src={project.trailer}
+                  poster={project.image}
+                  muted
+                  loop
+                  playsInline
+                  preload="none"
+                  className="h-full w-full object-cover"
+                />
+              ) : project.image ? (
+                <img
+                  src={project.image}
+                  alt=""
+                  draggable={false}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <Poster title={project.title} live />
+              )}
+            </span>
+            {/* Museum label */}
+            <span
+              className="block shrink-0 bg-[#fbfaf7] text-left text-black"
+              style={{
+                width: LABEL_W,
+                padding: "22px 22px 24px",
+                boxShadow: "0 1px 2px rgba(0,0,0,.12), 0 6px 14px -8px rgba(0,0,0,.25)",
+              }}
+            >
+              <span className="block text-[20px] font-medium leading-tight">{project.title}</span>
+              <span className="mt-1 block text-[14px] text-black/55">
+                {project.year}
+                {project.client ? `, for ${project.client}` : ""}
+              </span>
+              <span className="mt-4 block text-[13px] leading-snug text-black/45">
+                {project.tags.join(", ")}
+              </span>
+            </span>
+          </Link>
+        </Lowres>
+      </div>
+    </>
   );
 }

@@ -13,7 +13,7 @@ export function SiteNav() {
   // On the home page the bar floats over the black door, then the white gallery.
   const isHome = useRouterState({ select: (s) => s.location.pathname === "/" });
   const tone = useStageTone();
-  const onDark = isHome && tone !== "light";
+  const onDark = isHome && tone === "dark"; // the home page is light now unless it says otherwise
 
   return (
     <header className="fixed inset-x-0 top-4 z-30 px-4">

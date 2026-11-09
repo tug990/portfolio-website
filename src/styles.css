@@ -77,6 +77,29 @@
     transform: translateY(200%);
   }
 }
+@keyframes grain-shift {
+  0% {
+    transform: translate(0, 0);
+  }
+  17% {
+    transform: translate(-6%, 4%);
+  }
+  33% {
+    transform: translate(5%, -7%);
+  }
+  50% {
+    transform: translate(-8%, -3%);
+  }
+  67% {
+    transform: translate(7%, 6%);
+  }
+  83% {
+    transform: translate(-3%, 8%);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
 @keyframes poster-drift {
   from {
     transform: translateX(-7%) scale(1);
