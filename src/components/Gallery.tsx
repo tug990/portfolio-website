@@ -14,13 +14,14 @@ import type { GalleryScene, Layout, Pose, Stop } from "@/components/gallery3d/Ga
   flies you into the light at the top of its gap; once you're in, it carries
   you the rest of the way: the view floods with prism light and fades into the
   gallery, which starts bright and settles, like eyes adjusting. You arrive
-  standing back with the whole room in view: all six films playing, the doors
-  at the far end.
+  standing back with the whole room in view: all six films playing, two on
+  each of the three walls ahead of you.
 
   The gallery itself is a real 3D room (gallery3d/GalleryScene, three.js): six
-  films on the side walls and two prism-lit doors on the back wall. From the
-  overview, every scroll / swipe / arrow press moves one stop: left wall front
-  to back, right wall front to back, then the doors. Click the
+  films on the left, far and right walls, and two prism-lit doors on the wall
+  behind you. From the overview, every scroll / swipe / arrow press moves one
+  stop: the left wall, the far wall, the right wall, then you turn round to
+  the doors. Click the
   film you're at to walk up to it and open its page; click a door to walk
   through it. Scrolling back from the middle takes you back out to the logo.
 */
@@ -424,7 +425,7 @@ export function Gallery() {
       t0: performance.now(),
       dur: VISIT_MS,
       from: { ...c.pose },
-      to: { x: w.x + w.nx * d, z: w.z, yaw: c.pose.yaw, y: 1.62 },
+      to: { x: w.x + w.nx * d, z: w.z + w.nz * d, yaw: c.pose.yaw, y: 1.62 },
       door: -1,
       veil,
       go: () => {
@@ -451,7 +452,7 @@ export function Gallery() {
       t0: performance.now(),
       dur: DOOR_MS,
       from: { ...c.pose },
-      to: { x: i === 0 ? -1.35 : 1.35, z: -s.layout.D + 0.25, yaw: c.pose.yaw, y: 1.3 },
+      to: { x: s.doorX(i), z: s.front - 0.25, yaw: c.pose.yaw, y: 1.3 },
       door: i,
       veil,
       go: () => {
