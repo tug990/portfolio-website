@@ -918,18 +918,6 @@ export class GalleryScene {
     return (hit?.object.userData.pick as Pick) ?? null;
   }
 
-  /* For the sound: each film's video (if it has a trailer) and where its screen is. */
-  filmVideos() {
-    return this.works.map((w) => w.video);
-  }
-  filmSpots() {
-    return this.layout.works.map((s) => ({
-      x: s.x + s.nx * 0.05,
-      y: SCREEN.y,
-      z: s.z + s.nz * 0.05,
-    }));
-  }
-
   /* Where a work's screen centre is, to walk up to it. */
   workCentre(i: number) {
     const s = this.layout.works[i];

@@ -118,22 +118,3 @@
     background: var(--prism);
   }
 }
-
-/* The sound button's bars, moving gently while the sound is on */
-@keyframes sound-bar {
-  0%,
-  100% {
-    transform: scaleY(0.35);
-  }
-  50% {
-    transform: scaleY(1);
-  }
-}
-.animate-sound-bar {
-  animation: sound-bar 1.1s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .animate-sound-bar {
-    animation: none;
-  }
-}
