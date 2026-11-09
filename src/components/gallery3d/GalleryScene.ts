@@ -16,6 +16,7 @@ import {
   textTexture,
   wallWashTexture,
 } from "./textures";
+import { marbleFloorMaterial } from "./marble";
 
 /*
   The gallery room, rendered with three.js.
@@ -327,14 +328,8 @@ export class GalleryScene {
     ceiling.rotation.x = Math.PI / 2;
     this.scene.add(ceiling);
 
-    // A seamless floor of pale polished concrete: solid and matte, so it never
-    // reads as water. Light falls on it softly; nothing mirrors in it.
-    const floorMat = new THREE.MeshStandardMaterial({
-      color: 0xa29c93, // pale warm concrete grey
-      roughness: 0.5, // honed: a soft sheen under the lights, never a mirror
-      metalness: 0,
-      envMapIntensity: 0.45,
-    });
+    // Large polished marble slabs (see marble.ts)
+    const floorMat = marbleFloorMaterial();
     this.disposables.push(floorMat);
     const floor = plane(W, len, floorMat);
     floor.rotation.x = -Math.PI / 2;
