@@ -9,12 +9,14 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import type { Project } from "@/content/projects";
 import {
-  concreteTextures,
   doorLightTexture,
   leafTextures,
-  plasterTextures,
   poolTexture,
+  rainbowTexture,
+  slabGlowTexture,
+  skylightTexture,
   textTexture,
+  wallWashTexture,
 } from "./textures";
 
 /*
@@ -24,11 +26,12 @@ import {
   runs back to the far wall at z = -D and forward to the door wall at
   z = front. x runs across from -W/2 to W/2, and the floor is at y = 0.
 
-  Lighting is real: a ceiling track spotlight on every screen (casting the
-  screens' shadows on the wall), suspended linear lights lighting the room,
-  soft ambient light, and the doors' prism light tinting the wall and floor.
-  The polished concrete floor reflects the room on capable devices. A finishing
-  pass adds glow on bright light, subtle lens fringing, a vignette and grain.
+  Every surface is smooth and seamless. Light does the work: a recessed
+  spotlight on every screen (casting its shadow on the wall), a long skylight
+  down the ceiling, a line of warm light under every wall so the walls seem to
+  float, a glass light-gate sculpture after the logo, throwing a rainbow on the floor, and the
+  doors' prism light. The polished floor reflects the room on capable devices.
+  A finishing pass adds glow on what emits light and a gentle vignette.
 */
 
 export const ROOM = { W: 10, H: 4.2, eye: 1.6 };
@@ -144,7 +147,7 @@ export function buildLayout(count: number, aspect: number, front: number) {
 }
 export type Layout = ReturnType<typeof buildLayout>;
 
-/* Film grain, a vignette and the faintest lens fringing at the edges. */
+/* Finishing: just a gentle vignette. (No grain or lens fringing: the room stays smooth.) */
 const FilmShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
@@ -153,24 +156,19 @@ const FilmShader = {
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes; varying vec2 vUv;
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    uniform sampler2D tDiffuse; varying vec2 vUv;
     void main(){
       vec2 d = vUv - 0.5;
-      float r2 = dot(d, d);
-      float ca = 0.006 * r2;
-      vec3 c = vec3(texture2D(tDiffuse, vUv + d * ca).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - d * ca).b);
-      c *= 1.0 - 0.28 * smoothstep(0.12, 0.62, r2 * 1.7);
-      float g = hash(floor(vUv * uRes) + floor(uTime * 24.0) * vec2(13.0, 7.0)) - 0.5;
-      c += g * 0.03 * (0.5 + 0.5 * clamp(1.0 - c.g, 0.0, 1.0));
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      c *= 1.0 - 0.2 * smoothstep(0.18, 0.75, dot(d, d) * 1.7);
       gl_FragColor = vec4(c, 1.0);
     }`,
 };
 
 /*
   A placeholder film until a project has a trailer or image: prism light
-  moving through the dark like footage, with drifting dust, a passing light
-  leak, gentle flicker and a progress bar, so it reads as a clip playing.
+  moving through the dark like footage, breathing gently, with a progress
+  bar, so it reads as a clip playing. Clean gradients only: no dust or grain.
 */
 function placeholderMaterial(title: THREE.Texture, seed: number) {
   return new THREE.ShaderMaterial({
@@ -178,26 +176,16 @@ function placeholderMaterial(title: THREE.Texture, seed: number) {
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `
       uniform float uTime; uniform float uSeed; uniform sampler2D uTitle; varying vec2 vUv;
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
       void main(){
         float t = uTime + uSeed * 7.3;
         // the light drifts like a slow camera move, and breathes a little
         float x = vUv.x - 0.5 - 0.11 * sin(t * 0.21) - 0.03 * sin(t * 0.57);
         float y = 1.0 - vUv.y;
-        float flick = 0.9 + 0.07 * sin(t * 2.3) + 0.03 * sin(t * 7.1);
+        float flick = 0.94 + 0.06 * sin(t * 0.9);
         float w = exp(-pow(x / (0.05 + 0.015 * sin(t * 0.4)), 2.0)) * exp(-y * 1.9);
         float b = exp(-pow((x + 0.18 + 0.03 * sin(t * 0.5)) / 0.17, 2.0)) * exp(-y * 2.4);
         float o = exp(-pow((x - 0.18 - 0.03 * cos(t * 0.45)) / 0.17, 2.0)) * exp(-y * 2.4);
         vec3 c = vec3(0.012) + (vec3(1.0) * w * 0.9 + vec3(0.12, 0.17, 1.0) * b * 0.85 + vec3(1.0, 0.54, 0.12) * o * 0.85) * flick;
-        // dust drifting up through the light
-        vec2 g = floor((vUv + vec2(0.0, -t * 0.025)) * vec2(260.0, 146.0));
-        float dust = step(0.9965, hash(g + uSeed)) * (w * 2.0 + b + o);
-        c += vec3(dust) * 0.9;
-        // a warm light leak sweeping across now and then
-        float sweep = fract(t * 0.045);
-        c += vec3(1.0, 0.6, 0.3) * exp(-pow((vUv.x - (sweep * 1.6 - 0.3)) * 5.0, 2.0)) * 0.07;
-        // film grain
-        c += (hash(floor(vUv * vec2(800.0, 450.0)) + floor(t * 24.0)) - 0.5) * 0.04;
         // title
         vec4 tt = texture2D(uTitle, vUv);
         c = mix(c, vec3(1.0), tt.a * 0.92);
@@ -283,36 +271,19 @@ export class GalleryScene {
     const pmrem = new THREE.PMREMGenerator(renderer);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = env;
-    this.scene.environmentIntensity = 0.28;
+    this.scene.environmentIntensity = 0.22;
     this.scene.background = new THREE.Color(0xf2f0ec);
     pmrem.dispose();
     this.disposables.push(env);
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xd8d2c8, 0.55);
+    // A soft fill only: the spotlights and the skylight do the drama.
+    const hemi = new THREE.HemisphereLight(0xfffaf2, 0xd9d3c9, 0.32);
     this.scene.add(hemi);
 
-    /* ---------- the room ---------- */
+    /* ---------- the room: smooth, seamless surfaces ---------- */
 
-    const plaster = plasterTextures(aniso);
-    const concrete = concreteTextures(aniso);
-    this.disposables.push(plaster.map, plaster.bump, concrete.map, concrete.rough);
-
-    const wallMat = (w: number, h: number) => {
-      const map = plaster.map.clone();
-      const bump = plaster.bump.clone();
-      [map, bump].forEach((t) => {
-        t.repeat.set(w / 2.2, h / 2.2);
-        t.needsUpdate = true;
-        this.disposables.push(t);
-      });
-      const m = new THREE.MeshStandardMaterial({
-        map,
-        bumpMap: bump,
-        bumpScale: 0.35,
-        roughness: 0.93,
-        metalness: 0,
-        color: 0xf4f2ee,
-      });
+    const matte = (color: number, roughness = 0.96) => {
+      const m = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 });
       this.disposables.push(m);
       return m;
     };
@@ -328,81 +299,57 @@ export class GalleryScene {
     const FRONT = this.front;
     const len = D + FRONT;
     const mid = (FRONT - D) / 2;
-    const left = plane(len, H, wallMat(len, H));
+    const wallCol = 0xf2eee7; // warm gallery white
+    const left = plane(len, H, matte(wallCol));
     left.position.set(-W / 2, H / 2, mid);
     left.rotation.y = Math.PI / 2;
-    const right = plane(len, H, wallMat(len, H));
+    const right = plane(len, H, matte(wallCol));
     right.position.set(W / 2, H / 2, mid);
     right.rotation.y = -Math.PI / 2;
-    const back = plane(W, H, wallMat(W, H));
+    const back = plane(W, H, matte(wallCol));
     back.position.set(0, H / 2, -D);
-    const entrance = plane(W, H, wallMat(W, H));
+    const entrance = plane(W, H, matte(wallCol));
     entrance.position.set(0, H / 2, FRONT);
     entrance.rotation.y = Math.PI;
     this.scene.add(left, right, back, entrance);
 
     // Ceiling
-    const ceilMat = wallMat(W, len);
-    ceilMat.color.set(0xf7f6f3);
-    const ceiling = plane(W, len, ceilMat);
+    const ceiling = plane(W, len, matte(0xf6f4f0, 0.98));
     ceiling.position.set(0, H, mid);
     ceiling.rotation.x = Math.PI / 2;
     this.scene.add(ceiling);
 
-    // Polished concrete floor, in 2.5 m slabs
-    const floorMap = concrete.map.clone();
-    const floorRough = concrete.rough.clone();
-    [floorMap, floorRough].forEach((t) => {
-      t.repeat.set(W / 2.5, len / 2.5);
-      t.needsUpdate = true;
-      this.disposables.push(t);
-    });
+    // A seamless floor of dark polished resin: the white walls hover over it
     const floorMat = new THREE.MeshStandardMaterial({
-      map: floorMap,
-      roughnessMap: floorRough,
-      roughness: 1,
+      color: 0x3b3936,
+      roughness: 0.2,
       metalness: 0,
-      envMapIntensity: 0.9,
+      envMapIntensity: 0.6,
     });
     this.disposables.push(floorMat);
     const floor = plane(W, len, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(0, 0, mid);
     if (this.hq) {
-      // A true mirror just under a slightly see-through floor: polished, not glassy.
+      // A true mirror just under the floor, seen softly through it.
       const rg = new THREE.PlaneGeometry(W, len);
       this.disposables.push(rg);
       this.reflector = new Reflector(rg, {
-        textureWidth: 512,
-        textureHeight: 512,
-        color: new THREE.Color(0x5c5c5c),
+        textureWidth: 1024,
+        textureHeight: 1024,
+        color: new THREE.Color(0x8a8784),
       });
       this.reflector.rotation.x = -Math.PI / 2;
       this.reflector.position.set(0, -0.001, mid);
       this.scene.add(this.reflector);
       floorMat.transparent = true;
-      floorMat.opacity = 0.9;
+      floorMat.opacity = 0.7;
     }
     this.scene.add(floor);
 
-    // Shadow gap where the walls meet the floor
-    const skirtMat = new THREE.MeshStandardMaterial({ color: 0x2f2d2b, roughness: 0.8 });
-    this.disposables.push(skirtMat);
-    const skirt = (len: number, x: number, z: number, ry: number) => {
-      const g = new THREE.BoxGeometry(len, 0.045, 0.012);
-      this.disposables.push(g);
-      const m = new THREE.Mesh(g, skirtMat);
-      m.position.set(x, 0.0225, z);
-      m.rotation.y = ry;
-      this.scene.add(m);
-    };
-    skirt(len, -W / 2 + 0.006, mid, Math.PI / 2);
-    skirt(len, W / 2 - 0.006, mid, Math.PI / 2);
-    skirt(W, 0, -D + 0.006, 0);
-    skirt(W, 0, FRONT - 0.006, 0);
-
-    this.addCeilingLights(W, D, H);
-    this.addTrack(W, D, H);
+    this.addFloatingWalls(W, D, FRONT, len, mid);
+    this.addSkylight(H, len, mid);
+    this.addSculpture(D, H);
 
     /* ---------- the screens ---------- */
     opts.projects.forEach((p, i) => this.addWork(p, i, aniso));
@@ -426,7 +373,8 @@ export class GalleryScene {
     });
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.6, 0.9);
+    // Glow only on what truly emits light: the skylight, the light lines, the doors.
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.38, 0.55, 0.93);
     this.composer.addPass(this.bloom);
     this.film = new ShaderPass(FilmShader);
     this.composer.addPass(this.film);
@@ -435,73 +383,235 @@ export class GalleryScene {
     renderer.shadowMap.needsUpdate = true;
   }
 
-  /* Suspended linear lights: aluminium body, glowing diffuser, cables, and real area light. */
-  private addCeilingLights(W: number, D: number, H: number) {
-    RectAreaLightUniformsLib.init();
-    const len = Math.min(5.2, W * 0.52);
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0xd9d8d4,
-      metalness: 0.7,
-      roughness: 0.32,
+  /*
+    Floating walls: a fine line of warm light along the foot of every wall,
+    washing softly up it, so the walls seem to hover just above the floor.
+  */
+  private addFloatingWalls(W: number, D: number, front: number, len: number, mid: number) {
+    const lineMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(1, 0.88, 0.7).multiplyScalar(1.7),
     });
-    const diffMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(1, 1, 1).multiplyScalar(2.2),
+    const washTex = wallWashTexture();
+    const washMat = new THREE.MeshBasicMaterial({
+      map: washTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.32,
     });
-    const cableMat = new THREE.MeshStandardMaterial({
-      color: 0x555555,
-      metalness: 0.5,
-      roughness: 0.4,
+    this.disposables.push(lineMat, washTex, washMat);
+    const walls = [
+      { len, x: -W / 2, z: mid, ry: Math.PI / 2 },
+      { len, x: W / 2, z: mid, ry: -Math.PI / 2 },
+      { len: W, x: 0, z: -D, ry: 0 },
+      { len: W, x: 0, z: front, ry: Math.PI },
+    ];
+    walls.forEach((w) => {
+      const g = new THREE.Group();
+      g.position.set(w.x, 0, w.z);
+      g.rotation.y = w.ry;
+      const lineGeo = new THREE.BoxGeometry(w.len, 0.012, 0.012);
+      const washGeo = new THREE.PlaneGeometry(w.len, 0.75);
+      this.disposables.push(lineGeo, washGeo);
+      const line = new THREE.Mesh(lineGeo, lineMat);
+      line.position.set(0, 0.03, 0.03);
+      const wash = new THREE.Mesh(washGeo, washMat);
+      wash.position.set(0, 0.375, 0.006);
+      g.add(line, wash);
+      this.scene.add(g);
     });
-    this.disposables.push(bodyMat, diffMat, cableMat);
-    const body = new THREE.BoxGeometry(len, 0.06, 0.16);
-    const diff = new THREE.PlaneGeometry(len - 0.04, 0.12);
-    const cable = new THREE.CylinderGeometry(0.003, 0.003, 0.55, 6);
-    this.disposables.push(body, diff, cable);
-    // Rows along the whole room, from near the entrance to near the doors
-    const first = this.front - 2.4;
-    const last = -D + 2;
-    const rows = Math.max(3, Math.round((first - last) / 4.6) + 1);
-    for (let r = 0; r < rows; r++) {
-      const z = first - (r * (first - last)) / (rows - 1);
-      const y = H - 0.58;
-      const b = new THREE.Mesh(body, bodyMat);
-      b.position.set(0, y, z);
-      const d = new THREE.Mesh(diff, diffMat);
-      d.rotation.x = Math.PI / 2;
-      d.position.set(0, y - 0.031, z);
-      this.scene.add(b, d);
-      [-0.38, 0.38].forEach((f) => {
-        const c = new THREE.Mesh(cable, cableMat);
-        c.position.set(len * f, H - 0.28, z);
-        this.scene.add(c);
-      });
-      const light = new THREE.RectAreaLight(0xfff6ec, this.hq ? 7 : 5, len, 0.12);
-      light.position.set(0, y - 0.035, z);
-      light.lookAt(0, 0, z);
-      this.scene.add(light);
-    }
   }
 
-  /* Track rails near each side wall, with a spot head over every screen. */
-  private addTrack(W: number, D: number, H: number) {
-    const railMat = new THREE.MeshStandardMaterial({
-      color: 0xeceae6, // white track, as in most galleries
-      metalness: 0.2,
-      roughness: 0.5,
+  /*
+    A long skylight down the middle of the ceiling: a softly glowing panel in a
+    shallow recess, lighting the room like daylight through a diffuser.
+  */
+  private addSkylight(H: number, len: number, mid: number) {
+    RectAreaLightUniformsLib.init();
+    const w = 1.7;
+    const l = len - 2.4;
+    const tex = skylightTexture();
+    const panelMat = new THREE.MeshBasicMaterial({
+      map: tex,
+      color: new THREE.Color(1, 0.985, 0.96).multiplyScalar(1.05),
     });
-    this.disposables.push(railMat);
-    const rail = new THREE.BoxGeometry(0.045, 0.035, D - 2.8);
-    const across = new THREE.BoxGeometry(W - 3.1, 0.035, 0.045);
-    this.disposables.push(rail, across);
-    [-1, 1].forEach((sd) => {
-      const r = new THREE.Mesh(rail, railMat);
-      r.position.set(sd * (W / 2 - 1.55), H - 0.02, -D / 2 - 0.2);
-      this.scene.add(r);
-    });
-    const back = new THREE.Mesh(across, railMat);
-    back.position.set(0, H - 0.02, -D + 1.55);
-    this.scene.add(back);
+    const geo = new THREE.PlaneGeometry(w, l);
+    this.disposables.push(tex, panelMat, geo);
+    const panel = new THREE.Mesh(geo, panelMat);
+    panel.rotation.x = Math.PI / 2;
+    panel.position.set(0, H - 0.13, mid);
+    this.scene.add(panel);
+    // The recess around it: four shallow white sides
+    const sideMat = new THREE.MeshStandardMaterial({ color: 0xf4f2ee, roughness: 0.95 });
+    this.disposables.push(sideMat);
+    const box = (bw: number, bd: number, x: number, z: number) => {
+      const g = new THREE.BoxGeometry(bw, 0.13, bd);
+      this.disposables.push(g);
+      const m = new THREE.Mesh(g, sideMat);
+      m.position.set(x, H - 0.065, z);
+      this.scene.add(m);
+    };
+    box(0.02, l, -w / 2, mid);
+    box(0.02, l, w / 2, mid);
+    box(w, 0.02, 0, mid - l / 2);
+    box(w, 0.02, 0, mid + l / 2);
+    const light = new THREE.RectAreaLight(0xfff8ef, this.hq ? 3.4 : 3, w, l);
+    light.position.set(0, H - 0.14, mid);
+    light.lookAt(0, 0, mid);
+    this.scene.add(light);
   }
+
+  /*
+    The centrepiece, "Light Gate": the logo as a sculpture. Two black slabs
+    with the logo's slanted top stand on the polished floor; the gap between
+    them glows, blue light falls down the left slab and orange down the right,
+    and a soft rainbow fans out across the floor towards you.
+  */
+  private sculpture?: { gap: THREE.MeshBasicMaterial; bow: THREE.MeshBasicMaterial };
+  private addSculpture(D: number, H: number) {
+    const z = -D * 0.55;
+    const g = new THREE.Group();
+    g.position.set(0, 0, z);
+    const sw = 0.34; // each slab's width
+    const gapW = 0.075;
+    const depth = 0.16;
+    const tall = 1.95; // at the gap
+    const slope = -0.16; // the top falls from left to right, like the logo
+    // Velvet-matte black, so it reads as a cut-out of darkness against the white room
+    const sideMat = new THREE.MeshStandardMaterial({
+      color: 0x050506,
+      roughness: 0.92,
+      metalness: 0,
+      envMapIntensity: 0.1,
+    });
+    this.disposables.push(sideMat);
+    const slab = (side: "left" | "right") => {
+      const sgn = side === "left" ? -1 : 1;
+      const cx = sgn * (gapW / 2 + sw / 2);
+      const geo = new THREE.BoxGeometry(sw, tall, depth);
+      geo.translate(0, tall / 2, 0);
+      const pos = geo.attributes.position;
+      for (let k = 0; k < pos.count; k++) {
+        if (pos.getY(k) > tall / 2) pos.setY(k, tall + (pos.getX(k) + cx) * slope);
+      }
+      geo.computeVertexNormals();
+      const glow = slabGlowTexture(side);
+      const face = new THREE.MeshStandardMaterial({
+        color: 0x080809,
+        emissive: 0xffffff,
+        emissiveMap: glow,
+        emissiveIntensity: 1.6,
+        roughness: 0.92,
+        metalness: 0,
+        envMapIntensity: 0.1,
+      });
+      this.disposables.push(geo, glow, face);
+      const m = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, face, face]);
+      m.position.x = cx;
+      m.castShadow = this.hq;
+      m.receiveShadow = this.hq;
+      g.add(m);
+    };
+    slab("left");
+    slab("right");
+
+    // The light in the gap
+    const gapTex = doorLightTexture();
+    const gapMat = new THREE.MeshBasicMaterial({
+      map: gapTex,
+      color: new THREE.Color(1, 1, 1),
+      toneMapped: false,
+    });
+    const gapGeo = new THREE.PlaneGeometry(gapW, tall);
+    gapGeo.translate(0, tall / 2, 0);
+    const gp = gapGeo.attributes.position;
+    for (let k = 0; k < gp.count; k++)
+      if (gp.getY(k) > tall / 2) gp.setY(k, tall + gp.getX(k) * slope);
+    this.disposables.push(gapTex, gapMat, gapGeo);
+    const gapMesh = new THREE.Mesh(gapGeo, gapMat);
+    g.add(gapMesh);
+
+    // Light from the gap: coloured either side, white straight out
+    if (this.hq) {
+      const blue = new THREE.PointLight(0x3a55ff, 1.6, 3.2, 2);
+      blue.position.set(-0.5, 1.6, 0.45);
+      const orange = new THREE.PointLight(0xff8a2a, 1.6, 3.2, 2);
+      orange.position.set(0.5, 1.6, 0.45);
+      g.add(blue, orange);
+    }
+    const white = new THREE.PointLight(0xfff6ea, 1.4, 4, 2);
+    white.position.set(0, 0.5, 0.9);
+    g.add(white);
+
+    // A glow pool on the floor at its foot
+    const poolTex = poolTexture([
+      [0, "rgba(255,255,255,0.85)"],
+      [0.4, "rgba(220,225,255,0.25)"],
+      [1, "rgba(0,0,0,0)"],
+    ]);
+    const poolMat = new THREE.MeshBasicMaterial({
+      map: poolTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.35,
+    });
+    const poolGeo = new THREE.PlaneGeometry(1.6, 1.6);
+    this.disposables.push(poolTex, poolMat, poolGeo);
+    const pool = new THREE.Mesh(poolGeo, poolMat);
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(0, 0.004, 0.15);
+    g.add(pool);
+
+    // The rainbow, fanning out across the floor towards you
+    const bowTex = rainbowTexture();
+    const bowMat = new THREE.MeshBasicMaterial({
+      map: bowTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.9,
+    });
+    const bowGeo = new THREE.PlaneGeometry(3.4, 1.5);
+    this.disposables.push(bowTex, bowMat, bowGeo);
+    const bow = new THREE.Mesh(bowGeo, bowMat);
+    bow.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); // its long side runs towards the viewer
+    bow.position.set(0, 0.005, 0.1 + 1.7);
+    g.add(bow);
+
+    // A narrow spotlight from above for a sheen on the black
+    const sl = new THREE.SpotLight(0xfff2e0, this.hq ? 4 : 3, 0, 0.22, 0.8, 2);
+    sl.position.set(0, H - 0.01, z + 0.5);
+    sl.target.position.set(0, 1.0, z);
+    if (this.hq) {
+      sl.castShadow = true;
+      sl.shadow.mapSize.set(1024, 1024);
+      sl.shadow.bias = -0.0004;
+      sl.shadow.normalBias = 0.02;
+      sl.shadow.camera.near = 0.3;
+      sl.shadow.camera.far = 6;
+    }
+    this.scene.add(g, sl, sl.target);
+    this.addDownlight(new THREE.Vector3(0, H, z + 0.5));
+    this.sculpture = { gap: gapMat, bow: bowMat };
+  }
+
+  /* A small recessed light in the ceiling: just a glowing disc, no fittings. */
+  private addDownlight(at: THREE.Vector3) {
+    if (!this.downGeo) {
+      this.downGeo = new THREE.CircleGeometry(0.055, 32);
+      this.downMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(1, 0.95, 0.85).multiplyScalar(3),
+      });
+      this.disposables.push(this.downGeo, this.downMat);
+    }
+    const d = new THREE.Mesh(this.downGeo, this.downMat);
+    d.rotation.x = Math.PI / 2;
+    d.position.set(at.x, at.y - 0.002, at.z);
+    this.scene.add(d);
+  }
+  private downGeo?: THREE.CircleGeometry;
+  private downMat?: THREE.MeshBasicMaterial;
 
   private addWork(p: Project, i: number, aniso: number) {
     const spot = this.layout.works[i];
@@ -636,8 +746,8 @@ export class GalleryScene {
 
     // The spotlight on it, from a head on the ceiling track
     const H = ROOM.H;
-    const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.12, spot.z + spot.nz * 1.55);
-    const sl = new THREE.SpotLight(0xfff0dc, this.hq ? 14 : 11, 0, 0.36, 0.6, 2);
+    const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.01, spot.z + spot.nz * 1.55);
+    const sl = new THREE.SpotLight(0xffe9cc, this.hq ? 19 : 15, 0, 0.3, 0.75, 2);
     sl.position.copy(head);
     sl.target.position.set(spot.x, SCREEN.y + 0.05, spot.z);
     if (this.hq) {
@@ -649,27 +759,7 @@ export class GalleryScene {
       sl.shadow.camera.far = 6;
     }
     this.scene.add(sl, sl.target);
-    // The head itself: a short black can angled at the screen, with a lit lens
-    const canGeo = new THREE.CylinderGeometry(0.055, 0.05, 0.17, 20);
-    const canMat = new THREE.MeshStandardMaterial({
-      color: 0x151515,
-      metalness: 0.5,
-      roughness: 0.4,
-    });
-    const lensMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(1, 0.97, 0.9).multiplyScalar(3),
-    });
-    const lensGeo = new THREE.CircleGeometry(0.045, 20);
-    this.disposables.push(canGeo, canMat, lensMat, lensGeo);
-    const can = new THREE.Group();
-    can.position.copy(head);
-    can.lookAt(sl.target.position);
-    const body = new THREE.Mesh(canGeo, canMat);
-    body.rotation.x = Math.PI / 2;
-    const lens = new THREE.Mesh(lensGeo, lensMat);
-    lens.position.z = 0.086;
-    can.add(body, lens);
-    this.scene.add(can);
+    this.addDownlight(new THREE.Vector3(head.x, H, head.z));
 
     this.works.push(w);
   }
@@ -899,10 +989,8 @@ export class GalleryScene {
     // Taller-than-wide screens get a wider view so the screens still fit
     this.camera.fov = fovFor(w / h);
     this.camera.updateProjectionMatrix();
-    // A lower-resolution reflection reads as the soft sheen of polished concrete.
-    this.reflector
-      ?.getRenderTarget()
-      .setSize(Math.round(w * dpr * 0.35), Math.round(h * dpr * 0.35));
+    // Half resolution: soft enough to read as a polished floor, sharp enough not to look blocky.
+    this.reflector?.getRenderTarget().setSize(Math.round(w * dpr * 0.5), Math.round(h * dpr * 0.5));
   }
 
   setPose(x: number, y: number, z: number, yaw: number, pitch = 0) {
@@ -972,6 +1060,12 @@ export class GalleryScene {
       if (w.shader) w.shader.uniforms.uTime.value = time;
     });
     this.film.uniforms.uTime.value = time;
+    if (this.sculpture) {
+      // The light in the sculpture breathes, very slowly
+      const breath = 0.5 + 0.5 * Math.sin(time * 0.6);
+      this.sculpture.gap.color.setScalar(0.95 + 0.15 * breath);
+      this.sculpture.bow.opacity = 0.75 + 0.2 * breath;
+    }
     this.composer.render();
   }
 
