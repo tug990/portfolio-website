@@ -20,7 +20,7 @@ import {
 /*
   The gallery room, rendered with three.js.
 
-  Everything is in metres. The entrance wall is at z = 0, the room runs back to
+  Everything is in metres. The films start at z = 0 and run back to the doors at
   z = -D, x runs across from -W/2 to W/2, and the floor is at y = 0.
 
   Lighting is real: a ceiling track spotlight on every screen (casting the
@@ -32,7 +32,13 @@ import {
 
 export const ROOM = { W: 10, H: 4.2, eye: 1.6 };
 export const SCREEN = { w: 1.76, h: 0.99, y: 1.62 };
-const WORK_START = 4.2; // first screen, metres from the entrance
+const WORK_START = 4.2; // first screen, metres in from z = 0
+/*
+  The room carries on forwards past z = 0 to an entrance wall at z = FRONT,
+  so there's room to stand back far enough to see all six films at once,
+  even on a tall phone screen (which sees much less to the sides).
+*/
+export const FRONT = 18;
 const WORK_GAP = 3.2; // between screens along a wall
 const DOOR = { w: 1.15, h: 2.45, x: 1.35 };
 const LABEL = { w: 0.34, h: 0.21 };
@@ -94,7 +100,15 @@ export function buildLayout(count: number, aspect: number) {
   // With the label beside the screen, stand centred on both.
   const along = stacked ? 0 : (LABEL.w + 0.14) / 2;
   const stops: Stop[] = [
-    { x: 0, z: -2.6, yaw: 0, s: 0, kind: "centre", index: 0 },
+    // The whole room: stand back until the first film on each side wall is in view.
+    {
+      x: 0,
+      z: Math.min(FRONT - 1, Math.max(-2.6, -WORK_START + (W / 2 + 0.25) / (tanH * 0.94))),
+      yaw: 0,
+      s: 0,
+      kind: "centre",
+      index: 0,
+    },
     ...works.map((w, i) => ({
       x: w.x + w.nx * far + w.tx * along,
       z: w.z + w.tz * along,
@@ -293,25 +307,27 @@ export class GalleryScene {
       return m;
     };
 
-    // Walls: left, right, back, entrance
-    const left = plane(D, H, wallMat(D, H));
-    left.position.set(-W / 2, H / 2, -D / 2);
+    // Walls: left, right, back, entrance. The room runs from z = FRONT back to -D.
+    const len = D + FRONT;
+    const mid = (FRONT - D) / 2;
+    const left = plane(len, H, wallMat(len, H));
+    left.position.set(-W / 2, H / 2, mid);
     left.rotation.y = Math.PI / 2;
-    const right = plane(D, H, wallMat(D, H));
-    right.position.set(W / 2, H / 2, -D / 2);
+    const right = plane(len, H, wallMat(len, H));
+    right.position.set(W / 2, H / 2, mid);
     right.rotation.y = -Math.PI / 2;
     const back = plane(W, H, wallMat(W, H));
     back.position.set(0, H / 2, -D);
     const entrance = plane(W, H, wallMat(W, H));
-    entrance.position.set(0, H / 2, 0);
+    entrance.position.set(0, H / 2, FRONT);
     entrance.rotation.y = Math.PI;
     this.scene.add(left, right, back, entrance);
 
     // Ceiling
-    const ceilMat = wallMat(W, D);
+    const ceilMat = wallMat(W, len);
     ceilMat.color.set(0xf7f6f3);
-    const ceiling = plane(W, D, ceilMat);
-    ceiling.position.set(0, H, -D / 2);
+    const ceiling = plane(W, len, ceilMat);
+    ceiling.position.set(0, H, mid);
     ceiling.rotation.x = Math.PI / 2;
     this.scene.add(ceiling);
 
@@ -319,7 +335,7 @@ export class GalleryScene {
     const floorMap = concrete.map.clone();
     const floorRough = concrete.rough.clone();
     [floorMap, floorRough].forEach((t) => {
-      t.repeat.set(W / 2.5, D / 2.5);
+      t.repeat.set(W / 2.5, len / 2.5);
       t.needsUpdate = true;
       this.disposables.push(t);
     });
@@ -331,12 +347,12 @@ export class GalleryScene {
       envMapIntensity: 0.9,
     });
     this.disposables.push(floorMat);
-    const floor = plane(W, D, floorMat);
+    const floor = plane(W, len, floorMat);
     floor.rotation.x = -Math.PI / 2;
-    floor.position.set(0, 0, -D / 2);
+    floor.position.set(0, 0, mid);
     if (this.hq) {
       // A true mirror just under a slightly see-through floor: polished, not glassy.
-      const rg = new THREE.PlaneGeometry(W, D);
+      const rg = new THREE.PlaneGeometry(W, len);
       this.disposables.push(rg);
       this.reflector = new Reflector(rg, {
         textureWidth: 512,
@@ -344,7 +360,7 @@ export class GalleryScene {
         color: new THREE.Color(0x5c5c5c),
       });
       this.reflector.rotation.x = -Math.PI / 2;
-      this.reflector.position.set(0, -0.001, -D / 2);
+      this.reflector.position.set(0, -0.001, mid);
       this.scene.add(this.reflector);
       floorMat.transparent = true;
       floorMat.opacity = 0.9;
@@ -362,10 +378,10 @@ export class GalleryScene {
       m.rotation.y = ry;
       this.scene.add(m);
     };
-    skirt(D, -W / 2 + 0.006, -D / 2, Math.PI / 2);
-    skirt(D, W / 2 - 0.006, -D / 2, Math.PI / 2);
+    skirt(len, -W / 2 + 0.006, mid, Math.PI / 2);
+    skirt(len, W / 2 - 0.006, mid, Math.PI / 2);
     skirt(W, 0, -D + 0.006, 0);
-    skirt(W, 0, -0.006, 0);
+    skirt(W, 0, FRONT - 0.006, 0);
 
     this.addCeilingLights(W, D, H);
     this.addTrack(W, D, H);
@@ -418,9 +434,12 @@ export class GalleryScene {
     const diff = new THREE.PlaneGeometry(len - 0.04, 0.12);
     const cable = new THREE.CylinderGeometry(0.003, 0.003, 0.55, 6);
     this.disposables.push(body, diff, cable);
-    const rows = Math.max(3, Math.round((D - 3) / 4.2));
+    // Rows along the whole room, from near the entrance to near the doors
+    const first = FRONT - 2.4;
+    const last = -D + 2;
+    const rows = Math.max(3, Math.round((first - last) / 4.6) + 1);
     for (let r = 0; r < rows; r++) {
-      const z = -2.4 - (r * (D - 4.4)) / Math.max(1, rows - 1);
+      const z = first - (r * (first - last)) / (rows - 1);
       const y = H - 0.58;
       const b = new THREE.Mesh(body, bodyMat);
       b.position.set(0, y, z);
@@ -888,9 +907,9 @@ export class GalleryScene {
     this.works.forEach((w, i) => {
       if (!w.video) return;
       const k = stops.findIndex((s) => s.kind === "work" && s.index === i);
+      // From the overview every film is in view, so they all play.
       const atCentre = stops[stopIndex]?.kind === "centre";
-      const firstOnWall = i === 0 || i === this.layout.perWall;
-      const near = stopIndex >= 0 && (Math.abs(k - stopIndex) <= 1 || (atCentre && firstOnWall));
+      const near = stopIndex >= 0 && (Math.abs(k - stopIndex) <= 1 || atCentre);
       if (near && w.video.paused) w.video.play().catch(() => {});
       else if (!near && !w.video.paused) w.video.pause();
     });

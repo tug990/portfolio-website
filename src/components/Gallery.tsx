@@ -13,12 +13,14 @@ import type { GalleryScene, Layout, Pose, Stop } from "@/components/gallery3d/Ga
   It opens on the Insight Lab logo (LogoDoor, drawn live with WebGL). Scrolling
   flies you into the light at the top of its gap; once you're in, it carries
   you the rest of the way: the view floods with prism light and fades into the
-  gallery, which starts bright and settles, like eyes adjusting.
+  gallery, which starts bright and settles, like eyes adjusting. You arrive
+  standing back with the whole room in view: all six films playing, the doors
+  at the far end.
 
   The gallery itself is a real 3D room (gallery3d/GalleryScene, three.js): six
-  films on the side walls and two prism-lit doors on the back wall. You start
-  in the middle of the room; every scroll / swipe / arrow press moves one stop:
-  left wall front to back, right wall front to back, then the doors. Click the
+  films on the side walls and two prism-lit doors on the back wall. From the
+  overview, every scroll / swipe / arrow press moves one stop: left wall front
+  to back, right wall front to back, then the doors. Click the
   film you're at to walk up to it and open its page; click a door to walk
   through it. Scrolling back from the middle takes you back out to the logo.
 */
@@ -206,10 +208,11 @@ export function Gallery() {
           c.p = Math.min(c.p, 0.78); // wait in the light until the room is ready
         }
         drawIntro(c.p);
-        // Behind the light you're already in the room, drifting to its centre.
-        const first: Pose = L?.stops[0] ?? { x: 0, z: -2.6, yaw: 0 };
+        // Behind the light you're already in the room, gliding the last stretch
+        // to the spot that shows the whole gallery.
+        const first: Pose = L?.stops[0] ?? { x: 0, z: 4, yaw: 0 };
         const g = smooth(band(c.p, GLIDE));
-        pose = { x: first.x * g, z: -0.5 + (first.z + 0.5) * g, yaw: first.yaw * g, y: EYE };
+        pose = { x: first.x, z: first.z + 1.5 * (1 - g), yaw: first.yaw, y: EYE };
         exposure = 1 + 2.6 * (1 - band(c.p, [0.7, 1])); // bright, then settling
         const isIn = c.p > 0.72;
         if (isIn !== c.insideFlag) {
@@ -343,8 +346,9 @@ export function Gallery() {
     c.at = i;
     c.goal = L.stops[i].s;
     const d = Math.abs(c.goal - c.q);
-    // Quick and smooth: about 0.4 s to a neighbour, never more than 0.65 s
-    c.glide = { from: c.q, to: c.goal, t0: performance.now(), dur: clamp(300 + d * 45, 380, 650) };
+    // Quick and smooth: about 0.4 s to a neighbour; the longer first move from the
+    // overview to the left wall gets a little more, so it never lurches.
+    c.glide = { from: c.q, to: c.goal, t0: performance.now(), dur: clamp(300 + d * 40, 380, 850) };
     setHint(false);
   };
 
