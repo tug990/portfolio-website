@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { APPROACH, EXPERTISE, FAQ, SITE } from "@/content/site";
+import { APPROACH, EXPERTISE, FAQ, HISTORY, SITE } from "@/content/site";
 import { seo } from "@/lib/seo";
 
 export const Route = createFileRoute("/about")({
@@ -16,6 +16,24 @@ function About() {
           {SITE.name} is {SITE.role.toLowerCase()}. Replace this with a short paragraph about who
           you are and what you make.
         </p>
+      </section>
+
+      <section className="mt-28">
+        <p className="eyebrow">Where we have been</p>
+        <h2 className="mt-2 text-2xl font-light">Work history</h2>
+        <div className="prism-rule mt-6" />
+        <ol className="border-t">
+          {HISTORY.map((h) => (
+            <li
+              key={`${h.years}-${h.title}`}
+              className="grid gap-2 border-b py-6 sm:grid-cols-[10rem_1fr_1fr]"
+            >
+              <span className="text-sm text-muted-foreground">{h.years}</span>
+              <span className="text-xl font-light">{h.title}</span>
+              <span className="text-muted-foreground">{h.place}</span>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section className="mt-28">
