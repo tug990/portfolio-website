@@ -167,7 +167,15 @@ export type LogoDoorHandle = {
   ok: boolean;
 };
 
-/* A full-screen canvas. Returns false from `ok` if WebGL isn't available. */
+/*
+  A full-screen canvas. `ok` is false only if WebGL truly isn't available.
+
+  The context is never deliberately thrown away: React (in development) mounts
+  components twice, and a context destroyed in between can't be used again,
+  which used to drop the page onto the low-resolution fallback. If the browser
+  itself takes the context away (e.g. the GPU is busy elsewhere), it is set up
+  again as soon as it comes back.
+*/
 export function LogoDoorCanvas({
   handle,
   className,
@@ -180,69 +188,78 @@ export function LogoDoorCanvas({
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const gl = canvas.getContext("webgl", {
-      antialias: false,
-      alpha: false,
-      premultipliedAlpha: false,
-    });
-    if (!gl) {
-      handle.current = { ok: false, draw: () => {} };
-      return;
-    }
-    const compile = (type: number, src: string) => {
-      const sh = gl.createShader(type)!;
-      gl.shaderSource(sh, src);
-      gl.compileShader(sh);
-      return sh;
-    };
-    const prog = gl.createProgram()!;
-    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      handle.current = { ok: false, draw: () => {} };
-      return;
-    }
-    gl.useProgram(prog);
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(prog, "aPos");
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const u = (n: string) => gl.getUniformLocation(prog, n);
-    const uRes = u("uRes");
-    const uDpr = u("uDpr");
-    const uTime = u("uTime");
-    const uFocus = u("uFocus");
-    const uScreen = u("uScreen");
-    const uScale = u("uScale");
     const t0 = performance.now();
+    const opts = { antialias: false, alpha: false, premultipliedAlpha: false };
 
-    handle.current = {
-      ok: true,
-      draw: (scale, focusScreen) => {
-        // Full device resolution, capped at 2x to keep phones smooth.
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const w = Math.round(canvas.clientWidth * dpr);
-        const h = Math.round(canvas.clientHeight * dpr);
-        if (canvas.width !== w || canvas.height !== h) {
-          canvas.width = w;
-          canvas.height = h;
+    const setup = () => {
+      const gl = (canvas.getContext("webgl2", opts) ||
+        canvas.getContext("webgl", opts)) as WebGLRenderingContext | null;
+      if (!gl || gl.isContextLost()) return false;
+      const compile = (type: number, src: string) => {
+        const sh = gl.createShader(type)!;
+        gl.shaderSource(sh, src);
+        gl.compileShader(sh);
+        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+          console.warn("Logo door shader:", gl.getShaderInfoLog(sh));
         }
-        gl.viewport(0, 0, w, h);
-        gl.uniform2f(uRes, w, h);
-        gl.uniform1f(uDpr, dpr);
-        gl.uniform1f(uTime, (performance.now() - t0) / 1000);
-        gl.uniform2f(uFocus, LOGO.focus.x, LOGO.focus.y);
-        gl.uniform2f(uScreen, focusScreen.x, focusScreen.y);
-        gl.uniform1f(uScale, scale);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-      },
+        return sh;
+      };
+      const prog = gl.createProgram()!;
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
+      gl.useProgram(prog);
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, "aPos");
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      const u = (n: string) => gl.getUniformLocation(prog, n);
+      const uRes = u("uRes");
+      const uDpr = u("uDpr");
+      const uTime = u("uTime");
+      const uFocus = u("uFocus");
+      const uScreen = u("uScreen");
+      const uScale = u("uScale");
+
+      handle.current = {
+        ok: true,
+        draw: (scale, focusScreen) => {
+          if (gl.isContextLost()) return;
+          // The screen's full resolution (up to 3x), so the logo is never soft.
+          const dpr = Math.min(window.devicePixelRatio || 1, 3);
+          const w = Math.round(canvas.clientWidth * dpr);
+          const h = Math.round(canvas.clientHeight * dpr);
+          if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+          }
+          gl.viewport(0, 0, w, h);
+          gl.uniform2f(uRes, w, h);
+          gl.uniform1f(uDpr, dpr);
+          gl.uniform1f(uTime, (performance.now() - t0) / 1000);
+          gl.uniform2f(uFocus, LOGO.focus.x, LOGO.focus.y);
+          gl.uniform2f(uScreen, focusScreen.x, focusScreen.y);
+          gl.uniform1f(uScale, scale);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        },
+      };
+      return true;
     };
+
+    if (!setup()) handle.current = { ok: false, draw: () => {} };
+
+    const lost = (e: Event) => e.preventDefault(); // allow it to be restored
+    const restored = () => {
+      setup();
+    };
+    canvas.addEventListener("webglcontextlost", lost);
+    canvas.addEventListener("webglcontextrestored", restored);
     return () => {
-      handle.current = null;
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
+      canvas.removeEventListener("webglcontextlost", lost);
+      canvas.removeEventListener("webglcontextrestored", restored);
     };
   }, [handle]);
 

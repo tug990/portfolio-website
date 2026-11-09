@@ -5,15 +5,7 @@ import { PROJECTS, type Project } from "@/content/projects";
 import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
 import { Poster } from "@/components/Poster";
-import {
-  BLUE,
-  CYAN,
-  ORANGE,
-  FilmGrain,
-  Grain,
-  PrismBurst,
-  drawBurst,
-} from "@/components/PrismLight";
+import { BLUE, CYAN, ORANGE, FilmGrain } from "@/components/PrismLight";
 import { LOGO, LogoDoorCanvas, type LogoDoorHandle } from "@/components/LogoDoor";
 
 /*
@@ -57,11 +49,10 @@ const FLASH_IN: [number, number] = [0.48, 0.64]; // prism light floods in
 const FLASH_OUT: [number, number] = [0.72, 0.9]; // ...and clears onto the room
 const GLIDE: [number, number] = [0.7, 1]; // camera glides to the first film
 
-const STEP_LOCK_MS = 560; // one scroll gesture = one piece
-const FOLLOW = 4.2; // how quickly the camera catches up (higher = snappier)
-const FOLLOW_TURN = 3; // ...a bit gentler while turning a corner
-const LEAN_IN = 1.9;
-const LEAN_OUT = 3.2;
+const STEP_LOCK_MS = 420; // one scroll gesture = one piece
+const FOLLOW = 6; // catching up after a resize (steps themselves are timed glides)
+const LEAN_IN = 3.4; // stepping in towards a film once you arrive
+const LEAN_OUT = 6; // ...and back out as you set off
 const DOOR_WALK_MS = 1400; // walking through an end door into its page
 
 const FRAME_W = 720; // films are 16:9
@@ -123,6 +114,7 @@ export function Gallery() {
     auto: false, // playing the way in/out by itself (click, keys, Leave)
     q: 0, // where the camera is along the path inside
     goal: 0,
+    glide: null as null | { from: number; to: number; t0: number; dur: number },
     lean: 0, // 0 = standing back, 1 = leaning in at a piece
     at: 0, // the stop you're at
     playing: -2, // the stop whose films are playing
@@ -216,7 +208,7 @@ export function Gallery() {
         drawIntro(c.p);
         // Behind the light you're already in the room, gliding to the first film.
         const start = { x: 0, z: -250, yaw: 0 };
-        const first = r.stops[0] ? leaned(r, r.stops[0], 1) : start;
+        const first = r.stops[0] ?? start; // the centre of the gallery
         const g = band(c.p, GLIDE);
         const yaw1 = nearestAngle(first.yaw, 0);
         pose = {
@@ -240,13 +232,20 @@ export function Gallery() {
           c.auto = false;
           c.at = 0;
           c.q = c.goal = r.stops[0]?.s ?? 0;
-          c.lean = 1;
+          c.lean = 0;
         }
       } else if (c.mode === "free") {
         const stops = r.stops;
-        const turning = isTurning(stops, c.q);
-        c.q += (c.goal - c.q) * damp(turning ? FOLLOW_TURN : FOLLOW, dt);
-        if (Math.abs(c.goal - c.q) < 0.3) c.q = c.goal;
+        if (c.glide) {
+          // A timed glide: eases out of one stop and into the next.
+          const t = clamp((now - c.glide.t0) / c.glide.dur, 0, 1);
+          const e = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+          c.q = c.glide.from + (c.glide.to - c.glide.from) * e;
+          if (t >= 1) c.glide = null;
+        } else {
+          c.q += (c.goal - c.q) * damp(FOLLOW, dt);
+          if (Math.abs(c.goal - c.q) < 0.3) c.q = c.goal;
+        }
         // Lean in at films; at the door wall stay back so both doors fit.
         const here = stops[nearestStop(stops, c.q)];
         const near = !!here && here.piece >= 0 && Math.abs(c.q - here.s) < r.span * 0.3;
@@ -340,11 +339,13 @@ export function Gallery() {
     if (logoGl.current?.ok) {
       logoGl.current.draw(scale, { x: fx, y: fy });
     } else if (s.fallback) {
-      // No WebGL: the logo image instead (it softens when zoomed, but works everywhere).
-      const w = 1254 * scale;
-      s.fallback.style.width = `${w}px`;
-      s.fallback.style.left = `${fx - LOGO.focus.x * scale}px`;
-      s.fallback.style.top = `${fy - LOGO.focus.y * scale}px`;
+      // No WebGL: the logo image instead. It's never enlarged more than a touch
+      // (so it never pixelates); it fades into the light as you approach.
+      const fs = s0 * Math.min(zoom, 1.5);
+      s.fallback.style.width = `${1254 * fs}px`;
+      s.fallback.style.left = `${fx - LOGO.focus.x * fs}px`;
+      s.fallback.style.top = `${fy - LOGO.focus.y * fs}px`;
+      s.fallback.style.opacity = String(1 - band(e, [0.05, 0.35]));
     }
     // The landing text sits under the door and lifts away as you start to move.
     if (s.text) {
@@ -363,7 +364,6 @@ export function Gallery() {
       const f = band(p, FLASH_IN) * (1 - band(p, FLASH_OUT));
       flashRef.current.style.opacity = String(f);
       flashRef.current.style.visibility = f <= 0 ? "hidden" : "visible";
-      if (f > 0) drawBurst(s, (p - FLASH_IN[0]) / (FLASH_OUT[1] - FLASH_IN[0]));
     }
     if (s.hint) s.hint.style.opacity = String(1 - band(p, [0, 0.05]));
   }
@@ -389,6 +389,14 @@ export function Gallery() {
     if (!stops[i] || c.mode !== "free") return;
     c.at = i;
     c.goal = stops[i].s;
+    // Longer moves (round a corner) take a little longer, but never drag.
+    const d = Math.abs(c.goal - c.q);
+    c.glide = {
+      from: c.q,
+      to: c.goal,
+      t0: performance.now(),
+      dur: clamp(520 + d * 0.16, 650, 1100),
+    };
     setHint(false);
   };
 
@@ -721,8 +729,13 @@ export function Gallery() {
         className="pointer-events-none absolute inset-0 overflow-hidden"
         style={{ opacity: 0, visibility: "hidden" }}
       >
-        <PrismBurst els={scene} />
-        <Grain opacity={0.06} />
+        {/* A clean wash of light, faintly warm on one side and cool on the other */}
+        <span
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(90deg, rgba(${BLUE},.07), transparent 30%, transparent 70%, rgba(${ORANGE},.08)), radial-gradient(ellipse 80% 80% at 50% 50%, #fff 0 55%, #fbfbfb 100%)`,
+          }}
+        />
       </div>
 
       {/* Film grain over the whole home page */}
@@ -777,7 +790,14 @@ function IntroDoor({
   const [glOk, setGlOk] = useState(true);
   useEffect(() => {
     // The canvas sets up WebGL on mount; check whether it managed.
-    const id = requestAnimationFrame(() => setGlOk(logoGl.current?.ok !== false));
+    let tries = 0;
+    let id = 0;
+    const check = () => {
+      if (logoGl.current?.ok) return setGlOk(true);
+      if (++tries < 6) id = requestAnimationFrame(check);
+      else setGlOk(logoGl.current?.ok !== false);
+    };
+    id = requestAnimationFrame(check);
     return () => cancelAnimationFrame(id);
   }, [logoGl]);
 
@@ -888,14 +908,20 @@ function buildRoom(count: number, vw: number, vh: number) {
   // One stop in front of each film. Distance along the path is "s".
   // On wide screens the label hangs beside the film, so stand centred on both.
   const along = narrow ? 0 : (LABEL_GAP + LABEL_W) / 2;
-  const stops: Stop[] = pieces.map((p, i) => ({
+  // First stop: the centre of the gallery, looking down the room. Then the films.
+  const centre: Stop = { x: 0, z: -900, yaw: 0, s: 0, piece: -2 }; // the bench sits well ahead
+  const filmStops: Stop[] = pieces.map((p, i) => ({
     x: p.x + Math.sin(rad(p.a)) * far + Math.cos(rad(p.a)) * along,
     z: p.z + Math.cos(rad(p.a)) * far - Math.sin(rad(p.a)) * along,
     yaw: -rad(p.a),
     s: 0,
     piece: i,
   }));
-  stops.push({ x: 0, z: -doorDist, yaw: Math.PI, s: 0, piece: -1 });
+  const stops: Stop[] = [
+    centre,
+    ...filmStops,
+    { x: 0, z: -doorDist, yaw: Math.PI, s: 0, piece: -1 },
+  ];
   for (let i = 1; i < stops.length; i++) {
     const a = stops[i - 1];
     const b = stops[i];
@@ -953,15 +979,6 @@ function nearestStop(stops: Stop[], s: number) {
     if (Math.abs(st.s - s) < Math.abs(stops[best].s - s)) best = i;
   });
   return best;
-}
-
-function isTurning(stops: Stop[], s: number) {
-  for (let i = 0; i < stops.length - 1; i++) {
-    if (s >= stops[i].s && s <= stops[i + 1].s) {
-      return Math.abs(stops[i + 1].yaw - stops[i].yaw) > 0.01;
-    }
-  }
-  return false;
 }
 
 /* ---------- saving your place when you open a page ---------- */
@@ -1111,7 +1128,7 @@ function Lowres({
 
 function Room({ room, lit, k }: { room: RoomLayout; lit: boolean; k: number }) {
   const { width: W, height: H, depth: D, floorY, ceilY, midY, corner, cut } = room;
-  const lights = Math.max(3, Math.floor((D - 300) / 520));
+  const lights = Math.max(3, Math.floor((D - 900) / 900) + 1);
   const tile = 400;
   const linesX = Math.floor(W / 2 / tile);
   const linesZ = Math.floor(D / tile);
@@ -1155,17 +1172,15 @@ function Room({ room, lit, k }: { room: RoomLayout; lit: boolean; k: number }) {
             "linear-gradient(90deg, rgba(0,0,0,.06), transparent 18%, transparent 82%, rgba(0,0,0,.06)), #e9e8e5",
         }}
       />
-      {/* Light panels across the ceiling, switching on one after another */}
+      {/* Suspended linear light fixtures, switching on one after another */}
       {Array.from({ length: lights }, (_, i) => (
-        <div
+        <CeilingLight
           key={i}
-          style={{
-            ...panel(W * 0.72, 150, 0, ceilY + 2, -300 - i * 520, "rotateX(-90deg)", k),
-            background:
-              "linear-gradient(180deg, transparent, rgba(255,255,255,.55) 32%, #fff 44%, #fff 56%, rgba(255,255,255,.55) 68%, transparent)",
-            opacity: lit ? 1 : 0.15,
-            transition: lit ? `opacity .9s ease ${i * 120}ms` : "opacity .4s ease",
-          }}
+          len={Math.min(W * 0.46, 2400)}
+          z={-650 - i * 900}
+          ceilY={ceilY}
+          lit={lit}
+          delay={i * 140}
         />
       ))}
       {/* Side walls */}
@@ -1259,13 +1274,100 @@ function Room({ room, lit, k }: { room: RoomLayout; lit: boolean; k: number }) {
   );
 }
 
+/*
+  A linear light hanging below the ceiling on two cables: an aluminium box
+  with a glowing diffuser underneath, and its glow spread across the ceiling.
+*/
+function CeilingLight({
+  len,
+  z,
+  ceilY,
+  lit,
+  delay,
+}: {
+  len: number;
+  z: number;
+  ceilY: number;
+  lit: boolean;
+  delay: number;
+}) {
+  const drop = 90; // how far it hangs
+  const w = 120; // width of the fixture
+  const h = 34; // height of its box
+  const top = ceilY + drop;
+  const bottom = top + h;
+  const fade = (on: number, off: number): React.CSSProperties => ({
+    opacity: lit ? on : off,
+    transition: lit ? `opacity .9s ease ${delay}ms` : "opacity .4s ease",
+  });
+  const metal = "linear-gradient(180deg, #e2e2e0, #c4c3bf)";
+  return (
+    <>
+      {/* Glow thrown up onto the ceiling */}
+      <div
+        aria-hidden
+        style={{
+          ...panel(len * 1.5, 900, 0, ceilY + 1, z, "rotateX(-90deg)", 4),
+          background:
+            "radial-gradient(ellipse 50% 50% at 50% 50%, rgba(255,255,255,.95), rgba(255,255,255,.4) 45%, transparent 72%)",
+          ...fade(1, 0),
+        }}
+      />
+      {/* Cables */}
+      {[-0.4, 0.4].map((f) => (
+        <div
+          key={f}
+          aria-hidden
+          style={{ ...panel(2, drop, len * f, ceilY + drop / 2, z, ""), background: "#6d6d6d" }}
+        />
+      ))}
+      {/* The box: two long sides and two ends */}
+      <div
+        aria-hidden
+        style={{ ...panel(len, h, 0, top + h / 2, z + w / 2, ""), background: metal }}
+      />
+      <div
+        aria-hidden
+        style={{
+          ...panel(len, h, 0, top + h / 2, z - w / 2, "rotateY(180deg)"),
+          background: metal,
+        }}
+      />
+      {[1, -1].map((sd) => (
+        <div
+          key={sd}
+          aria-hidden
+          style={{
+            ...panel(w, h, (sd * len) / 2, top + h / 2, z, `rotateY(${sd * 90}deg)`),
+            background: metal,
+          }}
+        />
+      ))}
+      {/* The diffuser underneath: dim grey when off, glowing white when on */}
+      <div
+        aria-hidden
+        style={{ ...panel(len, w, 0, bottom, z, "rotateX(-90deg)"), background: "#c9c8c4" }}
+      />
+      <div
+        aria-hidden
+        style={{
+          ...panel(len, w, 0, bottom + 0.5, z, "rotateX(-90deg)"),
+          background: "linear-gradient(180deg, #f1f1ef 0%, #fff 22%, #fff 78%, #f1f1ef 100%)",
+          boxShadow: "0 0 40px 10px rgba(255,255,255,.9)",
+          ...fade(1, 0),
+        }}
+      />
+    </>
+  );
+}
+
 /* A long upholstered bench: a box seen from any side, with a shadow beneath. */
 function Bench({ x, z, floorY }: { x: number; z: number; floorY: number }) {
-  const L = 1300; // length
-  const Hh = 190; // height
-  const Dd = 380; // depth
+  const L = 900; // length
+  const Hh = 150; // height
+  const Dd = 300; // depth
   const top = floorY - Hh;
-  const side = "linear-gradient(180deg, #2c2c2c, #1b1b1b)";
+  const side = "linear-gradient(180deg, #3a3633, #23201e)";
   return (
     <>
       <div
@@ -1280,7 +1382,7 @@ function Bench({ x, z, floorY }: { x: number; z: number; floorY: number }) {
         aria-hidden
         style={{
           ...panel(L, Dd, x, top, z, "rotateX(90deg)", 2),
-          background: "linear-gradient(180deg, #3a3a3a, #2f2f2f 40%, #262626)",
+          background: "linear-gradient(180deg, #9a7b5c, #8a6c4f 45%, #7a5e44)", // oak top
           borderRadius: 6,
         }}
       />
