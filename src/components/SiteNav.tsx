@@ -19,10 +19,15 @@ export function SiteNav() {
     <header className="fixed inset-x-0 top-4 z-30 px-4">
       <nav
         className={cn(
-          "mx-auto flex h-14 max-w-5xl items-center justify-between rounded-xl border px-4 backdrop-blur-md transition-colors",
+          "mx-auto flex h-14 max-w-5xl items-center justify-between rounded-xl border px-4 transition-colors",
+          // No background blur over the 3D gallery: on phones, blurring a 3D scene
+          // every frame is expensive. A more solid bar reads just as well there.
+          isHome ? "" : "backdrop-blur-md",
           onDark
-            ? "border-white/10 bg-white/[0.04] text-white"
-            : "border-black/5 bg-white/50 text-black",
+            ? "border-white/10 bg-black/40 text-white"
+            : isHome
+              ? "border-black/5 bg-white/80 text-black"
+              : "border-black/5 bg-white/50 text-black",
         )}
       >
         <Link to="/" className="flex items-center gap-3" aria-label={SITE.name}>
