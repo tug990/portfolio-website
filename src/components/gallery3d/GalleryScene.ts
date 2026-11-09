@@ -20,8 +20,9 @@ import {
 /*
   The gallery room, rendered with three.js.
 
-  Everything is in metres. The films start at z = 0 and run back to the doors at
-  z = -D, x runs across from -W/2 to W/2, and the floor is at y = 0.
+  Everything is in metres. The side-wall films start just past z = 0; the room
+  runs back to the far wall at z = -D and forward to the door wall at
+  z = front. x runs across from -W/2 to W/2, and the floor is at y = 0.
 
   Lighting is real: a ceiling track spotlight on every screen (casting the
   screens' shadows on the wall), suspended linear lights lighting the room,
@@ -32,14 +33,9 @@ import {
 
 export const ROOM = { W: 10, H: 4.2, eye: 1.6 };
 export const SCREEN = { w: 1.76, h: 0.99, y: 1.62 };
-const WORK_START = 4.2; // first screen, metres in from z = 0
-/*
-  The room carries on forwards past z = 0 to an entrance wall at z = FRONT,
-  so there's room to stand back far enough to see all six films at once,
-  even on a tall phone screen (which sees much less to the sides).
-*/
-export const FRONT = 18;
-const WORK_GAP = 3.2; // between screens along a wall
+const WORK_START = 4.2; // first side-wall screen, metres in from z = 0
+const WORK_GAP = 3.2; // between screens along a side wall
+const CENTRE_GAP = 3.4; // between the screens on the far wall
 const DOOR = { w: 1.15, h: 2.45, x: 1.35 };
 const LABEL = { w: 0.34, h: 0.21 };
 
@@ -53,8 +49,9 @@ type WorkSpot = {
   z: number;
   yaw: number;
   face: number;
-  nx: number;
-  tx: number;
+  nx: number; // out of the wall, into the room
+  nz: number;
+  tx: number; // along the wall, to your right as you face it
   tz: number;
 };
 
@@ -62,62 +59,79 @@ type WorkSpot = {
 export const fovFor = (aspect: number) => (aspect < 0.8 ? 62 : 50);
 
 /*
-  Where everything goes, and the path the camera takes. Viewing distances come
-  from the real field of view, so a screen and its label always fit the window,
-  whatever its shape. On windows taller than wide the label hangs under the
-  screen instead of beside it.
+  How far back from z = 0 you stand to see the whole room: far enough that
+  the nearest film on each side wall is in view. Tall phone screens see less
+  to the sides, so they stand much further back.
 */
-export function buildLayout(count: number, aspect: number) {
-  const perWall = Math.max(3, Math.ceil(count / 2));
-  const D = Math.max(15, WORK_START + (perWall - 1) * WORK_GAP + 4.4);
+export function overviewZ(aspect: number) {
+  const tanH = Math.tan((fovFor(aspect) * Math.PI) / 180 / 2) * aspect;
+  return Math.max(-2.6, -WORK_START + (ROOM.W / 2 + 0.25) / (tanH * 0.94));
+}
+
+/*
+  Where everything goes, and the path the camera takes.
+
+  Films hang on the three walls you face when you arrive: the left wall, the
+  far wall and the right wall (two each for six). The doors are on the wall
+  behind you, at z = front. The walk: the overview, the left wall (front to
+  back), the far wall (left to right), the right wall (back to front), then
+  you turn round to the doors.
+
+  Viewing distances come from the real field of view, so a film and its
+  label always fit the window, whatever its shape. On windows taller than
+  wide the label hangs under the film instead of beside it.
+*/
+export function buildLayout(count: number, aspect: number, front: number) {
   const W = ROOM.W;
+  const nLeft = Math.ceil(count / 3);
+  const nCentre = Math.ceil((count - nLeft) / 2);
+  const nRight = count - nLeft - nCentre;
+  const sideN = Math.max(nLeft, nRight, 1);
+  const D = Math.max(10.6, WORK_START + (sideN - 1) * WORK_GAP + 3.4);
   const vfov = (fovFor(aspect) * Math.PI) / 180;
   const tanV = Math.tan(vfov / 2);
   const tanH = tanV * aspect;
   const stacked = aspect < 1.1;
 
-  // The screen and its label, as seen from in front
+  // The film and its label, as seen from in front
   const rowW = stacked ? SCREEN.w : SCREEN.w + 0.14 + LABEL.w;
   const rowH = stacked ? SCREEN.h + 0.26 + LABEL.h : SCREEN.h;
   const fit = Math.max(rowW / (2 * tanH * 0.84), rowH / (2 * tanV * 0.6));
-  const near = Math.min(fit, W - 2.2); // how far you stand when settled at a film
+  const near = Math.min(fit, W - 2.2, D - 2.2); // how far you stand from a film
   const far = near; // glide straight to the viewing spot: no extra lean-in step
-  // Far enough back to see both doors and their signs
-  const doorDist = Math.min(D - 3, Math.max(4.6 / (2 * tanH * 0.9), 3.4 / (2 * tanV * 0.85)));
+  // Far enough back from the doors to see both and their signs
+  const doorDist = Math.min(front + 1, Math.max(4.6 / (2 * tanH * 0.9), 3.4 / (2 * tanV * 0.85)));
 
   const works: WorkSpot[] = [];
-  for (let i = 0; i < count; i++) {
-    const left = i < perWall;
-    const k = left ? i : i - perWall;
-    const z = -(WORK_START + k * WORK_GAP);
-    if (left) {
-      // On the left wall, facing into the room (+x). Looking at it, your right is -z.
-      works.push({ x: -W / 2, z, yaw: Math.PI / 2, face: Math.PI / 2, nx: 1, tx: 0, tz: -1 });
-    } else {
-      works.push({ x: W / 2, z, yaw: -Math.PI / 2, face: -Math.PI / 2, nx: -1, tx: 0, tz: 1 });
-    }
+  for (let i = 0; i < nLeft; i++) {
+    // Left wall, facing into the room (+x). Looking at it, your right is -z.
+    const z = -(WORK_START + i * WORK_GAP);
+    works.push({ x: -W / 2, z, yaw: Math.PI / 2, face: Math.PI / 2, nx: 1, nz: 0, tx: 0, tz: -1 });
   }
-  // With the label beside the screen, stand centred on both.
+  for (let i = 0; i < nCentre; i++) {
+    // Far wall, facing you (+z), left to right.
+    const x = (i - (nCentre - 1) / 2) * CENTRE_GAP;
+    works.push({ x, z: -D, yaw: 0, face: 0, nx: 0, nz: 1, tx: 1, tz: 0 });
+  }
+  for (let i = nRight - 1; i >= 0; i--) {
+    // Right wall, back to front, facing into the room (-x). Your right is +z.
+    const z = -(WORK_START + i * WORK_GAP);
+    works.push({ x: W / 2, z, yaw: -Math.PI / 2, face: -Math.PI / 2, nx: -1, nz: 0, tx: 0, tz: 1 });
+  }
+  // With the label beside the film, stand centred on both.
   const along = stacked ? 0 : (LABEL.w + 0.14) / 2;
   const stops: Stop[] = [
-    // The whole room: stand back until the first film on each side wall is in view.
-    {
-      x: 0,
-      z: Math.min(FRONT - 1, Math.max(-2.6, -WORK_START + (W / 2 + 0.25) / (tanH * 0.94))),
-      yaw: 0,
-      s: 0,
-      kind: "centre",
-      index: 0,
-    },
+    { x: 0, z: Math.min(front - 1, overviewZ(aspect)), yaw: 0, s: 0, kind: "centre", index: 0 },
     ...works.map((w, i) => ({
       x: w.x + w.nx * far + w.tx * along,
-      z: w.z + w.tz * along,
+      z: w.z + w.nz * far + w.tz * along,
       yaw: w.yaw,
       s: 0,
       kind: "work" as const,
       index: i,
     })),
-    { x: 0, z: -D + doorDist, yaw: 0, s: 0, kind: "doors", index: 0 },
+    // Turn round: the doors are on the wall behind where you came in.
+    { x: 0, z: front - doorDist, yaw: Math.PI, s: 0, kind: "doors", index: 0 },
   ];
   for (let i = 1; i < stops.length; i++) {
     const a = stops[i - 1];
@@ -126,7 +140,7 @@ export function buildLayout(count: number, aspect: number) {
     b.s = a.s + Math.max(0.9, Math.hypot(b.x - a.x, b.z - a.z) + Math.abs(b.yaw - a.yaw) * 1.6);
   }
   const span = stops[stops.length - 1].s / (stops.length - 1);
-  return { W, D, near, far, works, stops, span, stacked, perWall };
+  return { W, D, near, far, works, stops, span, stacked, front };
 }
 export type Layout = ReturnType<typeof buildLayout>;
 
@@ -234,6 +248,7 @@ export class GalleryScene {
   layout: Layout;
   private labels: THREE.Mesh[] = [];
   private count: number;
+  readonly front: number; // z of the wall with the doors, behind where you arrive
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -241,7 +256,9 @@ export class GalleryScene {
   ) {
     this.hq = opts.hq;
     this.count = opts.projects.length;
-    this.layout = buildLayout(opts.projects.length, opts.aspect);
+    // Deep enough behind the overview spot to stand back and see the doors.
+    this.front = Math.max(7.5, overviewZ(opts.aspect) + 4.5);
+    this.layout = buildLayout(opts.projects.length, opts.aspect, this.front);
     const { W, D } = this.layout;
     const H = ROOM.H;
 
@@ -307,7 +324,8 @@ export class GalleryScene {
       return m;
     };
 
-    // Walls: left, right, back, entrance. The room runs from z = FRONT back to -D.
+    // Walls: left, right, far, and the door wall. The room runs from z = front back to -D.
+    const FRONT = this.front;
     const len = D + FRONT;
     const mid = (FRONT - D) / 2;
     const left = plane(len, H, wallMat(len, H));
@@ -390,11 +408,16 @@ export class GalleryScene {
     opts.projects.forEach((p, i) => this.addWork(p, i, aniso));
     this.placeLabels();
 
-    /* ---------- the doors on the back wall ---------- */
+    /* ---------- the doors, on the wall behind where you arrive ---------- */
+    // Built as if on a wall facing +z, then turned round to face back into the room.
+    const doorWall = new THREE.Group();
+    doorWall.position.set(0, 0, this.front);
+    doorWall.rotation.y = Math.PI;
+    this.scene.add(doorWall);
     [
       { label: "All work", x: -DOOR.x },
       { label: "About us", x: DOOR.x },
-    ].forEach((d, i) => this.addDoor(d.label, d.x, D, i, aniso));
+    ].forEach((d, i) => this.addDoor(d.label, d.x, doorWall, i, aniso));
 
     /* ---------- finishing ---------- */
     const target = new THREE.WebGLRenderTarget(1, 1, {
@@ -435,7 +458,7 @@ export class GalleryScene {
     const cable = new THREE.CylinderGeometry(0.003, 0.003, 0.55, 6);
     this.disposables.push(body, diff, cable);
     // Rows along the whole room, from near the entrance to near the doors
-    const first = FRONT - 2.4;
+    const first = this.front - 2.4;
     const last = -D + 2;
     const rows = Math.max(3, Math.round((first - last) / 4.6) + 1);
     for (let r = 0; r < rows; r++) {
@@ -467,19 +490,23 @@ export class GalleryScene {
       roughness: 0.5,
     });
     this.disposables.push(railMat);
-    const rail = new THREE.BoxGeometry(0.045, 0.035, D - 3.4);
-    this.disposables.push(rail);
+    const rail = new THREE.BoxGeometry(0.045, 0.035, D - 2.8);
+    const across = new THREE.BoxGeometry(W - 3.1, 0.035, 0.045);
+    this.disposables.push(rail, across);
     [-1, 1].forEach((sd) => {
       const r = new THREE.Mesh(rail, railMat);
-      r.position.set(sd * (W / 2 - 1.55), H - 0.02, -D / 2 - 0.7);
+      r.position.set(sd * (W / 2 - 1.55), H - 0.02, -D / 2 - 0.2);
       this.scene.add(r);
     });
+    const back = new THREE.Mesh(across, railMat);
+    back.position.set(0, H - 0.02, -D + 1.55);
+    this.scene.add(back);
   }
 
   private addWork(p: Project, i: number, aniso: number) {
     const spot = this.layout.works[i];
     const group = new THREE.Group();
-    group.position.set(spot.x + spot.nx * 0.004, SCREEN.y, spot.z);
+    group.position.set(spot.x + spot.nx * 0.004, SCREEN.y, spot.z + spot.nz * 0.004);
     group.rotation.y = spot.face;
     this.scene.add(group);
 
@@ -550,14 +577,17 @@ export class GalleryScene {
     w.screen = screen;
 
     // Glass: adds only reflections on top of the picture
+    // A soft, broad sheen rather than mirror-sharp reflections, which read as
+    // lines across the picture.
     const glassMat = new THREE.MeshStandardMaterial({
       color: 0x000000,
-      roughness: 0.06,
+      roughness: 0.42,
       metalness: 0,
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      envMapIntensity: 1.2,
+      envMapIntensity: 0.5,
+      opacity: 0.6,
     });
     this.disposables.push(glassMat);
     const glass = new THREE.Mesh(scrGeo, glassMat);
@@ -606,7 +636,7 @@ export class GalleryScene {
 
     // The spotlight on it, from a head on the ceiling track
     const H = ROOM.H;
-    const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.12, spot.z);
+    const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.12, spot.z + spot.nz * 1.55);
     const sl = new THREE.SpotLight(0xfff0dc, this.hq ? 14 : 11, 0, 0.36, 0.6, 2);
     sl.position.copy(head);
     sl.target.position.set(spot.x, SCREEN.y + 0.05, spot.z);
@@ -644,8 +674,8 @@ export class GalleryScene {
     this.works.push(w);
   }
 
-  private addDoor(text: string, x: number, D: number, i: number, aniso: number) {
-    const z = -D;
+  private addDoor(text: string, x: number, parent: THREE.Object3D, i: number, aniso: number) {
+    const z = 0; // the wall's surface, in the door wall's own space
     const { w, h } = DOOR;
 
     // The light in the doorway
@@ -659,7 +689,7 @@ export class GalleryScene {
     this.disposables.push(gapTex, gapMat, gapGeo);
     const gap = new THREE.Mesh(gapGeo, gapMat);
     gap.position.set(x, h / 2, z + 0.004);
-    this.scene.add(gap);
+    parent.add(gap);
 
     // Black frame around the opening
     const frameMat = new THREE.MeshStandardMaterial({
@@ -674,7 +704,7 @@ export class GalleryScene {
       const m = new THREE.Mesh(g, frameMat);
       m.position.set(bx, by, z + 0.035);
       m.castShadow = this.hq;
-      this.scene.add(m);
+      parent.add(m);
     };
     bar(w + 0.16, 0.08, x, h + 0.04);
     bar(0.08, h, x - w / 2 - 0.04, h / 2);
@@ -713,7 +743,7 @@ export class GalleryScene {
       pivot.add(handle);
       m.userData.pick = { kind: "door", index: i };
       this.pickables.push(m);
-      this.scene.add(pivot);
+      parent.add(pivot);
       return pivot;
     };
     const leftLeaf = leaf("left");
@@ -728,7 +758,7 @@ export class GalleryScene {
     this.disposables.push(seamMat, seamGeo);
     const seam = new THREE.Mesh(seamGeo, seamMat);
     seam.position.set(x, h / 2, z + 0.047);
-    this.scene.add(seam);
+    parent.add(seam);
 
     // Prism light spilling into the room: blue left, orange right, white in front
     const lights = this.hq
@@ -745,7 +775,7 @@ export class GalleryScene {
     } else {
       lights[0].position.set(x, 1.3, z + 0.8);
     }
-    lights.forEach((l) => this.scene.add(l));
+    lights.forEach((l) => parent.add(l));
 
     // A pool of prism light on the floor in front
     const spillTex = poolTexture([
@@ -765,7 +795,7 @@ export class GalleryScene {
     const spill = new THREE.Mesh(spillGeo, spillMat);
     spill.rotation.x = -Math.PI / 2;
     spill.position.set(x, 0.004, z + 1.05);
-    this.scene.add(spill);
+    parent.add(spill);
 
     // The sign above: pale until you arrive, then dark with the light-beam underline
     const sign = (lit: boolean) =>
@@ -802,7 +832,7 @@ export class GalleryScene {
     signLit.position.set(x, h + 0.42, z + 0.007);
     signDim.userData.pick = { kind: "door", index: i };
     this.pickables.push(signDim);
-    this.scene.add(signDim, signLit);
+    parent.add(signDim, signLit);
     // Underline: drawn from the left, so scale it from its left end
     const barTex = textTexture(
       (ctx, cw, ch) => {
@@ -826,7 +856,7 @@ export class GalleryScene {
     const underline = new THREE.Mesh(barGeo, barMat);
     underline.position.set(x - 0.31, h + 0.28, z + 0.008);
     underline.scale.x = 0.0001;
-    this.scene.add(underline);
+    parent.add(underline);
 
     this.doors.push({
       left: leftLeaf,
@@ -856,7 +886,7 @@ export class GalleryScene {
 
   setSize(w: number, h: number) {
     // Re-fit the viewing distances (and label placement) to the window's shape.
-    this.layout = buildLayout(this.count, w / h);
+    this.layout = buildLayout(this.count, w / h, this.front);
     this.placeLabels();
     const dpr = Math.min(window.devicePixelRatio || 1, this.hq ? 2 : 1.75);
     this.renderer.setPixelRatio(dpr);
@@ -929,7 +959,12 @@ export class GalleryScene {
   /* Where a work's screen centre is, to walk up to it. */
   workCentre(i: number) {
     const s = this.layout.works[i];
-    return { x: s.x + s.nx * 0.05, z: s.z, yaw: s.yaw, nx: s.nx };
+    return { x: s.x + s.nx * 0.05, z: s.z + s.nz * 0.05, yaw: s.yaw, nx: s.nx, nz: s.nz };
+  }
+
+  /* Where door i is in the room (the door wall is turned round, so x flips). */
+  doorX(i: number) {
+    return i === 0 ? DOOR.x : -DOOR.x;
   }
 
   render(time: number) {
