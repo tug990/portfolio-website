@@ -43,6 +43,7 @@ uniform float uTime;
 uniform vec2 uFocus;    // logo point that sits at uScreen
 uniform vec2 uScreen;   // CSS px
 uniform float uScale;   // CSS px per logo px
+uniform float uFlood;   // 0..1: passing through the light into another dimension
 
 const vec2 L0 = vec2(530.,258.); const vec2 L1 = vec2(620.,301.); const vec2 L2 = vec2(620.,640.); const vec2 L3 = vec2(530.,686.);
 const vec2 G0 = vec2(620.,301.); const vec2 G1 = vec2(668.,324.); const vec2 G2 = vec2(668.,640.); const vec2 G3 = vec2(620.,640.);
@@ -153,6 +154,33 @@ void main() {
   // The faintest vignette
   col *= 1.0 - 0.035 * pow(length(scr - 0.5) * 1.35, 2.2);
 
+  // Passing through: the whole view floods with prism light. Spectral rays
+  // radiate and turn, rings of colour expand, streaks rush past, then it all
+  // softens to white (which fades into the room).
+  if (uFlood > 0.0) {
+    float mn = min(uRes.x, uRes.y) / uDpr;
+    vec2 c = (css - (uRes / uDpr) * 0.5) / mn;
+    float r = length(c);
+    float ang = atan(c.y, c.x);
+    float f = clamp(uFlood, 0.0, 1.0);
+    float peak = sin(3.14159 * f);                       // colour peaks mid-way
+    vec3 white = mix(col, vec3(1.0), smoothstep(0.0, 0.45, f));
+    float spin = uTime * 0.35 + f * 2.2;
+    float rays = pow(0.5 + 0.5 * sin(ang * 22.0 + spin * 3.0 + sin(ang * 5.0 - spin) * 1.6), 5.0);
+    rays *= 0.55 + 0.45 * sin(ang * 7.0 - spin * 1.3);
+    vec3 hue = spectrum(fract(ang / 6.28318 + spin * 0.08 + r * 0.25));
+    float rings = 0.0;
+    for (int k = 0; k < 3; k++) {
+      float rk = fract(f * 1.6 + float(k) / 3.0) * 1.6;
+      rings += exp(-pow((r - rk) * 9.0, 2.0)) * (1.0 - rk / 1.6);
+    }
+    float streak = pow(fract(r * 5.0 - f * 6.0 - uTime * 0.6), 6.0) * rays;
+    vec3 flood = white;
+    flood = mix(flood, hue, clamp((rays * 0.5 + rings * 0.75 + streak * 0.6) * peak * smoothstep(0.05, 0.9, r + 0.25), 0.0, 1.0));
+    flood += vec3(1.0) * exp(-r * r * 9.0) * peak * 0.5;   // bright core
+    col = clamp(flood, 0.0, 1.0);
+  }
+
   // Film grain, a fresh pattern 24 times a second, per device pixel
   float g = hash(floor(gl_FragCoord.xy) + floor(uTime * 24.0) * vec2(17.0, 31.0)) - 0.5;
   col += g * 0.035;
@@ -162,8 +190,8 @@ void main() {
 `;
 
 export type LogoDoorHandle = {
-  /** Draw a frame. focusScreen = where LOGO.focus sits on screen (CSS px). */
-  draw: (scale: number, focusScreen: { x: number; y: number }) => void;
+  /** Draw a frame. focusScreen = where LOGO.focus sits on screen (CSS px); flood 0..1. */
+  draw: (scale: number, focusScreen: { x: number; y: number }, flood?: number) => void;
   ok: boolean;
 };
 
@@ -223,10 +251,11 @@ export function LogoDoorCanvas({
       const uFocus = u("uFocus");
       const uScreen = u("uScreen");
       const uScale = u("uScale");
+      const uFlood = u("uFlood");
 
       handle.current = {
         ok: true,
-        draw: (scale, focusScreen) => {
+        draw: (scale, focusScreen, flood = 0) => {
           if (gl.isContextLost()) return;
           // The screen's full resolution (up to 3x), so the logo is never soft.
           const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -243,6 +272,7 @@ export function LogoDoorCanvas({
           gl.uniform2f(uFocus, LOGO.focus.x, LOGO.focus.y);
           gl.uniform2f(uScreen, focusScreen.x, focusScreen.y);
           gl.uniform1f(uScale, scale);
+          gl.uniform1f(uFlood, flood);
           gl.drawArrays(gl.TRIANGLES, 0, 3);
         },
       };

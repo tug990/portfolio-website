@@ -48,7 +48,7 @@ export const PROJECTS: Project[] = [
     featured: true,
     body: ["Write the story of this project here."],
   },
-  // Placeholders so every gallery wall has three works. Replace or delete them.
+  // Placeholders so the gallery's six screens are full. Replace or delete them.
   {
     slug: "sample-portrait",
     title: "Sample Portrait",
@@ -71,30 +71,6 @@ export const PROJECTS: Project[] = [
     summary: "A true story told for a brand. Replace with your own.",
     year: 2024,
     tags: ["Branded", "Short"],
-    body: ["Write the story of this project here."],
-  },
-  {
-    slug: "sample-docu-series",
-    title: "Sample Docu-Series",
-    summary: "An episodic series. Replace with your own.",
-    year: 2024,
-    tags: ["Series", "Documentary"],
-    body: ["Write the story of this project here."],
-  },
-  {
-    slug: "sample-archive-film",
-    title: "Sample Archive Film",
-    summary: "A film built from archive footage. Replace with your own.",
-    year: 2023,
-    tags: ["Documentary", "Archive"],
-    body: ["Write the story of this project here."],
-  },
-  {
-    slug: "sample-music-doc",
-    title: "Sample Music Documentary",
-    summary: "A music documentary. Replace with your own.",
-    year: 2023,
-    tags: ["Documentary", "Music"],
     body: ["Write the story of this project here."],
   },
 ];
