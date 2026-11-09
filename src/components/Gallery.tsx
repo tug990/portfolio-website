@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { HISTORY, SITE } from "@/content/site";
+import { SITE } from "@/content/site";
 import { PROJECTS, type Project } from "@/content/projects";
 import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
+import { Poster } from "@/components/Poster";
 
 /*
   The home page: a walk-through 3D gallery.
@@ -23,10 +24,17 @@ import { cn } from "@/lib/utils";
 
 type Phase = "closed" | "opening" | "inside";
 type TextState = "pre" | "in" | "out"; // headline: waiting below, shown, lifted away
-type Mode = "intro" | "entering" | "free" | "leaving";
+type Mode = "intro" | "entering" | "free" | "leaving" | "door";
 type Pose = { x: number; z: number; yaw: number }; // yaw in radians, 0 = facing into the room
 type Piece = { x: number; y: number; z: number; a: number }; // a = which way the wall faces, degrees
-type Stop = Pose & { s: number; piece: number }; // piece = index in PROJECTS, -1 = the about wall
+type Stop = Pose & { s: number; piece: number }; // piece = index in PROJECTS, -1 = the door wall
+
+/* The two doors at the end of the walk, on the wall you came in through. */
+const DOORS = [
+  { label: "All work", to: "/projects" },
+  { label: "About us", to: "/about" },
+] as const;
+const DOOR_WALK_MS = 1250; // walking through a door into its page
 
 /* ---------- motion settings ---------- */
 
@@ -52,7 +60,7 @@ const LEAN_OUT = 3.2;
 
 const FRAME_W = 640; // artwork size in the world
 const FRAME_H = Math.round((FRAME_W * 2) / 3);
-const SAVE_KEY = "insight-gallery-progress";
+const SAVE_KEY = "insight-gallery-stop"; // which stop you were at (survives resizes)
 // The beam in hero-door.webp sits at 51.5% across, so shift it onto the seam.
 const BEAM_X = 51.5;
 
@@ -90,6 +98,8 @@ export function Gallery() {
   const [text, setText] = useState<TextState>("pre");
   const [hint, setHint] = useState(true);
   const [doorMs, setDoorMs] = useState(MOTION.full.doors);
+  const [exiting, setExiting] = useState(false); // walking back out of the gallery
+  const [signs, setSigns] = useState([false, false]); // door labels lit
 
   const room = useMemo(() => buildRoom(PROJECTS.length, view.w, view.h), [view]);
   // Narrow screens get a wider field of view so the room doesn't feel like a tunnel.
@@ -126,7 +136,26 @@ export function Gallery() {
     px: 0,
     py: 0,
     pointer: "mouse",
+    at: 0, // the stop you're nearest, so a resize can put you back there
+    // Walking through one of the end doors.
+    door: null as null | {
+      i: number;
+      t0: number;
+      from: Pose & { y: number };
+      x1: number;
+      z1: number;
+      y1: number;
+      veil: HTMLElement;
+      go: () => void;
+      gone: boolean;
+    },
   });
+  // The end doors: how far each is open, which one the mouse is over, and the elements to move.
+  const doorAnim = useRef({ ang: [0, 0], hover: -1, parked: false });
+  const leafEls = useRef<(HTMLElement | null)[][]>([[], []]);
+  const seamEls = useRef<(HTMLElement | null)[]>([]);
+  const spillEls = useRef<(HTMLElement | null)[]>([]);
+  const signTimers = useRef<number[]>([]);
   const timers = useRef<number[]>([]);
   const later = (fn: () => void, ms: number) => timers.current.push(window.setTimeout(fn, ms));
 
@@ -143,7 +172,9 @@ export function Gallery() {
     if (saved !== null) {
       const c = cam.current;
       c.mode = "free";
-      c.q = c.goal = saved;
+      const stops = roomRef.current.stops;
+      c.at = Math.min(saved, stops.length - 1);
+      c.q = c.goal = stops[c.at]?.s ?? 0;
       c.lean = 1;
       phaseRef.current = "inside";
       setPhase("inside");
@@ -162,6 +193,14 @@ export function Gallery() {
   useEffect(() => {
     setStageTone(phase === "inside" ? "light" : "dark");
   }, [phase]);
+
+  // The room is sized from the screen, so a resize moves every stop: stay at yours.
+  useEffect(() => {
+    const c = cam.current;
+    if (c.mode !== "free") return;
+    const st = room.stops[Math.min(c.at, room.stops.length - 1)];
+    if (st) c.q = c.goal = st.s;
+  }, [room]);
 
   /* ---------- the camera loop ---------- */
 
@@ -220,8 +259,10 @@ export function Gallery() {
         const turning = isTurning(stops, c.q);
         c.q += (c.goal - c.q) * damp(turning ? FOLLOW_TURN : FOLLOW, dt);
         // Lean in when settled at a piece, step back while moving.
-        const near =
-          stops.length > 0 && Math.abs(c.q - stops[nearestStop(stops, c.q)].s) < r.span * 0.35;
+        c.at = nearestStop(stops, c.goal);
+        const here = stops[nearestStop(stops, c.q)];
+        // Lean in at pieces; at the door wall stay back so both doors fit.
+        const near = !!here && here.piece >= 0 && Math.abs(c.q - here.s) < r.span * 0.35;
         const g = near ? 1 : 0;
         c.lean += (g - c.lean) * damp(g ? LEAN_IN : LEAN_OUT, dt);
         pose = { ...leaned(poseAt(stops, c.q), c.lean), y: 0 };
@@ -236,6 +277,7 @@ export function Gallery() {
           phaseRef.current = "closed";
           setPhase("closed");
           later(() => {
+            setExiting(false);
             setLit(false);
             setText("pre"); // reset below, then rise in again
             requestAnimationFrame(() => requestAnimationFrame(() => setText("in")));
@@ -245,7 +287,52 @@ export function Gallery() {
           c.mode = "intro";
           pose = { ...start, y: 0 };
         }
+      } else if (c.mode === "door" && c.door) {
+        // Walk up to the door and through it, then the page takes over.
+        const d = c.door;
+        const t = clamp((now - d.t0) / DOOR_WALK_MS, 0, 1);
+        const o = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+        const yaw1 = nearestAngle(Math.PI, d.from.yaw);
+        pose = {
+          x: d.from.x + (d.x1 - d.from.x) * o,
+          z: d.from.z + (d.z1 - d.from.z) * o,
+          yaw: d.from.yaw + (yaw1 - d.from.yaw) * o,
+          y: d.from.y + (d.y1 - d.from.y) * o,
+        };
+        d.veil.style.opacity = String(smooth((t - 0.45) / 0.55));
+        if (t >= 1 && !d.gone) {
+          d.gone = true;
+          d.go();
+        }
       }
+
+      // End doors: ease open a little when you arrive, more under the mouse, wide when clicked.
+      const da = doorAnim.current;
+      const end = r.stops[r.stops.length - 1];
+      const parked =
+        (c.mode === "free" || c.mode === "door") &&
+        end?.piece === -1 &&
+        Math.abs(c.q - end.s) < r.span * 0.3;
+      if (parked !== da.parked) {
+        da.parked = parked;
+        handlers.current.lightSigns(parked);
+      }
+      da.ang = da.ang.map((a, i) => {
+        const goal =
+          c.mode === "door" && c.door?.i === i ? 82 : parked ? (da.hover === i ? 24 : 15) : 0;
+        const rate = goal > a ? (c.mode === "door" ? 5 : 3.5) : 5;
+        let n = a + (goal - a) * damp(rate, dt);
+        if (Math.abs(goal - n) < 0.05) n = goal;
+        const [l, rr] = leafEls.current[i] ?? [];
+        // Leaves swing out towards you (there's no room behind the wall to swing into).
+        if (l) l.style.transform = `rotateY(${-n}deg)`;
+        if (rr) rr.style.transform = `rotateY(${n}deg)`;
+        const seam = seamEls.current[i];
+        if (seam) seam.style.opacity = String(1 - smooth(n / 4));
+        const spill = spillEls.current[i];
+        if (spill) spill.style.opacity = String(smooth(n / 30) * 0.9);
+        return n;
+      });
 
       c.pose = pose;
       if (worldRef.current) {
@@ -286,6 +373,7 @@ export function Gallery() {
     c.mode = "leaving";
     c.back = 0;
     c.dragging = false;
+    setExiting(true); // open up the doorway again so you can walk out
     setHint(true);
   };
 
@@ -296,7 +384,7 @@ export function Gallery() {
   const openPiece = (i: number) => {
     const project = PROJECTS[i];
     if (!project) return;
-    writeSaved(cam.current.goal);
+    writeSaved(nearestStop(roomRef.current.stops, cam.current.goal));
     const go = () => navigate({ to: "/projects/$slug", params: { slug: project.slug } });
     const el = frameEls.current[i];
     if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
@@ -319,9 +407,87 @@ export function Gallery() {
     else stepTo(target);
   };
 
-  // Keep the latest handlers for the window listeners below.
-  const handlers = useRef({ push, stepTo, leave, openPiece });
-  handlers.current = { push, stepTo, leave, openPiece };
+  /* ---------- the doors at the end ---------- */
+
+  // Light the labels one after the other when you arrive; switch them off as you leave.
+  const lightSigns = (on: boolean) => {
+    signTimers.current.forEach(clearTimeout);
+    signTimers.current = [];
+    if (!on) return setSigns([false, false]);
+    DOORS.forEach((_, i) => {
+      signTimers.current.push(
+        window.setTimeout(
+          () => setSigns((prev) => prev.map((v, j) => (j === i ? true : v))),
+          150 + i * 380,
+        ),
+      );
+    });
+  };
+  useEffect(() => {
+    const t = signTimers;
+    return () => t.current.forEach(clearTimeout);
+  }, []);
+
+  const openDoor = (i: number) => {
+    const c = cam.current;
+    const r = roomRef.current;
+    const door = r.doorWall.doors[i];
+    if (!door || c.mode !== "free") return;
+    writeSaved(r.stops.length - 1); // come back to the door wall
+    const go = () => navigate({ to: door.to });
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
+    // The page colour fades in as you step through.
+    const veil = document.createElement("div");
+    Object.assign(veil.style, {
+      position: "fixed",
+      inset: "0",
+      background: "#fcfcfc",
+      zIndex: "60",
+      opacity: "0",
+      pointerEvents: "none",
+    });
+    document.body.append(veil);
+    // End close enough that the door fills the screen.
+    const dist = (perspRef.current * r.doorWall.dw) / (1.1 * window.innerWidth);
+    c.mode = "door";
+    c.door = {
+      i,
+      t0: performance.now(),
+      from: { ...c.pose },
+      x1: door.x,
+      z1: -2 - dist,
+      y1: r.floorY - r.doorWall.dh / 2,
+      veil,
+      gone: false,
+      go: () => {
+        go();
+        veil
+          .animate([{ opacity: 1 }, { opacity: 0 }], {
+            duration: 420,
+            delay: 150,
+            fill: "forwards",
+          })
+          .finished.then(
+            () => veil.remove(),
+            () => veil.remove(),
+          );
+      },
+    };
+  };
+
+  // Click a door: walk to the door wall first if you're not there yet.
+  const onDoorClick = (e: React.MouseEvent, i: number) => {
+    e.preventDefault();
+    const c = cam.current;
+    if (c.dragDist > 6) return;
+    const stops = roomRef.current.stops;
+    if (doorAnim.current.parked || e.detail === 0) openDoor(i);
+    else stepTo(stops.length - 1);
+  };
+
+  // Keep the latest handlers for the window listeners and the camera loop.
+  const handlers = useRef({ push, stepTo, leave, openPiece, lightSigns });
+  handlers.current = { push, stepTo, leave, openPiece, lightSigns };
 
   // Scroll / trackpad.
   useEffect(() => {
@@ -456,8 +622,41 @@ export function Gallery() {
         // re-render must not snap the camera back. Untransformed = door at 1:1.
         style={{ transformStyle: "preserve-3d" }}
       >
-        <Room room={room} viewW={view.w} viewH={view.h} lit={lit} k={surfaceK} />
-        {room.about && <AboutPlaque at={room.about} k={contentK} />}
+        <Room
+          room={room}
+          viewW={view.w}
+          viewH={view.h}
+          lit={lit}
+          k={surfaceK}
+          sealed={phase === "inside" && !exiting}
+        />
+        {/* Once you're inside, the entrance becomes a wall with two doors. */}
+        {phase === "inside" &&
+          !exiting &&
+          room.doorWall.doors.map((d, i) => (
+            <EndDoor
+              key={d.to}
+              door={d}
+              wall={room.doorWall}
+              floorY={room.floorY}
+              k={contentK}
+              lit={signs[i]}
+              leafRef={(side, el) => {
+                leafEls.current[i][side] = el;
+              }}
+              seamRef={(el) => {
+                seamEls.current[i] = el;
+              }}
+              spillRef={(el) => {
+                spillEls.current[i] = el;
+              }}
+              onHover={(on) => {
+                doorAnim.current.hover = on ? i : -1;
+              }}
+              onFocus={() => stepTo(room.stops.length - 1)}
+              onClick={(e) => onDoorClick(e, i)}
+            />
+          ))}
 
         {room.pieces.map((s, i) => (
           <Artwork
@@ -564,9 +763,16 @@ function buildRoom(count: number, vw: number, vh: number) {
   }
   const pieces = loop.slice(0, count);
 
-  // The about wall beside the door is the last stop.
-  const side = (width - vw) / 2;
-  const about = side > 300 ? { x: vw / 2 + side / 2, y, z: 0, a: 180 } : null;
+  // The last stop turns back to the entrance, now a wall with two doors.
+  // Seen from inside (facing +z), your left is +x, so the first door goes there.
+  const narrow = vw < 700;
+  const dw = narrow ? 300 : 380;
+  const gap = narrow ? 150 : 280;
+  const doorWall = {
+    dw,
+    dh: dw * 2,
+    doors: DOORS.map((d, i) => ({ ...d, x: ((i === 0 ? 1 : -1) * (dw + gap)) / 2 })),
+  };
 
   // One stop in front of each piece. Distance along the path is "s".
   const stand = (p: Piece, piece: number): Stop => ({
@@ -577,7 +783,7 @@ function buildRoom(count: number, vw: number, vh: number) {
     piece,
   });
   const stops = pieces.map((p, i) => stand(p, i));
-  if (about) stops.push(stand(about, -1));
+  stops.push({ x: 0, z: -FAR, yaw: Math.PI, s: 0, piece: -1 });
   for (let i = 1; i < stops.length; i++) {
     const a = stops[i - 1];
     const b = stops[i];
@@ -587,7 +793,7 @@ function buildRoom(count: number, vw: number, vh: number) {
   }
   const span = stops.length > 1 ? stops[stops.length - 1].s / (stops.length - 1) : 1000;
 
-  return { width, height, depth, floorY, ceilY, midY, corner, cut, pieces, about, stops, span };
+  return { width, height, depth, floorY, ceilY, midY, corner, cut, pieces, doorWall, stops, span };
 }
 
 function poseAt(stops: Stop[], s: number): Pose {
@@ -637,7 +843,7 @@ function readSaved(): number | null {
   try {
     const raw = sessionStorage.getItem(SAVE_KEY);
     const n = raw === null ? NaN : Number(raw);
-    return Number.isFinite(n) ? n : null;
+    return Number.isInteger(n) && n >= 0 ? n : null;
   } catch {
     return null;
   }
@@ -784,12 +990,14 @@ function Room({
   viewH,
   lit,
   k,
+  sealed,
 }: {
   room: RoomLayout;
   viewW: number;
   viewH: number;
   lit: boolean;
   k: number;
+  sealed: boolean;
 }) {
   const { width: W, height: H, depth: D, floorY, ceilY, midY, corner, cut } = room;
   const side = (W - viewW) / 2; // entrance wall either side of the door
@@ -873,6 +1081,16 @@ function Room({
           />
         </>
       )}
+      {/* Once you're in, the doorway you came through closes up into plain wall
+          (the two end doors hang on it). It opens again when you leave. */}
+      {sealed && (
+        <div
+          style={{
+            ...panel(viewW, viewH, 0, floorY - viewH / 2, -1, "rotateY(180deg)", k),
+            background: WALL,
+          }}
+        />
+      )}
       {above > 0 && (
         <div
           style={{
@@ -885,43 +1103,181 @@ function Room({
   );
 }
 
-/* About + work history, hung beside the door (the last stop on the walk). */
-const PLAQUE_W = 520;
-const PLAQUE_H = 720;
+/* ---------- the doors at the end of the walk ---------- */
 
-function AboutPlaque({ at, k }: { at: Piece; k: number }) {
-  // Just in front of the entrance wall, facing into the room.
+type DoorWall = RoomLayout["doorWall"];
+
+/*
+  One door on the end wall: a warm-lit doorway, two leaves hinged on their
+  outer edges, and a label above. The camera loop swings the leaves (through
+  leafRef) so they never re-render React.
+*/
+function EndDoor({
+  door,
+  wall,
+  floorY,
+  k,
+  lit,
+  leafRef,
+  seamRef,
+  spillRef,
+  onHover,
+  onFocus,
+  onClick,
+}: {
+  door: DoorWall["doors"][number];
+  wall: DoorWall;
+  floorY: number;
+  k: number;
+  lit: boolean;
+  leafRef: (side: 0 | 1, el: HTMLElement | null) => void;
+  seamRef: (el: HTMLElement | null) => void;
+  spillRef: (el: HTMLElement | null) => void;
+  onHover: (on: boolean) => void;
+  onFocus: () => void;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  const { dw, dh } = wall;
+  const labelW = dw * 2.2;
+  const labelH = 150;
+  const hover = {
+    onPointerEnter: (e: React.PointerEvent) => e.pointerType === "mouse" && onHover(true),
+    onPointerLeave: () => onHover(false),
+  };
+
   return (
-    <div style={panel(PLAQUE_W, PLAQUE_H, at.x, at.y + 60, at.z - 3, "rotateY(180deg)", k)}>
-      <Lowres w={PLAQUE_W} h={PLAQUE_H} k={k}>
-        <div
-          className="flex h-full items-center text-black"
-          style={{ width: PLAQUE_W, height: PLAQUE_H }}
-        >
-          <div className="w-full">
-            <p className="tracked text-[13px] text-black/50">{SITE.role}</p>
-            <p className="mt-4 text-[34px] font-light leading-tight">{SITE.name}</p>
-            <p className="mt-5 text-[17px] leading-relaxed text-black/65">{SITE.description}</p>
-            {HISTORY.length > 0 && (
-              <ol className="mt-8 border-t border-black/15">
-                {HISTORY.map((h) => (
-                  <li
-                    key={`${h.years}-${h.title}`}
-                    className="grid grid-cols-[110px_1fr] gap-4 border-b border-black/15 py-3 text-[15px]"
-                  >
-                    <span className="text-black/50">{h.years}</span>
-                    <span>
-                      <span className="block">{h.title}</span>
-                      {h.place && <span className="block text-black/50">{h.place}</span>}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-        </div>
-      </Lowres>
-    </div>
+    <>
+      {/* Warm light spilling onto the floor as the door opens */}
+      <div
+        ref={spillRef}
+        aria-hidden
+        style={{
+          ...panel(dw * 1.9, 640, door.x, floorY - 1, -320, "rotateX(90deg)", 4),
+          background:
+            "radial-gradient(ellipse 42% 85% at 50% 100%, rgba(255,214,166,.85), rgba(255,226,190,.35) 45%, transparent 75%)",
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* The door. Its leaves sit in 3D, so this keeps preserve-3d. */}
+      <Link
+        to={door.to}
+        aria-label={door.label}
+        onClick={onClick}
+        onFocus={onFocus}
+        draggable={false}
+        {...hover}
+        className="block outline-none focus-visible:ring-4 focus-visible:ring-black/30"
+        style={{
+          // In front of the wall (z -1), with the lit doorway between them.
+          ...panel(dw, dh, door.x, floorY - dh / 2, -3, "rotateY(180deg)", k),
+          transformStyle: "preserve-3d",
+          boxShadow: `0 0 0 ${8 / k}px #e4e2dd, 0 0 0 ${9 / k}px rgba(0,0,0,.08)`,
+        }}
+      >
+        {/* The lit room behind the door */}
+        <span
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            transform: "translateZ(-1px)",
+            background:
+              "radial-gradient(ellipse 70% 60% at 50% 55%, #fff8ee, #ffe6c8 45%, #d8bf9c 100%)",
+          }}
+        />
+        {([0, 1] as const).map((side) => (
+          <span
+            key={side}
+            ref={(el) => leafRef(side, el)}
+            aria-hidden
+            className="absolute top-0 h-full w-1/2"
+            style={{
+              [side === 0 ? "left" : "right"]: 0,
+              transformOrigin: side === 0 ? "0% 50%" : "100% 50%",
+              background: "linear-gradient(90deg, #fbfbfa, #ecebe8)",
+              boxShadow: "inset 0 0 0 1px rgba(0,0,0,.08)",
+            }}
+          >
+            {/* Inset panel */}
+            <span
+              className="absolute"
+              style={{
+                left: "13%",
+                right: "13%",
+                top: "7%",
+                bottom: "9%",
+                border: "1px solid rgba(0,0,0,.07)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,.6)",
+              }}
+            />
+            {/* Bar handle near the middle */}
+            <span
+              className="absolute rounded-[2px]"
+              style={{
+                top: "36%",
+                height: "26%",
+                width: "3.6%",
+                [side === 0 ? "right" : "left"]: "9%",
+                background: "linear-gradient(90deg, #2a2a2a, #111 45%, #333)",
+                boxShadow: "0 2px 4px rgba(0,0,0,.25)",
+              }}
+            />
+          </span>
+        ))}
+        {/* The line where the leaves meet, gone once they part */}
+        <span
+          ref={seamRef}
+          aria-hidden
+          className="absolute bottom-0 left-1/2 top-[1%] w-[1.2%] -translate-x-1/2 bg-black/25"
+        />
+      </Link>
+
+      {/* Label above: pale until you arrive, then dark with the light-beam underline */}
+      <Link
+        to={door.to}
+        tabIndex={-1}
+        aria-hidden
+        onClick={onClick}
+        draggable={false}
+        {...hover}
+        style={panel(
+          labelW,
+          labelH,
+          door.x,
+          floorY - dh - 40 - labelH / 2,
+          -3,
+          "rotateY(180deg)",
+          k,
+        )}
+      >
+        <Lowres w={labelW} h={labelH} k={k}>
+          <span className="flex h-full items-end justify-center">
+            <span className="inline-block">
+              <span
+                className="block whitespace-nowrap font-medium leading-none tracking-tight"
+                style={{
+                  fontSize: dw < 340 ? 60 : 76,
+                  color: lit ? "#0a0a0a" : "rgba(10,10,10,.22)",
+                  transition: "color .6s",
+                }}
+              >
+                {door.label}
+              </span>
+              <span
+                className="mt-3 block h-[6px] rounded-full"
+                style={{
+                  background: "var(--prism)",
+                  transform: lit ? "none" : "scaleX(0)",
+                  transformOrigin: "0 50%",
+                  transition: `transform .7s ${EASE_TEXT_IN} .15s`,
+                }}
+              />
+            </span>
+          </span>
+        </Lowres>
+      </Link>
+    </>
   );
 }
 
@@ -984,23 +1340,6 @@ function Artwork({
         </Link>
       </Lowres>
     </div>
-  );
-}
-
-/* Stand-in artwork until a project has its own image. */
-function Poster({ title }: { title: string }) {
-  return (
-    <span className="relative flex h-full w-full items-end p-6">
-      <span
-        aria-hidden
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 14% 90% at 50% 0%, #fff, transparent 65%), radial-gradient(ellipse 38% 80% at 36% 0%, #1f2cff, transparent 70%), radial-gradient(ellipse 38% 80% at 66% 0%, #ff8a1f, transparent 70%), #050505",
-        }}
-      />
-      <span className="tracked relative text-[14px] text-white">{title}</span>
-    </span>
   );
 }
 
