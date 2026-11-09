@@ -13,7 +13,7 @@ import { CaseStudy } from "@/components/work/CaseStudy";
 */
 
 const EASE = "cubic-bezier(.2,.75,.15,1)";
-const PAPER = "243, 241, 238";
+const PAPER = "243, 239, 239"; // the reference's warm grey
 
 export function ProjectSheet({
   project,
@@ -92,14 +92,21 @@ export function ProjectSheet({
       }
       closeBtn.current?.focus({ preventScroll: true });
     } else {
-      // Another film: back to the top, and the new one fades in
+      // Another film (the case study is rebuilt for it): back to the top, fading in
       p.scrollTo({ top: 0 });
-      p.querySelector("article")?.animate(
-        [
-          { opacity: 0, transform: "translateY(14px)" },
-          { opacity: 1, transform: "none" },
-        ],
-        { duration: reduce ? 0 : 520, easing: EASE },
+      [...fades, hero.current].forEach((el, i) =>
+        el?.animate(
+          [
+            { opacity: 0, transform: "translateY(14px)" },
+            { opacity: 1, transform: "none" },
+          ],
+          {
+            duration: reduce ? 0 : 520,
+            delay: reduce ? 0 : i * 80,
+            easing: EASE,
+            fill: "backwards",
+          },
+        ),
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,7 +143,7 @@ export function ProjectSheet({
       role="dialog"
       aria-modal="true"
       aria-labelledby="case-title"
-      className="fixed inset-2 z-[70] overflow-y-auto overscroll-contain rounded-[14px] text-black sm:inset-3"
+      className="fixed inset-2 z-[70] overflow-y-auto overscroll-contain rounded-[8px] text-black sm:inset-4 lg:overflow-hidden"
       style={{ backgroundColor: `rgb(${PAPER})` }}
     >
       {/* Close: stays in the corner as you scroll */}
@@ -146,21 +153,21 @@ export function ProjectSheet({
           type="button"
           onClick={onRequestClose}
           aria-label="Close, back to the gallery"
-          className="mr-4 mt-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/[0.06] text-black outline-none backdrop-blur transition-colors hover:bg-black/[0.12] focus-visible:ring-2 focus-visible:ring-black/35 sm:mr-6 sm:mt-6"
+          className="mr-3 mt-4 flex h-10 w-10 items-center justify-center rounded-full text-[#080808] outline-none transition-opacity hover:opacity-60 focus-visible:ring-2 focus-visible:ring-black/30 lg:mr-6 lg:mt-6"
         >
           <svg
             viewBox="0 0 24 24"
-            className="h-5 w-5"
+            className="h-6 w-6"
             aria-hidden
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.8"
+            strokeWidth="2"
           >
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
         </button>
       </div>
-      <CaseStudy project={project} heroRef={hero} onNext={onNext} />
+      <CaseStudy key={project.slug} project={project} heroRef={hero} onNext={onNext} />
     </div>
   );
 }
