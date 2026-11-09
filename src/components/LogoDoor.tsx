@@ -154,30 +154,38 @@ void main() {
   // The faintest vignette
   col *= 1.0 - 0.035 * pow(length(scr - 0.5) * 1.35, 2.2);
 
-  // Passing through: the whole view floods with prism light. Spectral rays
-  // radiate and turn, rings of colour expand, streaks rush past, then it all
-  // softens to white (which fades into the room).
+  // Passing through: the whole view floods with soft prism light. Blooms of
+  // colour swirl out from the centre over a slowly turning colour wash, around
+  // a white-hot core; it then softens to white, which fades into the room.
+  // Everything is smooth gradients: no rays or lines.
   if (uFlood > 0.0) {
     float mn = min(uRes.x, uRes.y) / uDpr;
     vec2 c = (css - (uRes / uDpr) * 0.5) / mn;
     float r = length(c);
     float ang = atan(c.y, c.x);
     float f = clamp(uFlood, 0.0, 1.0);
-    float peak = sin(3.14159 * f);                       // colour peaks mid-way
-    vec3 white = mix(col, vec3(1.0), smoothstep(0.0, 0.45, f));
-    float spin = uTime * 0.35 + f * 2.2;
-    float rays = pow(0.5 + 0.5 * sin(ang * 22.0 + spin * 3.0 + sin(ang * 5.0 - spin) * 1.6), 5.0);
-    rays *= 0.55 + 0.45 * sin(ang * 7.0 - spin * 1.3);
-    vec3 hue = spectrum(fract(ang / 6.28318 + spin * 0.08 + r * 0.25));
-    float rings = 0.0;
-    for (int k = 0; k < 3; k++) {
-      float rk = fract(f * 1.6 + float(k) / 3.0) * 1.6;
-      rings += exp(-pow((r - rk) * 9.0, 2.0)) * (1.0 - rk / 1.6);
+    float peak = sin(3.14159 * f);
+    vec3 base = mix(col, vec3(1.0), smoothstep(0.0, 0.4, f));
+    // a soft colour wash that turns slowly with angle (no hard edges)
+    float turn = uTime * 0.25 + f * 1.4;
+    vec3 wash = spectrum(fract(ang / 6.28318 + turn * 0.12));
+    float washAmt = smoothstep(0.05, 0.75, r) * 0.55;
+    // six blooms of colour swirling outwards
+    vec3 blooms = vec3(0.0);
+    float bsum = 0.0;
+    for (int k = 0; k < 6; k++) {
+      float fk = float(k);
+      float a = fk * 1.0472 + turn * 1.6 + sin(uTime * 0.7 + fk) * 0.25;
+      vec2 pos = vec2(cos(a), sin(a)) * (0.12 + 0.55 * f);
+      float d = length(c - pos);
+      float g = exp(-(d * d) / (0.035 + 0.09 * f));
+      blooms += spectrum(fk / 5.0) * g;
+      bsum += g;
     }
-    float streak = pow(fract(r * 5.0 - f * 6.0 - uTime * 0.6), 6.0) * rays;
-    vec3 flood = white;
-    flood = mix(flood, hue, clamp((rays * 0.5 + rings * 0.75 + streak * 0.6) * peak * smoothstep(0.05, 0.9, r + 0.25), 0.0, 1.0));
-    flood += vec3(1.0) * exp(-r * r * 9.0) * peak * 0.5;   // bright core
+    vec3 colour = mix(wash, blooms / max(bsum, 0.001), clamp(bsum, 0.0, 1.0));
+    float amount = clamp((washAmt + bsum * 0.6) * peak, 0.0, 0.85);
+    vec3 flood = mix(base, colour, amount);
+    flood = mix(flood, vec3(1.0), exp(-r * r * 7.0) * (0.35 + 0.65 * f)); // white-hot core
     col = clamp(flood, 0.0, 1.0);
   }
 

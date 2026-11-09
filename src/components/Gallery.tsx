@@ -32,10 +32,10 @@ const ZOOM_END = 0.48; // by here the light fills the screen
 const FLOOD: [number, number] = [0.34, 0.82]; // prism light floods the view
 const INTRO_FADE: [number, number] = [0.74, 0.9]; // ...and fades into the room
 const GLIDE: [number, number] = [0.66, 1]; // the camera settles in the middle of the room
-const AUTO_FROM = 0.26; // past this, the way in plays by itself
-const AUTO_SPEED = 0.75; // progress per second when it does
+const AUTO_FROM = 0; // any forward scroll plays the way in by itself...
+const AUTO_SPEED = 2.2; // ...in under half a second
 
-const STEP_LOCK_MS = 420; // one scroll gesture = one stop
+const STEP_LOCK_MS = 300; // one scroll gesture = one stop
 const FOLLOW = 6; // catching up after a resize (steps themselves are timed glides)
 const LEAN_IN = 3.4; // stepping in towards a film once you arrive
 const LEAN_OUT = 6;
@@ -222,6 +222,9 @@ export function Gallery() {
           c.q = c.goal = L.stops[0].s;
           c.lean = 0;
           c.auto = false;
+          // The scroll that brought you in may still be coasting: don't let it carry you on.
+          c.lockUntil = now + 450;
+          c.wheelAcc = 0;
         }
       } else if (c.mode === "free" && L) {
         if (c.glide) {
@@ -340,7 +343,8 @@ export function Gallery() {
     c.at = i;
     c.goal = L.stops[i].s;
     const d = Math.abs(c.goal - c.q);
-    c.glide = { from: c.q, to: c.goal, t0: performance.now(), dur: clamp(560 + d * 70, 650, 1150) };
+    // Quick and smooth: about 0.4 s to a neighbour, never more than 0.65 s
+    c.glide = { from: c.q, to: c.goal, t0: performance.now(), dur: clamp(300 + d * 45, 380, 650) };
     setHint(false);
   };
 
@@ -361,14 +365,14 @@ export function Gallery() {
     setHint(false);
   };
 
-  // Back out to the logo: all the way (Leave), or into the light and keep scrolling.
-  const goOut = (all: boolean) => {
+  // Back out through the light to the logo (Leave, or scrolling back from the middle).
+  const goOut = (_all: boolean) => {
     const c = cam.current;
     if (c.mode !== "free") return;
     clearSaved();
     c.mode = "intro";
     c.p = 1;
-    c.pGoal = all ? 0 : 0.7;
+    c.pGoal = 0;
     c.auto = true;
     c.glide = null;
     c.lockUntil = performance.now() + STEP_LOCK_MS;

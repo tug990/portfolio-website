@@ -75,7 +75,7 @@ export function buildLayout(count: number, aspect: number) {
   const rowH = stacked ? SCREEN.h + 0.26 + LABEL.h : SCREEN.h;
   const fit = Math.max(rowW / (2 * tanH * 0.84), rowH / (2 * tanV * 0.6));
   const near = Math.min(fit, W - 2.2); // how far you stand when settled at a film
-  const far = Math.min(near + 0.7, W - 1.4); // ...and while moving between them
+  const far = near; // glide straight to the viewing spot: no extra lean-in step
   // Far enough back to see both doors and their signs
   const doorDist = Math.min(D - 3, Math.max(4.6 / (2 * tanH * 0.9), 3.4 / (2 * tanV * 0.85)));
 
@@ -112,7 +112,7 @@ export function buildLayout(count: number, aspect: number) {
     b.s = a.s + Math.max(0.9, Math.hypot(b.x - a.x, b.z - a.z) + Math.abs(b.yaw - a.yaw) * 1.6);
   }
   const span = stops[stops.length - 1].s / (stops.length - 1);
-  return { W, D, near, far, works, stops, span, stacked };
+  return { W, D, near, far, works, stops, span, stacked, perWall };
 }
 export type Layout = ReturnType<typeof buildLayout>;
 
@@ -139,24 +139,45 @@ const FilmShader = {
     }`,
 };
 
-/* A placeholder film until a project has a trailer or image: prism light drifting in the dark. */
-function placeholderMaterial(title: THREE.Texture) {
+/*
+  A placeholder film until a project has a trailer or image: prism light
+  moving through the dark like footage, with drifting dust, a passing light
+  leak, gentle flicker and a progress bar, so it reads as a clip playing.
+*/
+function placeholderMaterial(title: THREE.Texture, seed: number) {
   return new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: Math.random() * 20 }, uTitle: { value: title } },
+    uniforms: { uTime: { value: 0 }, uSeed: { value: seed }, uTitle: { value: title } },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `
-      uniform float uTime; uniform sampler2D uTitle; varying vec2 vUv;
+      uniform float uTime; uniform float uSeed; uniform sampler2D uTitle; varying vec2 vUv;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
       void main(){
-        float x = vUv.x - 0.5 - 0.05 * sin(uTime * 0.37);
+        float t = uTime + uSeed * 7.3;
+        // the light drifts like a slow camera move, and breathes a little
+        float x = vUv.x - 0.5 - 0.11 * sin(t * 0.21) - 0.03 * sin(t * 0.57);
         float y = 1.0 - vUv.y;
-        float w = exp(-pow(x / 0.055, 2.0)) * exp(-y * 2.0);
-        float b = exp(-pow((x + 0.17 + 0.02 * sin(uTime * 0.5)) / 0.16, 2.0)) * exp(-y * 2.5);
-        float o = exp(-pow((x - 0.17 - 0.02 * cos(uTime * 0.45)) / 0.16, 2.0)) * exp(-y * 2.5);
-        vec3 c = vec3(0.01) + vec3(1.0) * w * 0.85 + vec3(0.12, 0.17, 1.0) * b * 0.85 + vec3(1.0, 0.54, 0.12) * o * 0.85;
-        c += (hash(floor(vUv * vec2(800.0, 450.0)) + floor(uTime * 24.0)) - 0.5) * 0.035;
-        vec4 t = texture2D(uTitle, vUv);
-        c = mix(c, vec3(1.0), t.a * 0.92);
+        float flick = 0.9 + 0.07 * sin(t * 2.3) + 0.03 * sin(t * 7.1);
+        float w = exp(-pow(x / (0.05 + 0.015 * sin(t * 0.4)), 2.0)) * exp(-y * 1.9);
+        float b = exp(-pow((x + 0.18 + 0.03 * sin(t * 0.5)) / 0.17, 2.0)) * exp(-y * 2.4);
+        float o = exp(-pow((x - 0.18 - 0.03 * cos(t * 0.45)) / 0.17, 2.0)) * exp(-y * 2.4);
+        vec3 c = vec3(0.012) + (vec3(1.0) * w * 0.9 + vec3(0.12, 0.17, 1.0) * b * 0.85 + vec3(1.0, 0.54, 0.12) * o * 0.85) * flick;
+        // dust drifting up through the light
+        vec2 g = floor((vUv + vec2(0.0, -t * 0.025)) * vec2(260.0, 146.0));
+        float dust = step(0.9965, hash(g + uSeed)) * (w * 2.0 + b + o);
+        c += vec3(dust) * 0.9;
+        // a warm light leak sweeping across now and then
+        float sweep = fract(t * 0.045);
+        c += vec3(1.0, 0.6, 0.3) * exp(-pow((vUv.x - (sweep * 1.6 - 0.3)) * 5.0, 2.0)) * 0.07;
+        // film grain
+        c += (hash(floor(vUv * vec2(800.0, 450.0)) + floor(t * 24.0)) - 0.5) * 0.04;
+        // title
+        vec4 tt = texture2D(uTitle, vUv);
+        c = mix(c, vec3(1.0), tt.a * 0.92);
+        // progress bar along the bottom, like a clip playing
+        float prog = fract(t / 26.0);
+        float bar = step(vUv.y, 0.012) * step(0.004, vUv.y);
+        c = mix(c, vec3(0.32), bar * 0.8);
+        c = mix(c, vec3(1.0), bar * step(vUv.x, prog) * 0.85);
         gl_FragColor = vec4(pow(max(c, 0.0), vec3(2.2)), 1.0);
       }`,
   });
@@ -498,7 +519,7 @@ export class GalleryScene {
         900,
         aniso,
       );
-      const sm = placeholderMaterial(title);
+      const sm = placeholderMaterial(title, i + 1);
       mat = sm;
       w.shader = sm;
       this.disposables.push(title);
@@ -867,7 +888,9 @@ export class GalleryScene {
     this.works.forEach((w, i) => {
       if (!w.video) return;
       const k = stops.findIndex((s) => s.kind === "work" && s.index === i);
-      const near = stopIndex >= 0 && Math.abs(k - stopIndex) <= 1;
+      const atCentre = stops[stopIndex]?.kind === "centre";
+      const firstOnWall = i === 0 || i === this.layout.perWall;
+      const near = stopIndex >= 0 && (Math.abs(k - stopIndex) <= 1 || (atCentre && firstOnWall));
       if (near && w.video.paused) w.video.play().catch(() => {});
       else if (!near && !w.video.paused) w.video.pause();
     });
