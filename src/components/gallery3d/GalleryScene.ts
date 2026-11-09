@@ -918,6 +918,30 @@ export class GalleryScene {
     return (hit?.object.userData.pick as Pick) ?? null;
   }
 
+  /* Where work i's screen is on the page right now (CSS pixels), for the film to fly from. */
+  screenRect(i: number, rect: DOMRect) {
+    const w = this.works[i];
+    this.camera.updateMatrixWorld();
+    w.screen.updateWorldMatrix(true, false);
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const [cx, cy] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ]) {
+      const v = new THREE.Vector3((cx * SCREEN.w) / 2, (cy * SCREEN.h) / 2, 0)
+        .applyMatrix4(w.screen.matrixWorld)
+        .project(this.camera);
+      xs.push(rect.left + ((v.x + 1) / 2) * rect.width);
+      ys.push(rect.top + ((1 - v.y) / 2) * rect.height);
+    }
+    const l = Math.min(...xs);
+    const t = Math.min(...ys);
+    return new DOMRect(l, t, Math.max(...xs) - l, Math.max(...ys) - t);
+  }
+
   /* Where a work's screen centre is, to walk up to it. */
   workCentre(i: number) {
     const s = this.layout.works[i];
