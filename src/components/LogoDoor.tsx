@@ -43,6 +43,7 @@ uniform float uTime;
 uniform vec2 uFocus;    // logo point that sits at uScreen
 uniform vec2 uScreen;   // CSS px
 uniform float uScale;   // CSS px per logo px
+uniform float uFlood;   // 0..1: passing through the light into another dimension
 
 const vec2 L0 = vec2(530.,258.); const vec2 L1 = vec2(620.,301.); const vec2 L2 = vec2(620.,640.); const vec2 L3 = vec2(530.,686.);
 const vec2 G0 = vec2(620.,301.); const vec2 G1 = vec2(668.,324.); const vec2 G2 = vec2(668.,640.); const vec2 G3 = vec2(620.,640.);
@@ -153,6 +154,41 @@ void main() {
   // The faintest vignette
   col *= 1.0 - 0.035 * pow(length(scr - 0.5) * 1.35, 2.2);
 
+  // Passing through: the whole view floods with soft prism light. Blooms of
+  // colour swirl out from the centre over a slowly turning colour wash, around
+  // a white-hot core; it then softens to white, which fades into the room.
+  // Everything is smooth gradients: no rays or lines.
+  if (uFlood > 0.0) {
+    float mn = min(uRes.x, uRes.y) / uDpr;
+    vec2 c = (css - (uRes / uDpr) * 0.5) / mn;
+    float r = length(c);
+    float ang = atan(c.y, c.x);
+    float f = clamp(uFlood, 0.0, 1.0);
+    float peak = sin(3.14159 * f);
+    vec3 base = mix(col, vec3(1.0), smoothstep(0.0, 0.4, f));
+    // a soft colour wash that turns slowly with angle (no hard edges)
+    float turn = uTime * 0.25 + f * 1.4;
+    vec3 wash = spectrum(fract(ang / 6.28318 + turn * 0.12));
+    float washAmt = smoothstep(0.05, 0.75, r) * 0.55;
+    // six blooms of colour swirling outwards
+    vec3 blooms = vec3(0.0);
+    float bsum = 0.0;
+    for (int k = 0; k < 6; k++) {
+      float fk = float(k);
+      float a = fk * 1.0472 + turn * 1.6 + sin(uTime * 0.7 + fk) * 0.25;
+      vec2 pos = vec2(cos(a), sin(a)) * (0.12 + 0.55 * f);
+      float d = length(c - pos);
+      float g = exp(-(d * d) / (0.035 + 0.09 * f));
+      blooms += spectrum(fk / 5.0) * g;
+      bsum += g;
+    }
+    vec3 colour = mix(wash, blooms / max(bsum, 0.001), clamp(bsum, 0.0, 1.0));
+    float amount = clamp((washAmt + bsum * 0.6) * peak, 0.0, 0.85);
+    vec3 flood = mix(base, colour, amount);
+    flood = mix(flood, vec3(1.0), exp(-r * r * 7.0) * (0.35 + 0.65 * f)); // white-hot core
+    col = clamp(flood, 0.0, 1.0);
+  }
+
   // Film grain, a fresh pattern 24 times a second, per device pixel
   float g = hash(floor(gl_FragCoord.xy) + floor(uTime * 24.0) * vec2(17.0, 31.0)) - 0.5;
   col += g * 0.035;
@@ -162,8 +198,8 @@ void main() {
 `;
 
 export type LogoDoorHandle = {
-  /** Draw a frame. focusScreen = where LOGO.focus sits on screen (CSS px). */
-  draw: (scale: number, focusScreen: { x: number; y: number }) => void;
+  /** Draw a frame. focusScreen = where LOGO.focus sits on screen (CSS px); flood 0..1. */
+  draw: (scale: number, focusScreen: { x: number; y: number }, flood?: number) => void;
   ok: boolean;
 };
 
@@ -223,10 +259,11 @@ export function LogoDoorCanvas({
       const uFocus = u("uFocus");
       const uScreen = u("uScreen");
       const uScale = u("uScale");
+      const uFlood = u("uFlood");
 
       handle.current = {
         ok: true,
-        draw: (scale, focusScreen) => {
+        draw: (scale, focusScreen, flood = 0) => {
           if (gl.isContextLost()) return;
           // The screen's full resolution (up to 3x), so the logo is never soft.
           const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -243,6 +280,7 @@ export function LogoDoorCanvas({
           gl.uniform2f(uFocus, LOGO.focus.x, LOGO.focus.y);
           gl.uniform2f(uScreen, focusScreen.x, focusScreen.y);
           gl.uniform1f(uScale, scale);
+          gl.uniform1f(uFlood, flood);
           gl.drawArrays(gl.TRIANGLES, 0, 3);
         },
       };

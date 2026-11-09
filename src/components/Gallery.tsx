@@ -1,353 +1,328 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { SITE } from "@/content/site";
-import { PROJECTS, type Project } from "@/content/projects";
+import { PROJECTS } from "@/content/projects";
 import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
-import { Poster } from "@/components/Poster";
-import { BLUE, CYAN, ORANGE, FilmGrain } from "@/components/PrismLight";
 import { LOGO, LogoDoorCanvas, type LogoDoorHandle } from "@/components/LogoDoor";
+import type { GalleryScene, Layout, Pose, Stop } from "@/components/gallery3d/GalleryScene";
 
 /*
-  The home page: a walk-through 3D gallery.
+  The home page.
 
-  It opens on a dark door with prism light pouring through the gap. Scrolling
-  flies you at the door: the light grows until it fills the screen, bursts into
-  prism light, and clears onto a white gallery whose three walls hang the films
-  (playing). The camera glides straight to the first film on the left wall.
+  It opens on the Insight Lab logo (LogoDoor, drawn live with WebGL). Scrolling
+  flies you into the light at the top of its gap; once you're in, it carries
+  you the rest of the way: the view floods with prism light and fades into the
+  gallery, which starts bright and settles, like eyes adjusting. You arrive
+  standing back with the whole room in view: all six films playing, the doors
+  at the far end.
 
-  Inside, every scroll / swipe / arrow press moves exactly one piece. At the end
-  you turn to face two prism-lit doors, All work and About us. Scrolling back
-  past the first film flies you back out to the door.
-
-  Quality: everything that zooms (the door) is drawn with CSS gradients rather
-  than a photo, so it stays sharp at any size. Text and artwork are full
-  resolution. Only plain wall/ceiling textures are drawn small and scaled up
-  (they're soft gradients, so it doesn't show) to stay inside phone memory.
-
-  Coordinates are CSS pixels in one 3D world: x right, y down, z towards you.
-  The entrance wall is at z = 0 and the room runs back to z = -depth.
+  The gallery itself is a real 3D room (gallery3d/GalleryScene, three.js): six
+  films on the side walls and two prism-lit doors on the back wall. From the
+  overview, every scroll / swipe / arrow press moves one stop: left wall front
+  to back, right wall front to back, then the doors. Click the
+  film you're at to walk up to it and open its page; click a door to walk
+  through it. Scrolling back from the middle takes you back out to the logo.
 */
 
-type Mode = "intro" | "free" | "door";
-type Pose = { x: number; z: number; yaw: number }; // yaw in radians, 0 = facing into the room
-type Piece = { x: number; y: number; z: number; a: number }; // a = which way the wall faces, degrees
-type Stop = Pose & { s: number; piece: number }; // piece = index in PROJECTS, -1 = the door wall
+type Mode = "intro" | "free" | "visit";
 
-/* The two doors at the end of the walk. */
-const DOORS = [
-  { label: "All work", to: "/projects" },
-  { label: "About us", to: "/about" },
-] as const;
+/* ---------- timing ---------- */
 
-/* ---------- motion settings ---------- */
+const INTRO_SCROLL = 1000; // px of scrolling from the logo to the room
+const ZOOM_END = 0.48; // by here the light fills the screen
+const FLOOD: [number, number] = [0.34, 0.82]; // prism light floods the view
+const INTRO_FADE: [number, number] = [0.74, 0.9]; // ...and fades into the room
+const GLIDE: [number, number] = [0.66, 1]; // the camera settles in the middle of the room
+const AUTO_FROM = 0; // any forward scroll plays the way in by itself...
+const AUTO_SPEED = 2.2; // ...in under half a second
 
-// The way in, as fractions of the scroll that takes you through the door.
-const INTRO_SCROLL = 1500; // px of scrolling from the door to the first film
-const ZOOM_END = 0.62; // by here the light fills the screen
-const FLASH_IN: [number, number] = [0.48, 0.64]; // prism light floods in
-const FLASH_OUT: [number, number] = [0.72, 0.9]; // ...and clears onto the room
-const GLIDE: [number, number] = [0.7, 1]; // camera glides to the first film
-
-const STEP_LOCK_MS = 420; // one scroll gesture = one piece
+const STEP_LOCK_MS = 300; // one scroll gesture = one stop
 const FOLLOW = 6; // catching up after a resize (steps themselves are timed glides)
 const LEAN_IN = 3.4; // stepping in towards a film once you arrive
-const LEAN_OUT = 6; // ...and back out as you set off
-const DOOR_WALK_MS = 1400; // walking through an end door into its page
+const LEAN_OUT = 6;
+const VISIT_MS = 950; // walking up to a film
+const DOOR_MS = 1400; // walking through a door
+const EYE = 1.6; // camera height, metres
+const SAVE_KEY = "insight-gallery-stop";
 
-const FRAME_W = 720; // films are 16:9
-const FRAME_H = 405;
-const SAVE_KEY = "insight-gallery-stop"; // which stop you were at (survives resizes)
-
-const EASE_TEXT_IN = "cubic-bezier(0.22, 1, 0.36, 1)";
-const EASE_ZOOM = "cubic-bezier(0.65, 0, 0.35, 1)";
-
-const rad = (deg: number) => (deg * Math.PI) / 180;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const smooth = (t: number) => {
   const c = clamp(t, 0, 1);
   return c * c * (3 - 2 * c);
 };
-// 0 before a, 1 after b, eased in between.
 const band = (t: number, [a, b]: [number, number]) => smooth((t - a) / (b - a));
-// Frame-rate independent easing towards a goal.
 const damp = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
-// Turn the short way round.
-const nearestAngle = (goal: number, from: number) =>
-  goal + Math.round((from - goal) / (Math.PI * 2)) * Math.PI * 2;
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 export function Gallery() {
   const navigate = useNavigate();
-  const [view, setView] = useState({ w: 1440, h: 900 });
-  const [inside, setInside] = useState(false); // past the flash: the room is what you see
-  const [lit, setLit] = useState(false);
-  const [signs, setSigns] = useState([false, false]); // end-door labels lit
+  const [inside, setInside] = useState(false);
   const [hint, setHint] = useState(true);
-  const [nearStop, setNearStop] = useState(0); // phones hide works far from you, to save memory
-
-  const room = useMemo(() => buildRoom(PROJECTS.length, view.w, view.h), [view]);
-  // Narrow screens get a wider field of view so the room doesn't feel like a tunnel.
-  const persp = Math.round(clamp(view.w * 0.62, 520, 950));
-  const phone = view.w < 700;
-  const surfaceK = phone ? 8 : 4; // plain walls, ceiling, floor wash: drawn small
-  const doorK = phone ? 2 : 1; // door leaves: flat colour, edges stay sharp anyway
-  const contentK = phone ? 2 : 1; // films and labels: still sharp at the size they appear
 
   const stageRef = useRef<HTMLDivElement>(null);
-  const worldRef = useRef<HTMLDivElement>(null);
+  const roomCanvas = useRef<HTMLCanvasElement>(null);
   const introRef = useRef<HTMLDivElement>(null);
-  const flashRef = useRef<HTMLDivElement>(null);
   const scene = useRef<Record<string, HTMLElement | null>>({});
   const logoGl = useRef<LogoDoorHandle | null>(null);
-  const roomRef = useRef(room);
-  const perspRef = useRef(persp);
-  const viewRef = useRef(view);
-  roomRef.current = room;
-  perspRef.current = persp;
-  viewRef.current = view;
+  const gs = useRef<GalleryScene | null>(null);
+  const failed = useRef(false);
+  const viewRef = useRef({ w: 1440, h: 900 });
 
-  // Everything the camera loop reads lives in refs, so moving never re-renders React.
+  // Everything the frame loop reads lives here, so moving never re-renders React.
   const cam = useRef({
     mode: "intro" as Mode,
-    p: 0, // progress through the way in, 0 = at the door, 1 = at the first film
+    p: 0, // progress through the way in: 0 = the logo, 1 = in the room
     pGoal: 0,
-    auto: false, // playing the way in/out by itself (click, keys, Leave)
-    q: 0, // where the camera is along the path inside
+    auto: false,
+    q: 0, // where the camera is along the path in the room
     goal: 0,
     glide: null as null | { from: number; to: number; t0: number; dur: number },
-    lean: 0, // 0 = standing back, 1 = leaning in at a piece
+    lean: 0,
     at: 0, // the stop you're at
-    playing: -2, // the stop whose films are playing
+    playing: -2,
     insideFlag: false,
-    litFlag: false,
-    pose: { x: 0, z: -250, yaw: 0, y: 0 },
-    lockUntil: 0, // wheel steps are locked until this time
+    pose: { x: 0, z: -0.5, yaw: 0, y: EYE },
+    lockUntil: 0,
     wheelAcc: 0,
     drag: { on: false, x0: 0, y0: 0, x: 0, y: 0, dist: 0, pointer: "mouse" },
-    door: null as null | {
-      i: number;
+    hover: -1, // door under the mouse
+    parkedAt: -1,
+    doorAng: [0, 0],
+    doorLit: [0, 0],
+    visit: null as null | {
       t0: number;
+      dur: number;
       from: Pose & { y: number };
-      x1: number;
-      z1: number;
-      y1: number;
+      to: Pose & { y: number };
+      door: number; // -1 for a film
       veil: HTMLElement;
       go: () => void;
       gone: boolean;
     },
   });
-  const doorAnim = useRef({ ang: [0, 0], hover: -1, parked: false });
-  const leafEls = useRef<(HTMLElement | null)[][]>([[], []]);
-  const glowEls = useRef<(HTMLElement | null)[][]>([[], []]);
-  const videoEls = useRef<(HTMLVideoElement | null)[]>([]);
-  const frameEls = useRef<(HTMLElement | null)[]>([]);
-  const signTimers = useRef<number[]>([]);
 
   /* ---------- setup ---------- */
 
   useEffect(() => {
-    const fit = () => setView({ w: window.innerWidth, h: window.innerHeight });
+    let alive = true;
+    const fit = () => {
+      viewRef.current = { w: window.innerWidth, h: window.innerHeight };
+      const g = gs.current;
+      if (!g) return;
+      g.setSize(window.innerWidth, window.innerHeight);
+      // Distances were re-fitted to the new window: stay at the same stop.
+      const c = cam.current;
+      if (c.mode === "free") {
+        c.glide = null;
+        c.q = c.goal = g.layout.stops[Math.min(c.at, g.layout.stops.length - 1)].s;
+      }
+    };
     fit();
     window.addEventListener("resize", fit);
+    setStageTone("light");
 
-    // Coming back from a page: put you back where you were.
-    const saved = readSaved();
-    if (saved !== null) {
-      const c = cam.current;
-      const stops = roomRef.current.stops;
-      c.mode = "free";
-      c.p = c.pGoal = 1;
-      c.at = Math.min(saved, stops.length - 1);
-      c.q = c.goal = stops[c.at]?.s ?? 0;
-      c.lean = stops[c.at]?.piece === -1 ? 0 : 1; // no leaning in at the doors
-      c.insideFlag = c.litFlag = true;
-      drawIntro(1); // the door and its light are already behind you
-      setInside(true);
-      setLit(true);
-      setHint(false);
-    }
-    const timers = signTimers;
-    const videos = videoEls;
+    (async () => {
+      try {
+        // Labels are drawn with the site font, so wait for it.
+        await Promise.all([
+          document.fonts?.load("500 40px Jost"),
+          document.fonts?.load("400 40px Jost"),
+        ]).catch(() => {});
+        const mod = await import("@/components/gallery3d/GalleryScene");
+        if (!alive || !roomCanvas.current) return;
+        const coarse = window.matchMedia("(pointer: coarse)").matches;
+        const s = new mod.GalleryScene(roomCanvas.current, {
+          projects: PROJECTS,
+          aspect: window.innerWidth / window.innerHeight,
+          // Phones and tablets skip the floor mirror and shadows to stay smooth.
+          hq: !coarse && window.innerWidth >= 700,
+        });
+        s.setSize(window.innerWidth, window.innerHeight);
+        gs.current = s;
+
+        // Coming back from a page: put you back where you were.
+        const saved = readSaved();
+        if (saved !== null) {
+          const c = cam.current;
+          const stops = s.layout.stops;
+          c.mode = "free";
+          c.p = c.pGoal = 1;
+          c.at = Math.min(saved, stops.length - 1);
+          c.q = c.goal = stops[c.at].s;
+          c.lean = stops[c.at].kind === "work" ? 1 : 0;
+          c.insideFlag = true;
+          drawIntro(1);
+          setInside(true);
+          setHint(false);
+        }
+      } catch (err) {
+        console.warn("The 3D gallery couldn't start:", err);
+        failed.current = true;
+      }
+    })();
+
     return () => {
+      alive = false;
       window.removeEventListener("resize", fit);
-      timers.current.forEach(clearTimeout);
-      videos.current.forEach((v) => v?.pause());
+      gs.current?.dispose();
+      gs.current = null;
       setStageTone(null);
     };
   }, []);
 
-  useEffect(() => {
-    setStageTone("light"); // the landing is white now, like the logo
-  }, []);
-
-  // The room is sized from the screen, so a resize moves every stop: stay at yours.
-  useEffect(() => {
-    const c = cam.current;
-    if (c.mode !== "free") return;
-    const st = room.stops[Math.min(c.at, room.stops.length - 1)];
-    if (st) c.q = c.goal = st.s;
-  }, [room]);
-
-  /* ---------- the camera loop ---------- */
+  /* ---------- the frame loop ---------- */
 
   useEffect(() => {
     let raf = 0;
-    let last = performance.now();
+    const t0 = performance.now();
+    let last = t0;
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const c = cam.current;
-      const r = roomRef.current;
-      const P = perspRef.current;
+      const s = gs.current;
+      const L = s?.layout;
       let pose = { ...c.pose };
+      let exposure = 1;
 
       if (c.mode === "intro") {
-        // Scrolling (or auto-play) moves you through the door.
-        c.p += (c.pGoal - c.p) * damp(c.auto ? 1.15 : 6, dt);
-        if (Math.abs(c.pGoal - c.p) < 0.0008) c.p = c.pGoal;
+        if (c.auto) {
+          // Playing by itself: a steady pace, not a slow crawl
+          const dir = Math.sign(c.pGoal - c.p);
+          c.p += dir * AUTO_SPEED * dt;
+          if ((dir > 0 && c.p >= c.pGoal) || (dir <= 0 && c.p <= c.pGoal)) {
+            c.p = c.pGoal;
+            c.auto = false;
+          }
+        } else {
+          c.p += (c.pGoal - c.p) * damp(7, dt);
+          if (Math.abs(c.pGoal - c.p) < 0.0008) c.p = c.pGoal;
+        }
+        if (!s) {
+          if (failed.current && c.p > 0.6) {
+            // No 3D available: go straight to the work instead.
+            c.p = c.pGoal = 0;
+            navigate({ to: "/projects" });
+          }
+          c.p = Math.min(c.p, 0.78); // wait in the light until the room is ready
+        }
         drawIntro(c.p);
-        // Behind the light you're already in the room, gliding to the first film.
-        const start = { x: 0, z: -250, yaw: 0 };
-        const first = r.stops[0] ?? start; // the centre of the gallery
-        const g = band(c.p, GLIDE);
-        const yaw1 = nearestAngle(first.yaw, 0);
-        pose = {
-          x: start.x + (first.x - start.x) * g,
-          z: start.z + (first.z - start.z) * g,
-          yaw: start.yaw + (yaw1 - start.yaw) * smooth((g - 0.15) / 0.85),
-          y: 0,
-        };
-        const isIn = c.p > 0.7;
+        // Behind the light you're already in the room, gliding the last stretch
+        // to the spot that shows the whole gallery.
+        const first: Pose = L?.stops[0] ?? { x: 0, z: 4, yaw: 0 };
+        const g = smooth(band(c.p, GLIDE));
+        pose = { x: first.x, z: first.z + 1.5 * (1 - g), yaw: first.yaw, y: EYE };
+        exposure = 1 + 2.6 * (1 - band(c.p, [0.7, 1])); // bright, then settling
+        const isIn = c.p > 0.72;
         if (isIn !== c.insideFlag) {
           c.insideFlag = isIn;
           setInside(isIn);
         }
-        const on = c.p > 0.6;
-        if (on !== c.litFlag) {
-          c.litFlag = on;
-          setLit(on);
-        }
-        if (c.p >= 1 && c.pGoal >= 1) {
+        if (s && L && c.p >= 1 && c.pGoal >= 1) {
           c.mode = "free";
-          c.auto = false;
           c.at = 0;
-          c.q = c.goal = r.stops[0]?.s ?? 0;
+          c.q = c.goal = L.stops[0].s;
           c.lean = 0;
+          c.auto = false;
+          // The scroll that brought you in may still be coasting: don't let it carry you on.
+          c.lockUntil = now + 450;
+          c.wheelAcc = 0;
         }
-      } else if (c.mode === "free") {
-        const stops = r.stops;
+      } else if (c.mode === "free" && L) {
         if (c.glide) {
-          // A timed glide: eases out of one stop and into the next.
           const t = clamp((now - c.glide.t0) / c.glide.dur, 0, 1);
-          const e = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-          c.q = c.glide.from + (c.glide.to - c.glide.from) * e;
+          c.q = c.glide.from + (c.glide.to - c.glide.from) * easeInOut(t);
           if (t >= 1) c.glide = null;
         } else {
           c.q += (c.goal - c.q) * damp(FOLLOW, dt);
-          if (Math.abs(c.goal - c.q) < 0.3) c.q = c.goal;
+          if (Math.abs(c.goal - c.q) < 0.002) c.q = c.goal;
         }
-        // Lean in at films; at the door wall stay back so both doors fit.
-        const here = stops[nearestStop(stops, c.q)];
-        const near = !!here && here.piece >= 0 && Math.abs(c.q - here.s) < r.span * 0.3;
-        const g = near ? 1 : 0;
-        c.lean += (g - c.lean) * damp(g ? LEAN_IN : LEAN_OUT, dt);
-        pose = { ...leaned(r, poseAt(stops, c.q), c.lean), y: 0 };
-      } else if (c.mode === "door" && c.door) {
-        // Walk up to the door and through it, then the page takes over.
-        const d = c.door;
-        const t = clamp((now - d.t0) / DOOR_WALK_MS, 0, 1);
-        const o = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-        const yaw1 = nearestAngle(Math.PI, d.from.yaw);
+        const here = L.stops[nearestStop(L.stops, c.q)];
+        const near = here.kind === "work" && Math.abs(c.q - here.s) < L.span * 0.3 && !c.glide;
+        c.lean += ((near ? 1 : 0) - c.lean) * damp(near ? LEAN_IN : LEAN_OUT, dt);
+        pose = { ...leaned(L, poseAt(L.stops, c.q), c.lean), y: EYE };
+      } else if (c.mode === "visit" && c.visit) {
+        const v = c.visit;
+        const t = clamp((now - v.t0) / v.dur, 0, 1);
+        const e = easeInOut(t);
         pose = {
-          x: d.from.x + (d.x1 - d.from.x) * o,
-          z: d.from.z + (d.z1 - d.from.z) * o,
-          yaw: d.from.yaw + (yaw1 - d.from.yaw) * o,
-          y: d.from.y + (d.y1 - d.from.y) * o,
+          x: v.from.x + (v.to.x - v.from.x) * e,
+          z: v.from.z + (v.to.z - v.from.z) * e,
+          yaw: v.from.yaw + (v.to.yaw - v.from.yaw) * e,
+          y: v.from.y + (v.to.y - v.from.y) * e,
         };
-        d.veil.style.opacity = String(smooth((t - 0.4) / 0.5));
-        if (t >= 1 && !d.gone) {
-          d.gone = true;
-          d.go();
+        v.veil.style.opacity = String(smooth((t - 0.45) / 0.5));
+        if (t >= 1 && !v.gone) {
+          v.gone = true;
+          v.go();
         }
       }
 
-      // End doors: ease open a little when you arrive, more under the mouse, wide when clicked.
-      const da = doorAnim.current;
-      const end = r.stops[r.stops.length - 1];
-      const parked =
-        (c.mode === "free" || c.mode === "door") &&
-        end?.piece === -1 &&
-        Math.abs(c.q - end.s) < r.span * 0.3;
-      if (parked !== da.parked) {
-        da.parked = parked;
-        handlers.current.lightSigns(parked);
+      if (s && L) {
+        // The doors: ajar when you arrive, wider under the mouse, wide open when clicked.
+        const end = L.stops[L.stops.length - 1];
+        const parked = c.mode !== "intro" && Math.abs(c.q - end.s) < L.span * 0.3;
+        if (parked && c.parkedAt < 0) c.parkedAt = now;
+        if (!parked) c.parkedAt = -1;
+        for (let i = 0; i < 2; i++) {
+          const goal = c.visit?.door === i ? 82 : parked ? (c.hover === i ? 24 : 12) : 0;
+          const rate = goal > c.doorAng[i] ? (c.visit ? 5 : 3.5) : 5;
+          c.doorAng[i] += (goal - c.doorAng[i]) * damp(rate, dt);
+          // Signs light one after the other
+          const litGoal = parked ? clamp((now - c.parkedAt - (150 + i * 380)) / 650, 0, 1) : 0;
+          c.doorLit[i] = parked ? litGoal : c.doorLit[i] * (1 - damp(8, dt));
+          s.setDoor(i, c.doorAng[i], smooth(c.doorLit[i]));
+        }
+        // Only the films near you play.
+        const playAt = c.mode === "intro" ? (c.p > 0.6 ? 0 : -1) : c.at;
+        if (playAt !== c.playing) {
+          c.playing = playAt;
+          s.playNear(playAt);
+        }
+        // Draw the room whenever it can be seen.
+        if (c.mode !== "intro" || c.p > 0.6) {
+          s.setPose(pose.x, pose.y, pose.z, pose.yaw);
+          s.setExposure(exposure);
+          s.render((now - t0) / 1000);
+        }
       }
-      da.ang = da.ang.map((a, i) => {
-        const goal =
-          c.mode === "door" && c.door?.i === i ? 82 : parked ? (da.hover === i ? 24 : 12) : 0;
-        const rate = goal > a ? (c.mode === "door" ? 5 : 3.5) : 5;
-        let n = a + (goal - a) * damp(rate, dt);
-        if (Math.abs(goal - n) < 0.05) n = goal;
-        const [l, rr] = leafEls.current[i] ?? [];
-        // Leaves swing out towards you (there's no room behind the wall to swing into).
-        if (l) l.style.transform = `rotateY(${-n}deg)`;
-        if (rr) rr.style.transform = `rotateY(${n}deg)`;
-        const [spill, halo] = glowEls.current[i] ?? [];
-        const open = smooth(n / 30);
-        if (spill) spill.style.opacity = String(0.35 + 0.65 * open);
-        if (halo) halo.style.opacity = String(0.55 + 0.45 * open);
-        return n;
-      });
-
-      // Only the films near you play.
-      const playAt = c.mode === "intro" ? (c.p > 0.55 ? 0 : -1) : c.at;
-      if (playAt !== c.playing) {
-        c.playing = playAt;
-        syncVideos(r, playAt);
-        setNearStop(Math.max(playAt, 0));
-      }
-
       c.pose = pose;
-      if (worldRef.current) {
-        worldRef.current.style.transform = `translateZ(${P}px) rotateY(${pose.yaw}rad) translate3d(${-pose.x}px, ${-pose.y}px, ${-pose.z}px)`;
-      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ---------- the door, drawn for the current progress ---------- */
+  /* ---------- the logo, for the current progress ---------- */
 
-  // Sizes are recomputed every frame (not scaled with a transform), so the
-  // gradients are always drawn at full sharpness however close you get.
   function drawIntro(p: number) {
     const { w: W, h: H } = viewRef.current;
     const s = scene.current;
     const e = band(p, [0, ZOOM_END]);
-    // At rest the logo's door fills ~40% of the screen height, above the text.
     const s0 = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
-    const zoom = Math.exp(Math.log(120) * Math.pow(e, 1.7)); // 1 → 120, accelerating
+    const zoom = Math.exp(Math.log(120) * Math.pow(e, 1.7));
     const scale = s0 * zoom;
     const markY = H * 0.4;
     const restX = W / 2 + (LOGO.focus.x - LOGO.center.x) * s0;
     const restY = markY + (LOGO.focus.y - LOGO.center.y) * s0;
-    // Fly into the light at the top of the gap: it drifts to the centre as you approach.
     const k = smooth(e);
     const fx = restX + (W / 2 - restX) * k;
     const fy = restY + (H / 2 - restY) * k;
-    if (logoGl.current?.ok) {
-      logoGl.current.draw(scale, { x: fx, y: fy });
-    } else if (s.fallback) {
-      // No WebGL: the logo image instead. It's never enlarged more than a touch
-      // (so it never pixelates); it fades into the light as you approach.
-      const fs = s0 * Math.min(zoom, 1.5);
-      s.fallback.style.width = `${1254 * fs}px`;
-      s.fallback.style.left = `${fx - LOGO.focus.x * fs}px`;
-      s.fallback.style.top = `${fy - LOGO.focus.y * fs}px`;
-      s.fallback.style.opacity = String(1 - band(e, [0.05, 0.35]));
+    const fade = 1 - band(p, INTRO_FADE);
+    if (fade > 0) {
+      if (logoGl.current?.ok) {
+        logoGl.current.draw(scale, { x: fx, y: fy }, band(p, FLOOD));
+      } else if (s.fallback) {
+        // No WebGL: the logo image, never enlarged more than a touch.
+        const fs = s0 * Math.min(zoom, 1.5);
+        s.fallback.style.width = `${1254 * fs}px`;
+        s.fallback.style.left = `${fx - LOGO.focus.x * fs}px`;
+        s.fallback.style.top = `${fy - LOGO.focus.y * fs}px`;
+        s.fallback.style.opacity = String(1 - band(e, [0.05, 0.35]));
+      }
     }
-    // The landing text sits under the door and lifts away as you start to move.
     if (s.text) {
       const bottom = markY + (686 - LOGO.center.y) * s0;
       const out = band(p, [0.01, 0.12]);
@@ -356,56 +331,33 @@ export function Gallery() {
       s.text.style.transform = `translateY(${out * 40}px)`;
     }
     if (introRef.current) {
-      const fade = 1 - band(p, [0.64, 0.7]);
       introRef.current.style.opacity = String(fade);
       introRef.current.style.visibility = fade <= 0 ? "hidden" : "visible";
     }
-    if (flashRef.current) {
-      const f = band(p, FLASH_IN) * (1 - band(p, FLASH_OUT));
-      flashRef.current.style.opacity = String(f);
-      flashRef.current.style.visibility = f <= 0 ? "hidden" : "visible";
-    }
     if (s.hint) s.hint.style.opacity = String(1 - band(p, [0, 0.05]));
-  }
-
-  /* ---------- films ---------- */
-
-  function syncVideos(r: RoomLayout, at: number) {
-    PROJECTS.forEach((_, i) => {
-      const v = videoEls.current[i];
-      if (!v) return;
-      const k = r.stops.findIndex((st) => st.piece === i);
-      const near = at >= 0 && Math.abs(k - at) <= 1;
-      if (near && v.paused) v.play().catch(() => {});
-      else if (!near && !v.paused) v.pause();
-    });
   }
 
   /* ---------- moving ---------- */
 
   const stepTo = (i: number) => {
     const c = cam.current;
-    const stops = roomRef.current.stops;
-    if (!stops[i] || c.mode !== "free") return;
+    const L = gs.current?.layout;
+    if (!L || !L.stops[i] || c.mode !== "free") return;
     c.at = i;
-    c.goal = stops[i].s;
-    // Longer moves (round a corner) take a little longer, but never drag.
+    c.goal = L.stops[i].s;
     const d = Math.abs(c.goal - c.q);
-    c.glide = {
-      from: c.q,
-      to: c.goal,
-      t0: performance.now(),
-      dur: clamp(520 + d * 0.16, 650, 1100),
-    };
+    // Quick and smooth: about 0.4 s to a neighbour; the longer first move from the
+    // overview to the left wall gets a little more, so it never lurches.
+    c.glide = { from: c.q, to: c.goal, t0: performance.now(), dur: clamp(300 + d * 40, 380, 850) };
     setHint(false);
   };
 
-  // One piece forward or back. Back from the first film flies you out to the door.
   const step = (dir: 1 | -1) => {
     const c = cam.current;
-    if (c.mode !== "free") return;
+    const L = gs.current?.layout;
+    if (c.mode !== "free" || !L) return;
     if (dir < 0 && c.at === 0) return goOut(false);
-    stepTo(clamp(c.at + dir, 0, roomRef.current.stops.length - 1));
+    stepTo(clamp(c.at + dir, 0, L.stops.length - 1));
   };
 
   const goIn = () => {
@@ -417,72 +369,22 @@ export function Gallery() {
     setHint(false);
   };
 
-  // Back out through the light. `all` = right back to the door (Leave button);
-  // otherwise just into the light, and further scrolling continues.
-  const goOut = (all: boolean) => {
+  // Back out through the light to the logo (Leave, or scrolling back from the middle).
+  const goOut = (_all: boolean) => {
     const c = cam.current;
     if (c.mode !== "free") return;
     clearSaved();
     c.mode = "intro";
     c.p = 1;
-    c.pGoal = all ? 0 : 0.86;
-    c.auto = all;
+    c.pGoal = 0;
+    c.auto = true;
+    c.glide = null;
     c.lockUntil = performance.now() + STEP_LOCK_MS;
   };
 
-  /* ---------- opening a film ---------- */
+  /* ---------- opening a film or a door ---------- */
 
-  const openPiece = (i: number) => {
-    const project = PROJECTS[i];
-    if (!project) return;
-    writeSaved(cam.current.at);
-    const go = () => navigate({ to: "/projects/$slug", params: { slug: project.slug } });
-    const el = frameEls.current[i];
-    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
-    zoomInto(el, go);
-  };
-
-  // Clicking the film you're at opens it; clicking another walks you to it.
-  const onPieceClick = (e: React.MouseEvent, i: number) => {
-    e.preventDefault();
-    const c = cam.current;
-    if (c.drag.dist > 6) return;
-    const stops = roomRef.current.stops;
-    const target = stops.findIndex((s) => s.piece === i);
-    if (target < 0) return;
-    const settled =
-      c.at === target && Math.abs(c.q - stops[target].s) < roomRef.current.span * 0.25;
-    // A keyboard "click" (Enter on a focused piece) always opens.
-    if (settled || e.detail === 0) openPiece(i);
-    else stepTo(target);
-  };
-
-  /* ---------- the doors at the end ---------- */
-
-  // Light the labels one after the other when you arrive; switch them off as you leave.
-  const lightSigns = (on: boolean) => {
-    signTimers.current.forEach(clearTimeout);
-    signTimers.current = [];
-    if (!on) return setSigns([false, false]);
-    DOORS.forEach((_, i) => {
-      signTimers.current.push(
-        window.setTimeout(
-          () => setSigns((prev) => prev.map((v, j) => (j === i ? true : v))),
-          150 + i * 380,
-        ),
-      );
-    });
-  };
-
-  const openDoor = (i: number) => {
-    const c = cam.current;
-    const r = roomRef.current;
-    const door = r.doorWall.doors[i];
-    if (!door || c.mode !== "free") return;
-    writeSaved(r.stops.length - 1); // come back to the door wall
-    const go = () => navigate({ to: door.to });
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
-    // Prism light floods in as you step through, then clears onto the page.
+  const makeVeil = (background: string) => {
     const veil = document.createElement("div");
     Object.assign(veil.style, {
       position: "fixed",
@@ -490,52 +392,100 @@ export function Gallery() {
       zIndex: "60",
       opacity: "0",
       pointerEvents: "none",
-      background: `linear-gradient(90deg, rgba(${BLUE},.35), transparent 28%, transparent 72%, rgba(${ORANGE},.35)), radial-gradient(circle at 50% 50%, #fff 0 38%, #fbfbfa 100%)`,
+      background,
     });
     document.body.append(veil);
-    const dist = (perspRef.current * r.doorWall.dw) / (1.1 * window.innerWidth);
-    c.mode = "door";
-    c.door = {
-      i,
+    return veil;
+  };
+  const fadeVeil = (veil: HTMLElement) =>
+    veil
+      .animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, delay: 150, fill: "forwards" })
+      .finished.then(
+        () => veil.remove(),
+        () => veil.remove(),
+      );
+
+  const openWork = (i: number) => {
+    const c = cam.current;
+    const s = gs.current;
+    const project = PROJECTS[i];
+    if (!s || !project || c.mode !== "free") return;
+    writeSaved(c.at);
+    const go = () => navigate({ to: "/projects/$slug", params: { slug: project.slug } });
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
+    // Walk up until the screen fills the view, then the page takes over.
+    const w = s.workCentre(i);
+    const cam3 = s.camera;
+    const hfov = 2 * Math.atan(Math.tan((cam3.fov * Math.PI) / 360) * cam3.aspect);
+    const d = 0.88 / Math.tan(hfov / 2) / 0.94;
+    const veil = makeVeil("#fcfcfc");
+    c.mode = "visit";
+    c.visit = {
       t0: performance.now(),
+      dur: VISIT_MS,
       from: { ...c.pose },
-      x1: door.x,
-      z1: -3 - dist,
-      y1: r.floorY - r.doorWall.dh / 2,
+      to: { x: w.x + w.nx * d, z: w.z, yaw: c.pose.yaw, y: 1.62 },
+      door: -1,
       veil,
-      gone: false,
       go: () => {
         go();
-        veil
-          .animate([{ opacity: 1 }, { opacity: 0 }], {
-            duration: 600,
-            delay: 150,
-            fill: "forwards",
-          })
-          .finished.then(
-            () => veil.remove(),
-            () => veil.remove(),
-          );
+        fadeVeil(veil);
       },
+      gone: false,
     };
   };
 
-  // Click a door: walk to the door wall first if you're not there yet.
-  const onDoorClick = (e: React.MouseEvent, i: number) => {
-    e.preventDefault();
+  const openDoor = (i: number) => {
     const c = cam.current;
-    if (c.drag.dist > 6) return;
-    if (doorAnim.current.parked || e.detail === 0) openDoor(i);
-    else stepTo(roomRef.current.stops.length - 1);
+    const s = gs.current;
+    if (!s || c.mode !== "free") return;
+    writeSaved(s.layout.stops.length - 1);
+    const to = i === 0 ? "/projects" : "/about";
+    const go = () => navigate({ to });
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
+    const veil = makeVeil(
+      "linear-gradient(90deg, rgba(31,44,255,.18), transparent 30%, transparent 70%, rgba(255,138,31,.2)), radial-gradient(circle at 50% 50%, #fff 0 40%, #fbfbfa 100%)",
+    );
+    c.mode = "visit";
+    c.visit = {
+      t0: performance.now(),
+      dur: DOOR_MS,
+      from: { ...c.pose },
+      to: { x: i === 0 ? -1.35 : 1.35, z: -s.layout.D + 0.25, yaw: c.pose.yaw, y: 1.3 },
+      door: i,
+      veil,
+      go: () => {
+        go();
+        fadeVeil(veil);
+      },
+      gone: false,
+    };
   };
 
-  // Keep the latest handlers for the listeners and the camera loop.
-  const handlers = useRef({ step, goIn, goOut, openPiece, lightSigns });
-  handlers.current = { step, goIn, goOut, openPiece, lightSigns };
+  // Clicking the film you're at opens it; clicking another walks you to it.
+  const clickWork = (i: number, keyboard = false) => {
+    const c = cam.current;
+    const L = gs.current?.layout;
+    if (!L) return;
+    const k = L.stops.findIndex((st) => st.kind === "work" && st.index === i);
+    const settled = c.at === k && !c.glide;
+    if (settled || keyboard) openWork(i);
+    else stepTo(k);
+  };
+  const clickDoor = (i: number, keyboard = false) => {
+    const c = cam.current;
+    const L = gs.current?.layout;
+    if (!L) return;
+    const last = L.stops.length - 1;
+    if ((c.at === last && !c.glide) || keyboard) openDoor(i);
+    else stepTo(last);
+  };
+
+  const handlers = useRef({ step, goIn, goOut, clickWork });
+  handlers.current = { step, goIn, goOut, clickWork };
 
   /* ---------- input ---------- */
 
-  // Scroll: in front of the door it moves you through it; inside, one gesture = one piece.
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
@@ -547,9 +497,14 @@ export function Gallery() {
       const now = performance.now();
       if (c.mode === "intro") {
         if (now < c.lockUntil) return;
-        c.auto = false;
-        c.pGoal = clamp(c.pGoal + d / INTRO_SCROLL, 0, 1);
         setHint(false);
+        if (c.auto && Math.sign(d) !== Math.sign(c.pGoal - c.p)) c.auto = false; // changed your mind
+        if (c.auto) return;
+        const next = clamp(c.pGoal + d / INTRO_SCROLL, 0, 1);
+        if (d > 0 && next >= AUTO_FROM) {
+          c.pGoal = 1; // far enough in: the light carries you the rest of the way
+          c.auto = true;
+        } else c.pGoal = next;
         return;
       }
       if (c.mode !== "free") return;
@@ -570,12 +525,11 @@ export function Gallery() {
     return () => el.removeEventListener("wheel", wheel);
   }, []);
 
-  // Keys: arrows, Page Up/Down and Space step; Enter opens the film you're at.
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const c = cam.current;
       const t = e.target as HTMLElement | null;
-      if (t?.closest?.("input, textarea, select")) return;
+      if (t?.closest?.("input, textarea, select, a, button")) return;
       const h = handlers.current;
       const fwd = ["ArrowDown", "ArrowRight", "PageDown", " "].includes(e.key);
       const back = ["ArrowUp", "ArrowLeft", "PageUp"].includes(e.key);
@@ -590,20 +544,18 @@ export function Gallery() {
       if (fwd || back) {
         e.preventDefault();
         h.step(fwd ? 1 : -1);
-      } else if (e.key === "Enter" && !t?.closest?.("a, button")) {
-        const piece = roomRef.current.stops[c.at]?.piece ?? -1;
-        if (piece >= 0) h.openPiece(piece);
+      } else if (e.key === "Enter") {
+        const st = gs.current?.layout.stops[c.at];
+        if (st?.kind === "work") h.clickWork(st.index, true);
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
 
-  // Drag / swipe: before the door it moves you through it; inside, one swipe = one piece.
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button > 0) return;
-    const d = cam.current.drag;
-    Object.assign(d, {
+    Object.assign(cam.current.drag, {
       on: true,
       x0: e.clientX,
       y0: e.clientY,
@@ -616,27 +568,44 @@ export function Gallery() {
   const onPointerMove = (e: React.PointerEvent) => {
     const c = cam.current;
     const d = c.drag;
-    if (!d.on) return;
-    const dy = e.clientY - d.y;
-    d.dist += Math.abs(e.clientX - d.x) + Math.abs(dy);
-    d.x = e.clientX;
-    d.y = e.clientY;
-    const el = e.currentTarget as HTMLElement;
-    if (d.dist > 6 && !el.hasPointerCapture(e.pointerId)) el.setPointerCapture(e.pointerId);
-    if (c.mode === "intro" && d.dist > 6) {
-      c.auto = false;
-      c.pGoal = clamp(c.pGoal - dy / (INTRO_SCROLL * 0.6), 0, 1); // drag up = forwards
-      setHint(false);
+    if (d.on) {
+      const dy = e.clientY - d.y;
+      d.dist += Math.abs(e.clientX - d.x) + Math.abs(dy);
+      d.x = e.clientX;
+      d.y = e.clientY;
+      const el = e.currentTarget as HTMLElement;
+      if (d.dist > 6 && !el.hasPointerCapture(e.pointerId)) el.setPointerCapture(e.pointerId);
+      if (c.mode === "intro" && d.dist > 6) {
+        c.auto = false;
+        c.pGoal = clamp(c.pGoal - dy / (INTRO_SCROLL * 0.6), 0, 1);
+        if (c.pGoal >= AUTO_FROM && dy < 0) {
+          c.pGoal = 1;
+          c.auto = true;
+        }
+        setHint(false);
+      }
+      return;
     }
+    // Hover: point at a film or door to show it can be clicked; doors open a little more.
+    if (c.mode !== "free" || e.pointerType !== "mouse" || !gs.current || !stageRef.current) return;
+    const hit = gs.current.pick(e.clientX, e.clientY, stageRef.current.getBoundingClientRect());
+    c.hover = hit?.kind === "door" ? hit.index : -1;
+    stageRef.current.style.cursor = hit ? "pointer" : "";
   };
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
     const c = cam.current;
     const d = c.drag;
     if (!d.on) return;
     d.on = false;
-    if (c.mode !== "free") return;
+    if (c.mode !== "free" || !gs.current || !stageRef.current) return;
     const dx = d.x - d.x0;
     const dy = d.y - d.y0;
+    if (d.dist <= 6) {
+      const hit = gs.current.pick(e.clientX, e.clientY, stageRef.current.getBoundingClientRect());
+      if (hit?.kind === "work") clickWork(hit.index);
+      else if (hit?.kind === "door") clickDoor(hit.index);
+      return;
+    }
     const move = d.pointer === "mouse" || Math.abs(dx) > Math.abs(dy) ? dx : dy;
     if (Math.abs(move) > 40) step(move < 0 ? 1 : -1); // swipe left/up = next
   };
@@ -645,74 +614,19 @@ export function Gallery() {
     <div
       ref={stageRef}
       aria-label="Gallery"
-      className={cn("fixed inset-0 select-none overflow-clip", inside && "cursor-grab")}
-      style={{ perspective: persp, background: "#f3f2ef", touchAction: "none" }}
+      className="fixed inset-0 select-none overflow-hidden bg-[#f2f0ec]"
+      style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={() => (cam.current.drag.on = false)}
     >
       <h1 className="sr-only">{SITE.tagline}</h1>
 
-      {/* The world. The camera loop writes its transform every frame. */}
-      <div
-        ref={worldRef}
-        className="absolute left-1/2 top-1/2 h-0 w-0"
-        // No transform here on purpose: the camera loop owns it, and a React
-        // re-render must not snap the camera back.
-        style={{ transformStyle: "preserve-3d" }}
-      >
-        <Room room={room} lit={lit} k={surfaceK} />
+      {/* The room */}
+      <canvas ref={roomCanvas} aria-hidden className="absolute inset-0 h-full w-full" />
 
-        {room.doorWall.doors.map((d, i) => (
-          <EndDoor
-            key={d.to}
-            door={d}
-            wall={room.doorWall}
-            floorY={room.floorY}
-            k={doorK}
-            lit={signs[i]}
-            interactive={inside}
-            leafRef={(side, el) => {
-              leafEls.current[i][side] = el;
-            }}
-            glowRef={(which, el) => {
-              glowEls.current[i][which] = el;
-            }}
-            onHover={(on) => {
-              doorAnim.current.hover = on ? i : -1;
-            }}
-            onFocus={() => stepTo(room.stops.length - 1)}
-            onClick={(e) => onDoorClick(e, i)}
-          />
-        ))}
-
-        {room.pieces.map((s, i) => (
-          <Artwork
-            key={PROJECTS[i].slug}
-            project={PROJECTS[i]}
-            slot={s}
-            room={room}
-            k={contentK}
-            stacked={phone}
-            hidden={phone && Math.abs(room.stops.findIndex((st) => st.piece === i) - nearStop) > 2}
-            interactive={inside}
-            frameRef={(el) => {
-              frameEls.current[i] = el;
-            }}
-            videoRef={(el) => {
-              videoEls.current[i] = el;
-            }}
-            onFocus={() => {
-              const k = room.stops.findIndex((st) => st.piece === i);
-              if (k >= 0) stepTo(k);
-            }}
-            onClick={(e) => onPieceClick(e, i)}
-          />
-        ))}
-      </div>
-
-      {/* The door, before you go through it */}
+      {/* The logo you fly into */}
       <IntroDoor
         rootRef={introRef}
         scene={scene}
@@ -722,24 +636,42 @@ export function Gallery() {
         }}
       />
 
-      {/* The prism light you pass through */}
-      <div
-        ref={flashRef}
-        aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden"
-        style={{ opacity: 0, visibility: "hidden" }}
-      >
-        {/* A clean wash of light, faintly warm on one side and cool on the other */}
-        <span
-          className="absolute inset-0"
-          style={{
-            background: `linear-gradient(90deg, rgba(${BLUE},.07), transparent 30%, transparent 70%, rgba(${ORANGE},.08)), radial-gradient(ellipse 80% 80% at 50% 50%, #fff 0 55%, #fbfbfb 100%)`,
-          }}
-        />
-      </div>
-
-      {/* Film grain over the whole home page */}
-      <FilmGrain opacity={0.1} />
+      {/* For keyboards and screen readers: every film and both doors */}
+      <nav aria-label="Works in the gallery" className="sr-only">
+        <ul>
+          {PROJECTS.map((p, i) => (
+            <li key={p.slug}>
+              <button
+                type="button"
+                tabIndex={inside ? 0 : -1}
+                onFocus={() => {
+                  const L = gs.current?.layout;
+                  const k = L?.stops.findIndex((st) => st.kind === "work" && st.index === i) ?? -1;
+                  if (k >= 0) stepTo(k);
+                }}
+                onClick={() => clickWork(i, true)}
+              >
+                {p.title}, {p.year}
+              </button>
+            </li>
+          ))}
+          {["All work", "About us"].map((label, i) => (
+            <li key={label}>
+              <button
+                type="button"
+                tabIndex={inside ? 0 : -1}
+                onFocus={() => {
+                  const L = gs.current?.layout;
+                  if (L) stepTo(L.stops.length - 1);
+                }}
+                onClick={() => clickDoor(i, true)}
+              >
+                {label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
       {/* Controls once inside */}
       <div
@@ -752,13 +684,13 @@ export function Gallery() {
           type="button"
           onClick={() => goOut(true)}
           tabIndex={inside ? 0 : -1}
-          className="tracked pointer-events-auto whitespace-nowrap rounded-md border border-black/10 bg-white/80 px-4 py-2.5 text-[10px] text-black/70 transition-colors hover:text-black"
+          className="tracked pointer-events-auto whitespace-nowrap rounded-md border border-black/10 bg-white/85 px-4 py-2.5 text-[10px] text-black/75 shadow-sm transition-colors hover:text-black"
         >
           ← Leave
         </button>
         <p
           className={cn(
-            "tracked text-center text-[10px] text-black/45 transition-opacity duration-700",
+            "tracked rounded-full bg-white/70 px-3 py-1.5 text-center text-[10px] text-black/55 transition-opacity duration-700",
             !hint && "opacity-0",
           )}
         >
@@ -771,7 +703,7 @@ export function Gallery() {
   );
 }
 
-/* ---------- the door you fly through ---------- */
+/* ---------- the logo you fly into ---------- */
 
 function IntroDoor({
   rootRef,
@@ -789,7 +721,7 @@ function IntroDoor({
   };
   const [glOk, setGlOk] = useState(true);
   useEffect(() => {
-    // The canvas sets up WebGL on mount; check whether it managed.
+    // Only give up on WebGL if it's still failing after a few frames.
     let tries = 0;
     let id = 0;
     const check = () => {
@@ -819,8 +751,6 @@ function IntroDoor({
           style={{ clipPath: "inset(0 0 44% 0)" }}
         />
       )}
-
-      {/* The landing text, set like the logo's lettering */}
       <div
         ref={set("text")}
         className="pointer-events-none absolute inset-x-0 flex flex-col items-center px-6 text-center text-black"
@@ -832,7 +762,6 @@ function IntroDoor({
           {SITE.description}
         </p>
       </div>
-
       <p
         ref={set("hint")}
         className="tracked pointer-events-none absolute inset-x-0 bottom-7 flex flex-col items-center gap-3 text-[10px] text-black/50"
@@ -849,108 +778,9 @@ function IntroDoor({
   );
 }
 
-/* ---------- room layout and the camera path ---------- */
-
-type RoomLayout = ReturnType<typeof buildRoom>;
-
-function buildRoom(count: number, vw: number, vh: number) {
-  const narrow = vw < 700;
-  // How close you stand to a film, and how far back while moving / at the doors.
-  const near = narrow ? 1150 : 900;
-  const far = narrow ? 1450 : 1250;
-  const doorDist = 1250;
-  const spacing = FRAME_W + 520;
-
-  // Three films to a wall (more if there are more than nine): the left wall first
-  // (front to back), then the back wall (left to right), then the right (back to front).
-  const per = Math.max(3, Math.ceil(count / 3));
-  const nLeft = Math.min(per, count);
-  const nBack = Math.min(per, count - nLeft);
-  const nRight = count - nLeft - nBack;
-  const sideN = Math.max(nLeft, nRight, 1);
-
-  const corner = 720; // the angled walls in the back corners
-  const cut = corner / Math.SQRT2;
-  const width = Math.max(
-    2800,
-    Math.round(vw * 1.8),
-    nBack * spacing + 2 * cut + 600,
-    2 * far + 1600, // the path stays well clear of the bench in the middle
-  );
-  const depth = Math.max(3400, 1100 + sideN * spacing + cut + 200);
-  const height = Math.max(1150, vh + 260);
-  const floorY = vh / 2; // eye level is the middle of the screen
-  const ceilY = floorY - height;
-  const midY = (floorY + ceilY) / 2;
-  const y = -40; // films hang a little above eye level
-
-  const pieces: Piece[] = [];
-  for (let i = 0; i < nLeft; i++) {
-    pieces.push({ x: -width / 2, y, z: -(1100 + i * spacing), a: 90 });
-  }
-  for (let i = 0; i < nBack; i++) {
-    pieces.push({ x: (i - (nBack - 1) / 2) * spacing, y, z: -depth, a: 0 });
-  }
-  for (let i = nRight - 1; i >= 0; i--) {
-    pieces.push({ x: width / 2, y, z: -(1100 + i * spacing), a: -90 });
-  }
-
-  // The last stop turns back to the entrance wall, with its two doors.
-  // Seen from inside (facing +z), your left is +x, so the first door goes there.
-  const dw = narrow ? 300 : 380;
-  const gap = narrow ? 150 : 280;
-  const doorWall = {
-    dw,
-    dh: dw * 2,
-    doors: DOORS.map((d, i) => ({ ...d, x: ((i === 0 ? 1 : -1) * (dw + gap)) / 2 })),
-  };
-
-  // One stop in front of each film. Distance along the path is "s".
-  // On wide screens the label hangs beside the film, so stand centred on both.
-  const along = narrow ? 0 : (LABEL_GAP + LABEL_W) / 2;
-  // First stop: the centre of the gallery, looking down the room. Then the films.
-  const centre: Stop = { x: 0, z: -900, yaw: 0, s: 0, piece: -2 }; // the bench sits well ahead
-  const filmStops: Stop[] = pieces.map((p, i) => ({
-    x: p.x + Math.sin(rad(p.a)) * far + Math.cos(rad(p.a)) * along,
-    z: p.z + Math.cos(rad(p.a)) * far - Math.sin(rad(p.a)) * along,
-    yaw: -rad(p.a),
-    s: 0,
-    piece: i,
-  }));
-  const stops: Stop[] = [
-    centre,
-    ...filmStops,
-    { x: 0, z: -doorDist, yaw: Math.PI, s: 0, piece: -1 },
-  ];
-  for (let i = 1; i < stops.length; i++) {
-    const a = stops[i - 1];
-    const b = stops[i];
-    b.yaw = nearestAngle(b.yaw, a.yaw); // keep turning the same way round
-    // Turning counts as distance too, so corners take a moment.
-    b.s = a.s + Math.max(420, Math.hypot(b.x - a.x, b.z - a.z) + Math.abs(b.yaw - a.yaw) * 520);
-  }
-  const span = stops.length > 1 ? stops[stops.length - 1].s / (stops.length - 1) : 1000;
-
-  return {
-    width,
-    height,
-    depth,
-    floorY,
-    ceilY,
-    midY,
-    corner,
-    cut,
-    near,
-    far,
-    pieces,
-    doorWall,
-    stops,
-    span,
-  };
-}
+/* ---------- the path through the room ---------- */
 
 function poseAt(stops: Stop[], s: number): Pose {
-  if (!stops.length) return { x: 0, z: -700, yaw: 0 };
   if (s <= stops[0].s) return stops[0];
   for (let i = 0; i < stops.length - 1; i++) {
     const a = stops[i];
@@ -967,10 +797,10 @@ function poseAt(stops: Stop[], s: number): Pose {
   return stops[stops.length - 1];
 }
 
-// Step in from the path towards the wall by how much you're leaning in.
-function leaned(r: RoomLayout, p: Pose, lean: number): Pose {
-  const d = (r.far - r.near) * smooth(lean);
-  return { x: p.x + Math.sin(p.yaw) * d, z: p.z - Math.cos(p.yaw) * d, yaw: p.yaw };
+// Step forwards from the path by how much you're leaning in at a film.
+function leaned(L: Layout, p: Pose, lean: number): Pose {
+  const d = (L.far - L.near) * smooth(lean);
+  return { x: p.x - Math.sin(p.yaw) * d, z: p.z - Math.cos(p.yaw) * d, yaw: p.yaw };
 }
 
 function nearestStop(stops: Stop[], s: number) {
@@ -981,7 +811,7 @@ function nearestStop(stops: Stop[], s: number) {
   return best;
 }
 
-/* ---------- saving your place when you open a page ---------- */
+/* ---------- remembering your place when you open a page ---------- */
 
 function readSaved(): number | null {
   try {
@@ -996,7 +826,7 @@ function writeSaved(stop: number) {
   try {
     sessionStorage.setItem(SAVE_KEY, String(stop));
   } catch {
-    /* private mode: you'll just start at the door next time */
+    /* private mode: you'll just start at the logo next time */
   }
 }
 function clearSaved() {
@@ -1005,798 +835,4 @@ function clearSaved() {
   } catch {
     /* ignore */
   }
-}
-
-/* The film grows from the wall to fill the screen, then the project page takes over. */
-function zoomInto(el: HTMLElement, go: () => void) {
-  const r = el.getBoundingClientRect();
-  const veil = document.createElement("div");
-  Object.assign(veil.style, {
-    position: "fixed",
-    inset: "0",
-    background: "#fcfcfc",
-    zIndex: "60",
-    opacity: "0",
-    pointerEvents: "none",
-  });
-  const box = el.cloneNode(true) as HTMLElement;
-  Object.assign(box.style, {
-    position: "fixed",
-    left: "0px",
-    top: "0px",
-    margin: "0",
-    zIndex: "61",
-    overflow: "hidden",
-    pointerEvents: "none",
-    transform: "none",
-  });
-  document.body.append(veil, box);
-  const cleanup = () => {
-    veil.remove();
-    box.remove();
-  };
-  veil.animate([{ opacity: 0 }, { opacity: 1 }], {
-    duration: 260,
-    easing: "cubic-bezier(0.3, 0, 0.2, 1)",
-    fill: "forwards",
-  });
-  box
-    .animate(
-      [
-        { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` },
-        {
-          left: "0px",
-          top: "0px",
-          width: `${window.innerWidth}px`,
-          height: `${window.innerHeight}px`,
-        },
-      ],
-      { duration: 720, easing: EASE_ZOOM, fill: "forwards" },
-    )
-    .finished.then(() => {
-      go();
-      box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, fill: "forwards" });
-      veil
-        .animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, delay: 120, fill: "forwards" })
-        .finished.then(cleanup, cleanup);
-    })
-    .catch(() => {
-      cleanup();
-      go();
-    });
-}
-
-/* ---------- 3D building blocks ---------- */
-
-/*
-  Memory matters here. Every 3D surface becomes its own GPU texture, sized by
-  its CSS size times the screen's pixel density; a full-size floor on a 3x
-  iPhone alone is ~320 MB, and iOS Safari kills the tab well before the room
-  adds up. So big plain surfaces are drawn small and scaled up (`k`). They are
-  smooth gradients, so they look identical. Anything with detail (text,
-  artwork, tile lines) is drawn at full resolution.
-*/
-
-// A flat panel centred at (x, y, z), turned by `turn`, drawn at 1/k resolution.
-function panel(
-  w: number,
-  h: number,
-  x: number,
-  y: number,
-  z: number,
-  turn: string,
-  k = 1,
-): CSSProperties {
-  return {
-    position: "absolute",
-    left: -w / k / 2,
-    top: -h / k / 2,
-    width: w / k,
-    height: h / k,
-    transform: `translate3d(${x}px, ${y}px, ${z}px) ${turn} scale(${k})`,
-  };
-}
-
-// Walls are a touch dim, as in a real gallery, so the spotlit pools stand out.
-// Each gets darker corners, a soft shadow where it meets the floor, and a
-// slightly different light level so the room's shape reads.
-const wall = (tone: number) =>
-  `linear-gradient(90deg, rgba(0,0,0,.09), transparent 7%, transparent 93%, rgba(0,0,0,.09)), linear-gradient(180deg, rgba(0,0,0,.05) 0%, transparent 18%, transparent 78%, rgba(0,0,0,.06) 94%, rgba(0,0,0,.16) 100%), hsl(40 7% ${tone}%)`;
-const WALL = wall(87);
-const SIDE_WALL = wall(84);
-const CORNER_WALL = wall(85.5);
-
-/* Laid out at full size, painted k times smaller and scaled back up (phones). */
-function Lowres({
-  w,
-  h,
-  k,
-  children,
-}: {
-  w: number;
-  h: number;
-  k: number;
-  children: React.ReactNode;
-}) {
-  if (k === 1) return <>{children}</>;
-  return (
-    <div style={{ width: w, height: h, transform: `scale(${1 / k})`, transformOrigin: "0 0" }}>
-      {children}
-    </div>
-  );
-}
-
-function Room({ room, lit, k }: { room: RoomLayout; lit: boolean; k: number }) {
-  const { width: W, height: H, depth: D, floorY, ceilY, midY, corner, cut } = room;
-  const lights = Math.max(3, Math.floor((D - 900) / 900) + 1);
-  const tile = 400;
-  const linesX = Math.floor(W / 2 / tile);
-  const linesZ = Math.floor(D / tile);
-
-  return (
-    <>
-      {/* Floor: a soft wash (drawn small) ... */}
-      <div
-        style={{
-          ...panel(W, D, 0, floorY, -D / 2, "rotateX(90deg)", k),
-          background:
-            "radial-gradient(ellipse 45% 60% at 50% 40%, rgba(255,255,255,.8), transparent 75%), #dcd9d3",
-        }}
-      />
-      {/* ... with crisp tile joints on top, each its own thin full-resolution strip */}
-      {Array.from({ length: linesX * 2 + 1 }, (_, i) => (
-        <div
-          key={`x${i}`}
-          aria-hidden
-          style={{
-            ...panel(2, D, (i - linesX) * tile, floorY - 0.5, -D / 2, "rotateX(90deg)"),
-            background: "rgba(0,0,0,.07)",
-          }}
-        />
-      ))}
-      {Array.from({ length: linesZ }, (_, i) => (
-        <div
-          key={`z${i}`}
-          aria-hidden
-          style={{
-            ...panel(W, 2, 0, floorY - 0.5, -(i + 1) * tile, "rotateX(90deg)"),
-            background: "rgba(0,0,0,.07)",
-          }}
-        />
-      ))}
-      {/* Ceiling */}
-      <div
-        style={{
-          ...panel(W, D, 0, ceilY, -D / 2, "rotateX(-90deg)", k),
-          background:
-            "linear-gradient(90deg, rgba(0,0,0,.06), transparent 18%, transparent 82%, rgba(0,0,0,.06)), #e9e8e5",
-        }}
-      />
-      {/* Suspended linear light fixtures, switching on one after another */}
-      {Array.from({ length: lights }, (_, i) => (
-        <CeilingLight
-          key={i}
-          len={Math.min(W * 0.46, 2400)}
-          z={-650 - i * 900}
-          ceilY={ceilY}
-          lit={lit}
-          delay={i * 140}
-        />
-      ))}
-      {/* Side walls */}
-      <div
-        style={{
-          ...panel(D, H, -W / 2, midY, -D / 2, "rotateY(90deg)", k),
-          background: SIDE_WALL,
-        }}
-      />
-      <div
-        style={{
-          ...panel(D, H, W / 2, midY, -D / 2, "rotateY(-90deg)", k),
-          background: SIDE_WALL,
-        }}
-      />
-      {/* Back wall and the two angled corners */}
-      <div style={{ ...panel(W - cut * 2, H, 0, midY, -D, "", k), background: WALL }} />
-      <div
-        style={{
-          ...panel(corner, H, -W / 2 + cut / 2, midY, -D + cut / 2, "rotateY(45deg)", k),
-          background: CORNER_WALL,
-        }}
-      />
-      <div
-        style={{
-          ...panel(corner, H, W / 2 - cut / 2, midY, -D + cut / 2, "rotateY(-45deg)", k),
-          background: CORNER_WALL,
-        }}
-      />
-      {/* Entrance wall, facing into the room: the end doors hang on it */}
-      <div style={{ ...panel(W, H, 0, midY, 0, "rotateY(180deg)", k), background: WALL }} />
-
-      {/* Shadow gap where each wall meets the floor */}
-      {[
-        { len: D, x: -W / 2 + 1, z: -D / 2, a: 90 },
-        { len: D, x: W / 2 - 1, z: -D / 2, a: -90 },
-        { len: W - cut * 2, x: 0, z: -D + 1, a: 0 },
-        { len: W, x: 0, z: -1, a: 180 },
-      ].map((b, i) => (
-        <div
-          key={`base${i}`}
-          aria-hidden
-          style={{
-            ...panel(b.len, 12, b.x, floorY - 6, b.z, `rotateY(${b.a}deg)`),
-            background: "linear-gradient(180deg, #c9c5bd, #b3aea5)",
-          }}
-        />
-      ))}
-
-      {/* Ceiling track: a rail along each wall, a black spot head over every film */}
-      {[
-        { x: -W / 2 + 700, len: D - 400, along: "z" },
-        { x: W / 2 - 700, len: D - 400, along: "z" },
-      ].map((r, i) => (
-        <div
-          key={`rail${i}`}
-          aria-hidden
-          style={{
-            ...panel(14, r.len, r.x, ceilY + 2, -D / 2 - 100, "rotateX(-90deg)"),
-            background: "#1c1c1c",
-          }}
-        />
-      ))}
-      <div
-        aria-hidden
-        style={{
-          ...panel(W - 1600, 14, 0, ceilY + 2, -D + 700, "rotateX(-90deg)"),
-          background: "#1c1c1c",
-        }}
-      />
-      {room.pieces.map((pc, i) => {
-        // On the rail, 700 out from the wall, angled at the film.
-        const hx = pc.x + Math.sin(rad(pc.a)) * 700;
-        const hz = pc.z + Math.cos(rad(pc.a)) * 700;
-        return (
-          <div
-            key={`spot${i}`}
-            aria-hidden
-            style={{
-              ...panel(46, 90, hx, ceilY + 60, hz, `rotateY(${pc.a + 180}deg) rotateX(-28deg)`),
-              background: "linear-gradient(90deg, #0d0d0d, #2a2a2a 45%, #111)",
-              borderRadius: 10,
-            }}
-          />
-        );
-      })}
-
-      {/* A gallery bench in the middle of the room */}
-      <Bench x={0} z={-D / 2} floorY={floorY} />
-    </>
-  );
-}
-
-/*
-  A linear light hanging below the ceiling on two cables: an aluminium box
-  with a glowing diffuser underneath, and its glow spread across the ceiling.
-*/
-function CeilingLight({
-  len,
-  z,
-  ceilY,
-  lit,
-  delay,
-}: {
-  len: number;
-  z: number;
-  ceilY: number;
-  lit: boolean;
-  delay: number;
-}) {
-  const drop = 90; // how far it hangs
-  const w = 120; // width of the fixture
-  const h = 34; // height of its box
-  const top = ceilY + drop;
-  const bottom = top + h;
-  const fade = (on: number, off: number): React.CSSProperties => ({
-    opacity: lit ? on : off,
-    transition: lit ? `opacity .9s ease ${delay}ms` : "opacity .4s ease",
-  });
-  const metal = "linear-gradient(180deg, #e2e2e0, #c4c3bf)";
-  return (
-    <>
-      {/* Glow thrown up onto the ceiling */}
-      <div
-        aria-hidden
-        style={{
-          ...panel(len * 1.5, 900, 0, ceilY + 1, z, "rotateX(-90deg)", 4),
-          background:
-            "radial-gradient(ellipse 50% 50% at 50% 50%, rgba(255,255,255,.95), rgba(255,255,255,.4) 45%, transparent 72%)",
-          ...fade(1, 0),
-        }}
-      />
-      {/* Cables */}
-      {[-0.4, 0.4].map((f) => (
-        <div
-          key={f}
-          aria-hidden
-          style={{ ...panel(2, drop, len * f, ceilY + drop / 2, z, ""), background: "#6d6d6d" }}
-        />
-      ))}
-      {/* The box: two long sides and two ends */}
-      <div
-        aria-hidden
-        style={{ ...panel(len, h, 0, top + h / 2, z + w / 2, ""), background: metal }}
-      />
-      <div
-        aria-hidden
-        style={{
-          ...panel(len, h, 0, top + h / 2, z - w / 2, "rotateY(180deg)"),
-          background: metal,
-        }}
-      />
-      {[1, -1].map((sd) => (
-        <div
-          key={sd}
-          aria-hidden
-          style={{
-            ...panel(w, h, (sd * len) / 2, top + h / 2, z, `rotateY(${sd * 90}deg)`),
-            background: metal,
-          }}
-        />
-      ))}
-      {/* The diffuser underneath: dim grey when off, glowing white when on */}
-      <div
-        aria-hidden
-        style={{ ...panel(len, w, 0, bottom, z, "rotateX(-90deg)"), background: "#c9c8c4" }}
-      />
-      <div
-        aria-hidden
-        style={{
-          ...panel(len, w, 0, bottom + 0.5, z, "rotateX(-90deg)"),
-          background: "linear-gradient(180deg, #f1f1ef 0%, #fff 22%, #fff 78%, #f1f1ef 100%)",
-          boxShadow: "0 0 40px 10px rgba(255,255,255,.9)",
-          ...fade(1, 0),
-        }}
-      />
-    </>
-  );
-}
-
-/* A long upholstered bench: a box seen from any side, with a shadow beneath. */
-function Bench({ x, z, floorY }: { x: number; z: number; floorY: number }) {
-  const L = 900; // length
-  const Hh = 150; // height
-  const Dd = 300; // depth
-  const top = floorY - Hh;
-  const side = "linear-gradient(180deg, #3a3633, #23201e)";
-  return (
-    <>
-      <div
-        aria-hidden
-        style={{
-          ...panel(L + 500, Dd + 500, x, floorY - 0.8, z, "rotateX(90deg)", 4),
-          background:
-            "radial-gradient(ellipse 48% 44% at 50% 50%, rgba(0,0,0,.28), transparent 72%)",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          ...panel(L, Dd, x, top, z, "rotateX(90deg)", 2),
-          background: "linear-gradient(180deg, #9a7b5c, #8a6c4f 45%, #7a5e44)", // oak top
-          borderRadius: 6,
-        }}
-      />
-      {[1, -1].map((s) => (
-        <div
-          key={`f${s}`}
-          aria-hidden
-          style={{
-            ...panel(
-              L,
-              Hh,
-              x,
-              floorY - Hh / 2,
-              z + (s * Dd) / 2,
-              s > 0 ? "" : "rotateY(180deg)",
-              2,
-            ),
-            background: side,
-          }}
-        />
-      ))}
-      {[1, -1].map((s) => (
-        <div
-          key={`e${s}`}
-          aria-hidden
-          style={{
-            ...panel(Dd, Hh, x + (s * L) / 2, floorY - Hh / 2, z, `rotateY(${s * 90}deg)`, 2),
-            background: side,
-          }}
-        />
-      ))}
-    </>
-  );
-}
-
-/* ---------- the doors at the end of the walk ---------- */
-
-type DoorWall = RoomLayout["doorWall"];
-
-/*
-  One door on the end wall: dark leaves with prism light leaking through the
-  gap, a glow on the wall around it and on the floor in front, and a label
-  above. The camera loop swings the leaves and brightens the glow (through the
-  refs) so they never re-render React.
-*/
-function EndDoor({
-  door,
-  wall,
-  floorY,
-  k,
-  lit,
-  interactive,
-  leafRef,
-  glowRef,
-  onHover,
-  onFocus,
-  onClick,
-}: {
-  door: DoorWall["doors"][number];
-  wall: DoorWall;
-  floorY: number;
-  k: number;
-  lit: boolean;
-  interactive: boolean;
-  leafRef: (side: 0 | 1, el: HTMLElement | null) => void;
-  glowRef: (which: 0 | 1, el: HTMLElement | null) => void;
-  onHover: (on: boolean) => void;
-  onFocus: () => void;
-  onClick: (e: React.MouseEvent) => void;
-}) {
-  const { dw, dh } = wall;
-  const labelW = dw * 2.2;
-  const labelH = 150;
-  const hover = {
-    onPointerEnter: (e: React.PointerEvent) => e.pointerType === "mouse" && onHover(true),
-    onPointerLeave: () => onHover(false),
-  };
-
-  return (
-    <>
-      {/* Prism light thrown onto the floor (the floor isn't turned to face you,
-          so blue sits at 66% here to land on your left) */}
-      <div
-        ref={(el) => glowRef(0, el)}
-        aria-hidden
-        style={{
-          ...panel(dw * 2.4, 760, door.x, floorY - 1, -380, "rotateX(90deg)", 4),
-          background: `radial-gradient(ellipse 14% 80% at 50% 100%, rgba(255,255,255,.95), transparent 70%), radial-gradient(ellipse 34% 75% at 66% 100%, rgba(${BLUE},.55), transparent 70%), radial-gradient(ellipse 34% 75% at 34% 100%, rgba(${ORANGE},.55), transparent 70%)`,
-          opacity: 0.35,
-          pointerEvents: "none",
-        }}
-      />
-      {/* ... and onto the wall around the door */}
-      <div
-        ref={(el) => glowRef(1, el)}
-        aria-hidden
-        style={{
-          ...panel(dw * 2.6, dh * 1.3, door.x, floorY - dh * 0.55, -2, "rotateY(180deg)", 4),
-          background: `radial-gradient(ellipse 16% 40% at 50% 55%, rgba(255,255,255,.85), transparent 72%), radial-gradient(ellipse 26% 46% at 40% 50%, rgba(${BLUE},.2), transparent 72%), radial-gradient(ellipse 26% 46% at 60% 50%, rgba(${ORANGE},.2), transparent 72%)`,
-          opacity: 0.55,
-          pointerEvents: "none",
-        }}
-      >
-        {/* Soft rays leaving the top of the gap: blue up-left, orange up-right */}
-        {[
-          { deg: -152, rgb: BLUE, core: "205,240,255" },
-          { deg: -28, rgb: ORANGE, core: "255,236,212" },
-        ].map((r) => (
-          <span
-            key={r.deg}
-            className="absolute"
-            style={{
-              left: "50%",
-              top: "15.4%",
-              width: "48%",
-              height: "26%",
-              transformOrigin: "0 50%",
-              transform: `translateY(-50%) rotate(${r.deg}deg)`,
-              background: `radial-gradient(ellipse 100% 50% at 0% 50%, rgba(${r.core},.85), rgba(${r.rgb},.45) 30%, rgba(${r.rgb},.12) 60%, transparent 80%)`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* The door. Its leaves sit in 3D, so this keeps preserve-3d. */}
-      <Link
-        to={door.to}
-        aria-label={door.label}
-        tabIndex={interactive ? 0 : -1}
-        onClick={onClick}
-        onFocus={onFocus}
-        draggable={false}
-        {...hover}
-        className="block outline-none focus-visible:ring-4 focus-visible:ring-black/30"
-        style={{
-          // In front of the wall (z 0), with the glow between them.
-          ...panel(dw, dh, door.x, floorY - dh / 2, -3, "rotateY(180deg)", k),
-          transformStyle: "preserve-3d",
-          boxShadow: `0 0 0 ${8 / k}px #141414`,
-        }}
-      >
-        {/* Pure light behind the leaves */}
-        <span
-          aria-hidden
-          className="absolute inset-0"
-          style={{
-            transform: "translateZ(-1px)",
-            background: `linear-gradient(90deg, rgb(${BLUE}) 0%, rgb(${CYAN}) 18%, #fff 40%, #fff 60%, #ffc48a 80%, rgb(${ORANGE}) 100%)`,
-          }}
-        />
-        {([0, 1] as const).map((side) => (
-          <span
-            key={side}
-            ref={(el) => leafRef(side, el)}
-            aria-hidden
-            className="absolute top-0 h-full w-1/2"
-            style={{
-              [side === 0 ? "left" : "right"]: 0,
-              transformOrigin: side === 0 ? "0% 50%" : "100% 50%",
-              background:
-                side === 0
-                  ? "linear-gradient(90deg, #070707, #141414)"
-                  : "linear-gradient(270deg, #070707, #141414)",
-              boxShadow: "inset 0 0 0 1px rgba(255,255,255,.04)",
-            }}
-          >
-            {/* Inset panel */}
-            <span
-              className="absolute"
-              style={{
-                left: "13%",
-                right: "13%",
-                top: "7%",
-                bottom: "9%",
-                border: "1px solid rgba(255,255,255,.06)",
-              }}
-            />
-            {/* As in the logo: light pouring over the top inner corner, blue on the left
-                leaf and orange on the right, white at the gap, fading down into black */}
-            <span
-              className="absolute inset-0"
-              style={{
-                background:
-                  side === 0
-                    ? `radial-gradient(ellipse 130% 42% at 100% 0%, rgba(255,255,255,.95) 0%, rgba(205,240,255,.9) 8%, rgba(${CYAN},.85) 18%, rgba(${BLUE},.7) 34%, rgba(${BLUE},.22) 55%, transparent 72%)`
-                    : `radial-gradient(ellipse 130% 42% at 0% 0%, rgba(255,255,255,.95) 0%, rgba(255,236,212,.9) 8%, rgba(255,170,70,.85) 18%, rgba(${ORANGE},.7) 34%, rgba(220,90,20,.22) 55%, transparent 72%)`,
-              }}
-            />
-            {/* Light catching the inner edge: blue on the left leaf, orange on the right */}
-            <span
-              className="absolute top-0 h-full w-[7%]"
-              style={{
-                [side === 0 ? "right" : "left"]: 0,
-                background: `linear-gradient(${side === 0 ? 90 : 270}deg, transparent, rgba(${side === 0 ? CYAN : ORANGE},.55))`,
-              }}
-            />
-            {/* Bar handle */}
-            <span
-              className="absolute rounded-[2px]"
-              style={{
-                top: "36%",
-                height: "26%",
-                width: "3.6%",
-                [side === 0 ? "right" : "left"]: "11%",
-                background: "linear-gradient(90deg, #8d8d8d, #e9e9e9 45%, #9d9d9d)",
-                boxShadow: "0 2px 4px rgba(0,0,0,.4)",
-              }}
-            />
-          </span>
-        ))}
-        {/* Light leaking through where the leaves meet */}
-        <span
-          aria-hidden
-          className="absolute bottom-0 left-1/2 top-0 w-[1.4%] -translate-x-1/2 bg-white"
-          style={{ boxShadow: "0 0 10px 3px rgba(255,255,255,.95)" }}
-        />
-      </Link>
-
-      {/* Label above: pale until you arrive, then dark with the light-beam underline */}
-      <Link
-        to={door.to}
-        tabIndex={-1}
-        aria-hidden
-        onClick={onClick}
-        draggable={false}
-        {...hover}
-        style={panel(labelW, labelH, door.x, floorY - dh - 40 - labelH / 2, -3, "rotateY(180deg)")}
-      >
-        <span className="flex h-full items-end justify-center">
-          <span className="inline-block">
-            <span
-              className="block whitespace-nowrap font-medium leading-none tracking-tight"
-              style={{
-                fontSize: dw < 340 ? 60 : 76,
-                color: lit ? "#0a0a0a" : "rgba(10,10,10,.22)",
-                transition: "color .6s",
-              }}
-            >
-              {door.label}
-            </span>
-            <span
-              className="mt-3 block h-[6px] rounded-full"
-              style={{
-                background: "var(--prism)",
-                transform: lit ? "none" : "scaleX(0)",
-                transformOrigin: "0 50%",
-                transition: `transform .7s ${EASE_TEXT_IN} .15s`,
-              }}
-            />
-          </span>
-        </span>
-      </Link>
-    </>
-  );
-}
-
-/* ---------- a film on the wall ---------- */
-
-const LABEL_W = 260; // the museum label beside each film
-const LABEL_GAP = 70;
-
-function Artwork({
-  project,
-  slot,
-  room,
-  k,
-  stacked,
-  hidden,
-  interactive,
-  frameRef,
-  videoRef,
-  onFocus,
-  onClick,
-}: {
-  project: Project;
-  slot: Piece;
-  room: RoomLayout;
-  k: number;
-  stacked: boolean; // phones: label under the film instead of beside it
-  hidden: boolean;
-  interactive: boolean;
-  frameRef: (el: HTMLElement | null) => void;
-  videoRef: (el: HTMLVideoElement | null) => void;
-  onFocus: () => void;
-  onClick: (e: React.MouseEvent) => void;
-}) {
-  const a = rad(slot.a);
-  // Out from the wall, and along it to the right as you face it.
-  const nx = Math.sin(a);
-  const nz = Math.cos(a);
-  const tx = Math.cos(a);
-  const tz = -Math.sin(a);
-  const at = (out: number, along: number) => ({
-    x: slot.x + nx * out + tx * along,
-    z: slot.z + nz * out + tz * along,
-  });
-  const turn = `rotateY(${slot.a}deg)`;
-  const { floorY, ceilY } = room;
-
-  // The film and its label sit in one row; shift it so the film is centred on its spot.
-  const LABEL_H = 150;
-  const rowW = stacked ? FRAME_W : FRAME_W + LABEL_GAP + LABEL_W;
-  const rowH = stacked ? FRAME_H + 28 + 36 + LABEL_H : FRAME_H + 28;
-  const row = at(4, (rowW - FRAME_W) / 2);
-  const rowY = stacked ? slot.y + 14 + (36 + LABEL_H) / 2 : slot.y + 14;
-
-  // Spotlight: a scallop of light running down from the ceiling, pooling on the film.
-  const spotTop = ceilY;
-  const spotBottom = slot.y + FRAME_H / 2 + 260;
-  const spot = at(1, 0);
-  // Reflection in the polished floor, just in front of the wall.
-  const refl = at(260, 0);
-  const vis: React.CSSProperties = hidden ? { visibility: "hidden" } : {};
-
-  return (
-    <>
-      <div
-        aria-hidden
-        style={{
-          ...panel(
-            FRAME_W * 2.2,
-            spotBottom - spotTop,
-            spot.x,
-            (spotTop + spotBottom) / 2,
-            spot.z,
-            turn,
-            4,
-          ),
-          background:
-            "radial-gradient(ellipse 26% 48% at 50% 0%, rgba(255,252,246,.9), rgba(255,250,242,.35) 50%, transparent 74%), radial-gradient(ellipse 38% 36% at 50% 62%, #fffdf8, rgba(255,251,244,.85) 35%, rgba(255,250,242,.35) 62%, transparent 80%)",
-          ...vis,
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          ...panel(FRAME_W * 1.1, 520, refl.x, floorY - 0.7, refl.z, `${turn} rotateX(90deg)`, 4),
-          background:
-            "linear-gradient(180deg, rgba(25,25,30,.2), rgba(25,25,30,.06) 40%, transparent 75%)",
-          maskImage: "linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent)",
-          ...vis,
-        }}
-      />
-      <div style={{ ...panel(rowW, rowH, row.x, rowY, row.z, turn, k), ...vis }}>
-        <Lowres w={rowW} h={rowH} k={k}>
-          <Link
-            to="/projects/$slug"
-            params={{ slug: project.slug }}
-            draggable={false}
-            tabIndex={interactive ? 0 : -1}
-            onFocus={onFocus}
-            onClick={onClick}
-            className={cn(
-              "group flex outline-none",
-              stacked ? "flex-col items-start pt-[14px]" : "items-center",
-            )}
-            style={{ gap: stacked ? 36 : LABEL_GAP, width: rowW, height: rowH }}
-            aria-label={`${project.title}, ${project.year}`}
-          >
-            {/* The film, in a thin black bezel */}
-            <span
-              ref={frameRef}
-              className="relative block shrink-0 overflow-hidden bg-black transition-transform duration-500 group-hover:-translate-y-1.5 group-focus-visible:ring-4 group-focus-visible:ring-black/30"
-              style={{
-                width: FRAME_W,
-                height: FRAME_H,
-                border: "14px solid #0b0b0b",
-                boxShadow:
-                  "inset 0 0 0 1px rgba(255,255,255,.06), 0 22px 36px -14px rgba(0,0,0,.45), 0 4px 10px rgba(0,0,0,.18)",
-              }}
-            >
-              {project.trailer ? (
-                <video
-                  ref={videoRef}
-                  src={project.trailer}
-                  poster={project.image}
-                  muted
-                  loop
-                  playsInline
-                  preload="none"
-                  className="h-full w-full object-cover"
-                />
-              ) : project.image ? (
-                <img
-                  src={project.image}
-                  alt=""
-                  draggable={false}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <Poster title={project.title} live />
-              )}
-            </span>
-            {/* Museum label */}
-            <span
-              className="block shrink-0 bg-[#fbfaf7] text-left text-black"
-              style={{
-                width: LABEL_W,
-                padding: "22px 22px 24px",
-                boxShadow: "0 1px 2px rgba(0,0,0,.12), 0 6px 14px -8px rgba(0,0,0,.25)",
-              }}
-            >
-              <span className="block text-[20px] font-medium leading-tight">{project.title}</span>
-              <span className="mt-1 block text-[14px] text-black/55">
-                {project.year}
-                {project.client ? `, for ${project.client}` : ""}
-              </span>
-              <span className="mt-4 block text-[13px] leading-snug text-black/45">
-                {project.tags.join(", ")}
-              </span>
-            </span>
-          </Link>
-        </Lowres>
-      </div>
-    </>
-  );
 }
