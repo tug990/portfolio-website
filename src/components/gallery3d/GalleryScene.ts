@@ -6,14 +6,11 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import type { Project } from "@/content/projects";
 import {
   doorLightTexture,
   leafTextures,
   poolTexture,
-  rainbowTexture,
-  slabGlowTexture,
   skylightTexture,
   textTexture,
   wallWashTexture,
@@ -29,8 +26,8 @@ import {
   Every surface is smooth and seamless. Light does the work: a recessed
   spotlight on every screen (casting its shadow on the wall), a long skylight
   down the ceiling, a line of warm light under every wall so the walls seem to
-  float, a glass light-gate sculpture after the logo, throwing a rainbow on the floor, and the
-  doors' prism light. The polished floor reflects the room on capable devices.
+  float, and the doors' prism light. The floor is smooth honed stone: solid and
+  matte, with no mirror reflections.
   A finishing pass adds glow on what emits light and a gentle vignette.
 */
 
@@ -147,54 +144,6 @@ export function buildLayout(count: number, aspect: number, front: number) {
 }
 export type Layout = ReturnType<typeof buildLayout>;
 
-/*
-  The floor's reflection, softly blurred: a gaussian over 7 x 9 taps, stretched
-  a little along the line of sight the way reflections on a polished floor
-  smear. Hard edges in the reflected room become soft, so no lines show.
-*/
-const SoftReflectorShader = {
-  name: "SoftReflectorShader",
-  uniforms: {
-    color: { value: null as THREE.Color | null },
-    tDiffuse: { value: null as THREE.Texture | null },
-    textureMatrix: { value: null as THREE.Matrix4 | null },
-    uTexel: { value: new THREE.Vector2(1 / 512, 1 / 512) },
-  },
-  vertexShader: /* glsl */ `
-    uniform mat4 textureMatrix;
-    varying vec4 vUv;
-    #include <common>
-    #include <logdepthbuf_pars_vertex>
-    void main() {
-      vUv = textureMatrix * vec4(position, 1.0);
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      #include <logdepthbuf_vertex>
-    }`,
-  fragmentShader: /* glsl */ `
-    uniform vec3 color;
-    uniform sampler2D tDiffuse;
-    uniform vec2 uTexel;
-    varying vec4 vUv;
-    #include <logdepthbuf_pars_fragment>
-    void main() {
-      #include <logdepthbuf_fragment>
-      vec2 uv = vUv.xy / vUv.w;
-      vec3 sum = vec3(0.0);
-      float total = 0.0;
-      for (int x = -3; x <= 3; x++) {
-        for (int y = -4; y <= 4; y++) {
-          vec2 o = vec2(float(x), float(y));
-          float w = exp(-dot(o, o) / 7.0);
-          sum += texture2D(tDiffuse, uv + o * uTexel * vec2(2.2, 3.4)).rgb * w;
-          total += w;
-        }
-      }
-      gl_FragColor = vec4(sum / total * color * 1.6, 1.0);
-      #include <tonemapping_fragment>
-      #include <colorspace_fragment>
-    }`,
-};
-
 /* Finishing: just a gentle vignette. (No grain or lens fringing: the room stays smooth.) */
 const FilmShader = {
   uniforms: {
@@ -278,7 +227,6 @@ export class GalleryScene {
   private doors: DoorMesh[] = [];
   private pickables: THREE.Object3D[] = [];
   private disposables: { dispose: () => void }[] = [];
-  private reflector?: Reflector;
   private raycaster = new THREE.Raycaster();
   private hq: boolean;
   layout: Layout;
@@ -367,43 +315,22 @@ export class GalleryScene {
     ceiling.rotation.x = Math.PI / 2;
     this.scene.add(ceiling);
 
-    // A seamless floor of dark polished resin: the white walls hover over it
+    // A seamless floor of smooth honed stone: solid and matte, so it never
+    // reads as water. Light falls on it softly; nothing mirrors in it.
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x3b3936,
-      // Without the mirror (phones), a satin finish: the skylight spreads into a
-      // soft sheen instead of a hard white streak.
-      roughness: this.hq ? 0.2 : 0.42,
+      color: 0x6f6b65,
+      roughness: 0.78,
       metalness: 0,
-      envMapIntensity: 0.6,
+      envMapIntensity: 0.35,
     });
     this.disposables.push(floorMat);
     const floor = plane(W, len, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(0, 0, mid);
-    if (this.hq) {
-      // A mirror just under the floor, blurred so it reads as polished resin
-      // (soft glows, no hard edges), seen through the floor.
-      const rg = new THREE.PlaneGeometry(W, len);
-      this.disposables.push(rg);
-      this.reflector = new Reflector(rg, {
-        textureWidth: 1024,
-        textureHeight: 1024,
-        color: new THREE.Color(0x8a8784),
-        shader: SoftReflectorShader,
-      });
-      this.reflector.rotation.x = -Math.PI / 2;
-      this.reflector.position.set(0, -0.001, mid);
-      this.scene.add(this.reflector);
-      floorMat.transparent = true;
-      floorMat.opacity = 0.7;
-      // Draw the floor before the glows that lie on it, or it would cover them.
-      floor.renderOrder = -1;
-    }
     this.scene.add(floor);
 
     this.addFloatingWalls(W, D, FRONT, len, mid);
     this.addSkylight(H, len, mid);
-    this.addSculpture(D, H);
 
     /* ---------- the screens ---------- */
     opts.projects.forEach((p, i) => this.addWork(p, i, aniso));
@@ -513,141 +440,6 @@ export class GalleryScene {
     light.position.set(0, H - 0.14, mid);
     light.lookAt(0, 0, mid);
     this.scene.add(light);
-  }
-
-  /*
-    The centrepiece, "Light Gate": the logo as a sculpture. Two black slabs
-    with the logo's slanted top stand on the polished floor; the gap between
-    them glows, blue light falls down the left slab and orange down the right,
-    and a soft rainbow fans out across the floor towards you.
-  */
-  private sculpture?: { gap: THREE.MeshBasicMaterial; bow: THREE.MeshBasicMaterial };
-  private addSculpture(D: number, H: number) {
-    const z = -D * 0.55;
-    const g = new THREE.Group();
-    g.position.set(0, 0, z);
-    const sw = 0.34; // each slab's width
-    const gapW = 0.075;
-    const depth = 0.16;
-    const tall = 1.95; // at the gap
-    const slope = -0.16; // the top falls from left to right, like the logo
-    // Velvet-matte black, so it reads as a cut-out of darkness against the white room
-    const sideMat = new THREE.MeshStandardMaterial({
-      color: 0x050506,
-      roughness: 0.92,
-      metalness: 0,
-      envMapIntensity: 0.1,
-    });
-    this.disposables.push(sideMat);
-    const slab = (side: "left" | "right") => {
-      const sgn = side === "left" ? -1 : 1;
-      const cx = sgn * (gapW / 2 + sw / 2);
-      const geo = new THREE.BoxGeometry(sw, tall, depth);
-      geo.translate(0, tall / 2, 0);
-      const pos = geo.attributes.position;
-      for (let k = 0; k < pos.count; k++) {
-        if (pos.getY(k) > tall / 2) pos.setY(k, tall + (pos.getX(k) + cx) * slope);
-      }
-      geo.computeVertexNormals();
-      const glow = slabGlowTexture(side);
-      const face = new THREE.MeshStandardMaterial({
-        color: 0x080809,
-        emissive: 0xffffff,
-        emissiveMap: glow,
-        emissiveIntensity: 1.6,
-        roughness: 0.92,
-        metalness: 0,
-        envMapIntensity: 0.1,
-      });
-      this.disposables.push(geo, glow, face);
-      const m = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, face, face]);
-      m.position.x = cx;
-      m.castShadow = this.hq;
-      m.receiveShadow = this.hq;
-      g.add(m);
-    };
-    slab("left");
-    slab("right");
-
-    // The light in the gap
-    const gapTex = doorLightTexture();
-    const gapMat = new THREE.MeshBasicMaterial({
-      map: gapTex,
-      color: new THREE.Color(1, 1, 1),
-      toneMapped: false,
-    });
-    const gapGeo = new THREE.PlaneGeometry(gapW, tall);
-    gapGeo.translate(0, tall / 2, 0);
-    const gp = gapGeo.attributes.position;
-    for (let k = 0; k < gp.count; k++)
-      if (gp.getY(k) > tall / 2) gp.setY(k, tall + gp.getX(k) * slope);
-    this.disposables.push(gapTex, gapMat, gapGeo);
-    const gapMesh = new THREE.Mesh(gapGeo, gapMat);
-    g.add(gapMesh);
-
-    // Light from the gap: coloured either side, white straight out
-    if (this.hq) {
-      const blue = new THREE.PointLight(0x3a55ff, 1.6, 3.2, 2);
-      blue.position.set(-0.5, 1.6, 0.45);
-      const orange = new THREE.PointLight(0xff8a2a, 1.6, 3.2, 2);
-      orange.position.set(0.5, 1.6, 0.45);
-      g.add(blue, orange);
-    }
-    const white = new THREE.PointLight(0xfff6ea, 1.4, 4, 2);
-    white.position.set(0, 0.5, 0.9);
-    g.add(white);
-
-    // A glow pool on the floor at its foot
-    const poolTex = poolTexture([
-      [0, "rgba(255,255,255,0.85)"],
-      [0.4, "rgba(220,225,255,0.25)"],
-      [1, "rgba(0,0,0,0)"],
-    ]);
-    const poolMat = new THREE.MeshBasicMaterial({
-      map: poolTex,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.35,
-    });
-    const poolGeo = new THREE.PlaneGeometry(1.6, 1.6);
-    this.disposables.push(poolTex, poolMat, poolGeo);
-    const pool = new THREE.Mesh(poolGeo, poolMat);
-    pool.rotation.x = -Math.PI / 2;
-    pool.position.set(0, 0.004, 0.15);
-    g.add(pool);
-
-    // The rainbow, fanning out across the floor towards you
-    const bowTex = rainbowTexture();
-    const bowMat = new THREE.MeshBasicMaterial({
-      map: bowTex,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.9,
-    });
-    const bowGeo = new THREE.PlaneGeometry(3.4, 1.5);
-    this.disposables.push(bowTex, bowMat, bowGeo);
-    const bow = new THREE.Mesh(bowGeo, bowMat);
-    bow.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); // its long side runs towards the viewer
-    bow.position.set(0, 0.005, 0.1 + 1.7);
-    g.add(bow);
-
-    // A narrow spotlight from above for a sheen on the black
-    const sl = new THREE.SpotLight(0xfff2e0, this.hq ? 4 : 3, 0, 0.22, 0.8, 2);
-    sl.position.set(0, H - 0.01, z + 0.5);
-    sl.target.position.set(0, 1.0, z);
-    if (this.hq) {
-      sl.castShadow = true;
-      sl.shadow.mapSize.set(1024, 1024);
-      sl.shadow.bias = -0.0004;
-      sl.shadow.normalBias = 0.02;
-      sl.shadow.camera.near = 0.3;
-      sl.shadow.camera.far = 6;
-    }
-    this.scene.add(g, sl, sl.target);
-    this.addDownlight(new THREE.Vector3(0, H, z + 0.5));
-    this.sculpture = { gap: gapMat, bow: bowMat };
   }
 
   /* A small recessed light in the ceiling: just a glowing disc, no fittings. */
@@ -1044,14 +836,6 @@ export class GalleryScene {
     // Taller-than-wide screens get a wider view so the screens still fit
     this.camera.fov = fovFor(w / h);
     this.camera.updateProjectionMatrix();
-    // Half resolution: soft enough to read as a polished floor, sharp enough not to look blocky.
-    if (this.reflector) {
-      const rw = Math.round(w * dpr * 0.5);
-      const rh = Math.round(h * dpr * 0.5);
-      this.reflector.getRenderTarget().setSize(rw, rh);
-      const mat = this.reflector.material as THREE.ShaderMaterial;
-      mat.uniforms.uTexel.value.set(1 / rw, 1 / rh);
-    }
   }
 
   setPose(x: number, y: number, z: number, yaw: number, pitch = 0) {
@@ -1121,12 +905,6 @@ export class GalleryScene {
       if (w.shader) w.shader.uniforms.uTime.value = time;
     });
     this.film.uniforms.uTime.value = time;
-    if (this.sculpture) {
-      // The light in the sculpture breathes, very slowly
-      const breath = 0.5 + 0.5 * Math.sin(time * 0.6);
-      this.sculpture.gap.color.setScalar(0.95 + 0.15 * breath);
-      this.sculpture.bow.opacity = 0.75 + 0.2 * breath;
-    }
     this.composer.render();
   }
 
@@ -1139,7 +917,6 @@ export class GalleryScene {
       }
     });
     this.disposables.forEach((d) => d.dispose());
-    this.reflector?.dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }
