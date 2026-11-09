@@ -39,17 +39,6 @@
   }
 }
 
-/* The gallery room brightening as you walk in (Gallery.tsx) */
-@keyframes lights-on {
-  0%,
-  35% {
-    opacity: 0.35;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
 /* About page: headline cards swaying on their strings */
 @keyframes sway {
   from {
@@ -62,6 +51,90 @@
 @media (prefers-reduced-motion: reduce) {
   [style*="sway"] {
     animation: none !important;
+  }
+}
+
+/* Gallery (Gallery.tsx): dust in the door's light, the scroll hint, and the
+   light drifting across placeholder films */
+@keyframes dust {
+  from {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-140px);
+    opacity: 0;
+  }
+}
+@keyframes hint-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(200%);
+  }
+}
+@keyframes grain-shift {
+  0% {
+    transform: translate(0, 0);
+  }
+  17% {
+    transform: translate(-6%, 4%);
+  }
+  33% {
+    transform: translate(5%, -7%);
+  }
+  50% {
+    transform: translate(-8%, -3%);
+  }
+  67% {
+    transform: translate(7%, 6%);
+  }
+  83% {
+    transform: translate(-3%, 8%);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+@keyframes poster-drift {
+  from {
+    transform: translateX(-7%) scale(1);
+  }
+  to {
+    transform: translateX(7%) scale(1.1);
+  }
+}
+
+/* 404 (NotFound.tsx): light flickering in a shut door's gap */
+@keyframes seam-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  46% {
+    opacity: 0.35;
+  }
+  48% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  53% {
+    opacity: 1;
+  }
+}
+@keyframes door-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
   }
 }
 

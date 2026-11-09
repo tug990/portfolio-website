@@ -8,6 +8,7 @@ export type Project = {
   featured?: boolean;
   image?: string; // poster or still hung in the gallery, e.g. "/work/my-film.webp" (put the file in public/work/)
   client?: string; // who it was made for
+  trailer?: string; // a short silent clip (15–30 s, 720p MP4) that plays in the gallery frame
   video?: string; // a video file, e.g. "/work/my-film.mp4", shown on the project page
   link?: string; // watch / live link
   repo?: string; // secondary link
@@ -45,6 +46,55 @@ export const PROJECTS: Project[] = [
     year: 2024,
     tags: ["Short"],
     featured: true,
+    body: ["Write the story of this project here."],
+  },
+  // Placeholders so every gallery wall has three works. Replace or delete them.
+  {
+    slug: "sample-portrait",
+    title: "Sample Portrait",
+    summary: "A character documentary. Replace with a real one-line description.",
+    year: 2025,
+    tags: ["Documentary", "Short"],
+    body: ["Write the story of this project here."],
+  },
+  {
+    slug: "sample-investigation",
+    title: "Sample Investigation",
+    summary: "A longer investigative piece. Replace with your own.",
+    year: 2025,
+    tags: ["Documentary", "Feature"],
+    body: ["Write the story of this project here."],
+  },
+  {
+    slug: "sample-brand-film",
+    title: "Sample Brand Film",
+    summary: "A true story told for a brand. Replace with your own.",
+    year: 2024,
+    tags: ["Branded", "Short"],
+    body: ["Write the story of this project here."],
+  },
+  {
+    slug: "sample-docu-series",
+    title: "Sample Docu-Series",
+    summary: "An episodic series. Replace with your own.",
+    year: 2024,
+    tags: ["Series", "Documentary"],
+    body: ["Write the story of this project here."],
+  },
+  {
+    slug: "sample-archive-film",
+    title: "Sample Archive Film",
+    summary: "A film built from archive footage. Replace with your own.",
+    year: 2023,
+    tags: ["Documentary", "Archive"],
+    body: ["Write the story of this project here."],
+  },
+  {
+    slug: "sample-music-doc",
+    title: "Sample Music Documentary",
+    summary: "A music documentary. Replace with your own.",
+    year: 2023,
+    tags: ["Documentary", "Music"],
     body: ["Write the story of this project here."],
   },
 ];
