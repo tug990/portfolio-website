@@ -1,7 +1,8 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { useState } from "react";
+import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { getProject } from "@/content/projects";
 import { seo } from "@/lib/seo";
-import { CaseStudy } from "@/components/work/CaseStudy";
+import { ProjectSheet } from "@/components/work/ProjectSheet";
 
 export const Route = createFileRoute("/projects/$slug")({
   loader: ({ params }) => {
@@ -13,28 +14,26 @@ export const Route = createFileRoute("/projects/$slug")({
   component: ProjectPage,
 });
 
+/*
+  A film's case study reached directly (from the work grid or a shared link):
+  the same sheet that opens over the gallery, over a plain page. Closing it
+  goes into the gallery.
+*/
 function ProjectPage() {
   const project = Route.useLoaderData();
+  const navigate = useNavigate();
+  const [closing, setClosing] = useState(false);
   return (
-    <div className="bg-[#f3f1ee] pt-20 animate-in fade-in duration-500">
-      {/* Back into the gallery, where you were standing */}
-      <Link
-        to="/"
-        aria-label="Back to the gallery"
-        className="fixed right-6 top-24 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/[0.06] backdrop-blur transition-colors hover:bg-black/[0.12]"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="h-5 w-5"
-          aria-hidden
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        >
-          <path d="M6 6l12 12M18 6L6 18" />
-        </svg>
-      </Link>
-      <CaseStudy key={project.slug} project={project} />
+    <div className="fixed inset-0 z-[65] bg-[#fcfcfc]">
+      <ProjectSheet
+        project={project}
+        flyFrom={null}
+        closing={closing}
+        onRequestClose={() => setClosing(true)}
+        onOpened={() => {}}
+        onClosed={() => navigate({ to: "/" })}
+        onNext={(slug) => navigate({ to: "/projects/$slug", params: { slug } })}
+      />
     </div>
   );
 }
