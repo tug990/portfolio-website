@@ -4,20 +4,19 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import type { Project } from "@/content/projects";
 import {
   doorLightTexture,
   leafTextures,
   poolTexture,
-  rainbowTexture,
-  slabGlowTexture,
   skylightTexture,
   textTexture,
   wallWashTexture,
 } from "./textures";
+import { marbleFloorMaterial } from "./marble";
 
 /*
   The gallery room, rendered with three.js.
@@ -29,8 +28,8 @@ import {
   Every surface is smooth and seamless. Light does the work: a recessed
   spotlight on every screen (casting its shadow on the wall), a long skylight
   down the ceiling, a line of warm light under every wall so the walls seem to
-  float, a glass light-gate sculpture after the logo, throwing a rainbow on the floor, and the
-  doors' prism light. The polished floor reflects the room on capable devices.
+  float, and the doors' prism light. The floor is smooth honed stone: solid and
+  matte, with no mirror reflections.
   A finishing pass adds glow on what emits light and a gentle vignette.
 */
 
@@ -147,6 +146,13 @@ export function buildLayout(count: number, aspect: number, front: number) {
 }
 export type Layout = ReturnType<typeof buildLayout>;
 
+/* Ambient occlusion at half resolution: soft by nature, and a quarter of the cost. */
+class HalfResAO extends GTAOPass {
+  setSize(width: number, height: number) {
+    super.setSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
+  }
+}
+
 /* Finishing: just a gentle vignette. (No grain or lens fringing: the room stays smooth.) */
 const FilmShader = {
   uniforms: {
@@ -230,7 +236,6 @@ export class GalleryScene {
   private doors: DoorMesh[] = [];
   private pickables: THREE.Object3D[] = [];
   private disposables: { dispose: () => void }[] = [];
-  private reflector?: Reflector;
   private raycaster = new THREE.Raycaster();
   private hq: boolean;
   layout: Layout;
@@ -256,7 +261,8 @@ export class GalleryScene {
       powerPreference: "high-performance",
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // Neutral keeps white walls white (ACES greys them), as a camera would see them.
+    renderer.toneMapping = THREE.NeutralToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = this.hq;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -271,13 +277,13 @@ export class GalleryScene {
     const pmrem = new THREE.PMREMGenerator(renderer);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = env;
-    this.scene.environmentIntensity = 0.22;
+    this.scene.environmentIntensity = 0.32;
     this.scene.background = new THREE.Color(0xf2f0ec);
     pmrem.dispose();
     this.disposables.push(env);
 
     // A soft fill only: the spotlights and the skylight do the drama.
-    const hemi = new THREE.HemisphereLight(0xfffaf2, 0xd9d3c9, 0.32);
+    const hemi = new THREE.HemisphereLight(0xfffaf2, 0xd9d3c9, 0.62);
     this.scene.add(hemi);
 
     /* ---------- the room: smooth, seamless surfaces ---------- */
@@ -314,42 +320,24 @@ export class GalleryScene {
     this.scene.add(left, right, back, entrance);
 
     // Ceiling
-    const ceiling = plane(W, len, matte(0xf6f4f0, 0.98));
+    // Lit by light bouncing up off the walls and floor, as a real ceiling is
+    const ceilMat = matte(0xf6f4f0, 0.98);
+    ceilMat.emissive.set(0x4a4843);
+    const ceiling = plane(W, len, ceilMat);
     ceiling.position.set(0, H, mid);
     ceiling.rotation.x = Math.PI / 2;
     this.scene.add(ceiling);
 
-    // A seamless floor of dark polished resin: the white walls hover over it
-    const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x3b3936,
-      roughness: 0.2,
-      metalness: 0,
-      envMapIntensity: 0.6,
-    });
+    // Large polished marble slabs (see marble.ts)
+    const floorMat = marbleFloorMaterial();
     this.disposables.push(floorMat);
     const floor = plane(W, len, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(0, 0, mid);
-    if (this.hq) {
-      // A true mirror just under the floor, seen softly through it.
-      const rg = new THREE.PlaneGeometry(W, len);
-      this.disposables.push(rg);
-      this.reflector = new Reflector(rg, {
-        textureWidth: 1024,
-        textureHeight: 1024,
-        color: new THREE.Color(0x8a8784),
-      });
-      this.reflector.rotation.x = -Math.PI / 2;
-      this.reflector.position.set(0, -0.001, mid);
-      this.scene.add(this.reflector);
-      floorMat.transparent = true;
-      floorMat.opacity = 0.7;
-    }
     this.scene.add(floor);
 
     this.addFloatingWalls(W, D, FRONT, len, mid);
     this.addSkylight(H, len, mid);
-    this.addSculpture(D, H);
 
     /* ---------- the screens ---------- */
     opts.projects.forEach((p, i) => this.addWork(p, i, aniso));
@@ -373,6 +361,28 @@ export class GalleryScene {
     });
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    if (this.hq) {
+      // Soft contact shadows where surfaces meet (wall and floor, wall and
+      // ceiling, behind each screen): what makes a room read as real.
+      const ao = new HalfResAO(this.scene, this.camera, 512, 512);
+      ao.blendIntensity = 0.7;
+      ao.updateGtaoMaterial({
+        radius: 0.45,
+        distanceExponent: 1.5,
+        thickness: 1.5,
+        scale: 1,
+        samples: 16,
+      });
+      ao.updatePdMaterial({
+        lumaPhi: 10,
+        depthPhi: 2,
+        normalPhi: 3,
+        radius: 6,
+        rings: 2,
+        samples: 16,
+      });
+      this.composer.addPass(ao);
+    }
     // Glow only on what truly emits light: the skylight, the light lines, the doors.
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.38, 0.55, 0.93);
     this.composer.addPass(this.bloom);
@@ -459,141 +469,6 @@ export class GalleryScene {
     light.position.set(0, H - 0.14, mid);
     light.lookAt(0, 0, mid);
     this.scene.add(light);
-  }
-
-  /*
-    The centrepiece, "Light Gate": the logo as a sculpture. Two black slabs
-    with the logo's slanted top stand on the polished floor; the gap between
-    them glows, blue light falls down the left slab and orange down the right,
-    and a soft rainbow fans out across the floor towards you.
-  */
-  private sculpture?: { gap: THREE.MeshBasicMaterial; bow: THREE.MeshBasicMaterial };
-  private addSculpture(D: number, H: number) {
-    const z = -D * 0.55;
-    const g = new THREE.Group();
-    g.position.set(0, 0, z);
-    const sw = 0.34; // each slab's width
-    const gapW = 0.075;
-    const depth = 0.16;
-    const tall = 1.95; // at the gap
-    const slope = -0.16; // the top falls from left to right, like the logo
-    // Velvet-matte black, so it reads as a cut-out of darkness against the white room
-    const sideMat = new THREE.MeshStandardMaterial({
-      color: 0x050506,
-      roughness: 0.92,
-      metalness: 0,
-      envMapIntensity: 0.1,
-    });
-    this.disposables.push(sideMat);
-    const slab = (side: "left" | "right") => {
-      const sgn = side === "left" ? -1 : 1;
-      const cx = sgn * (gapW / 2 + sw / 2);
-      const geo = new THREE.BoxGeometry(sw, tall, depth);
-      geo.translate(0, tall / 2, 0);
-      const pos = geo.attributes.position;
-      for (let k = 0; k < pos.count; k++) {
-        if (pos.getY(k) > tall / 2) pos.setY(k, tall + (pos.getX(k) + cx) * slope);
-      }
-      geo.computeVertexNormals();
-      const glow = slabGlowTexture(side);
-      const face = new THREE.MeshStandardMaterial({
-        color: 0x080809,
-        emissive: 0xffffff,
-        emissiveMap: glow,
-        emissiveIntensity: 1.6,
-        roughness: 0.92,
-        metalness: 0,
-        envMapIntensity: 0.1,
-      });
-      this.disposables.push(geo, glow, face);
-      const m = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, face, face]);
-      m.position.x = cx;
-      m.castShadow = this.hq;
-      m.receiveShadow = this.hq;
-      g.add(m);
-    };
-    slab("left");
-    slab("right");
-
-    // The light in the gap
-    const gapTex = doorLightTexture();
-    const gapMat = new THREE.MeshBasicMaterial({
-      map: gapTex,
-      color: new THREE.Color(1, 1, 1),
-      toneMapped: false,
-    });
-    const gapGeo = new THREE.PlaneGeometry(gapW, tall);
-    gapGeo.translate(0, tall / 2, 0);
-    const gp = gapGeo.attributes.position;
-    for (let k = 0; k < gp.count; k++)
-      if (gp.getY(k) > tall / 2) gp.setY(k, tall + gp.getX(k) * slope);
-    this.disposables.push(gapTex, gapMat, gapGeo);
-    const gapMesh = new THREE.Mesh(gapGeo, gapMat);
-    g.add(gapMesh);
-
-    // Light from the gap: coloured either side, white straight out
-    if (this.hq) {
-      const blue = new THREE.PointLight(0x3a55ff, 1.6, 3.2, 2);
-      blue.position.set(-0.5, 1.6, 0.45);
-      const orange = new THREE.PointLight(0xff8a2a, 1.6, 3.2, 2);
-      orange.position.set(0.5, 1.6, 0.45);
-      g.add(blue, orange);
-    }
-    const white = new THREE.PointLight(0xfff6ea, 1.4, 4, 2);
-    white.position.set(0, 0.5, 0.9);
-    g.add(white);
-
-    // A glow pool on the floor at its foot
-    const poolTex = poolTexture([
-      [0, "rgba(255,255,255,0.85)"],
-      [0.4, "rgba(220,225,255,0.25)"],
-      [1, "rgba(0,0,0,0)"],
-    ]);
-    const poolMat = new THREE.MeshBasicMaterial({
-      map: poolTex,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.35,
-    });
-    const poolGeo = new THREE.PlaneGeometry(1.6, 1.6);
-    this.disposables.push(poolTex, poolMat, poolGeo);
-    const pool = new THREE.Mesh(poolGeo, poolMat);
-    pool.rotation.x = -Math.PI / 2;
-    pool.position.set(0, 0.004, 0.15);
-    g.add(pool);
-
-    // The rainbow, fanning out across the floor towards you
-    const bowTex = rainbowTexture();
-    const bowMat = new THREE.MeshBasicMaterial({
-      map: bowTex,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.9,
-    });
-    const bowGeo = new THREE.PlaneGeometry(3.4, 1.5);
-    this.disposables.push(bowTex, bowMat, bowGeo);
-    const bow = new THREE.Mesh(bowGeo, bowMat);
-    bow.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); // its long side runs towards the viewer
-    bow.position.set(0, 0.005, 0.1 + 1.7);
-    g.add(bow);
-
-    // A narrow spotlight from above for a sheen on the black
-    const sl = new THREE.SpotLight(0xfff2e0, this.hq ? 4 : 3, 0, 0.22, 0.8, 2);
-    sl.position.set(0, H - 0.01, z + 0.5);
-    sl.target.position.set(0, 1.0, z);
-    if (this.hq) {
-      sl.castShadow = true;
-      sl.shadow.mapSize.set(1024, 1024);
-      sl.shadow.bias = -0.0004;
-      sl.shadow.normalBias = 0.02;
-      sl.shadow.camera.near = 0.3;
-      sl.shadow.camera.far = 6;
-    }
-    this.scene.add(g, sl, sl.target);
-    this.addDownlight(new THREE.Vector3(0, H, z + 0.5));
-    this.sculpture = { gap: gapMat, bow: bowMat };
   }
 
   /* A small recessed light in the ceiling: just a glowing disc, no fittings. */
@@ -853,14 +728,15 @@ export class GalleryScene {
     // Prism light spilling into the room: blue left, orange right, white in front
     const lights = this.hq
       ? [
-          new THREE.PointLight(0x3a55ff, 2.2, 4.5, 2),
-          new THREE.PointLight(0xff8a2a, 2.2, 4.5, 2),
+          new THREE.PointLight(0x3a55ff, 2.6, 5.5, 2),
+          new THREE.PointLight(0xff8a2a, 2.6, 5.5, 2),
           new THREE.PointLight(0xfff8ee, 1.6, 5.5, 2),
         ]
       : [new THREE.PointLight(0xfff8ee, 2, 5.5, 2)];
     if (this.hq) {
-      lights[0].position.set(x - 0.45, 2.25, z + 0.55);
-      lights[1].position.set(x + 0.45, 2.25, z + 0.55);
+      // Far enough from the wall that their light spreads into a soft wash, not a hot spot
+      lights[0].position.set(x - 0.45, 2.25, z + 1.15);
+      lights[1].position.set(x + 0.45, 2.25, z + 1.15);
       lights[2].position.set(x, 1.1, z + 0.8);
     } else {
       lights[0].position.set(x, 1.3, z + 0.8);
@@ -989,8 +865,6 @@ export class GalleryScene {
     // Taller-than-wide screens get a wider view so the screens still fit
     this.camera.fov = fovFor(w / h);
     this.camera.updateProjectionMatrix();
-    // Half resolution: soft enough to read as a polished floor, sharp enough not to look blocky.
-    this.reflector?.getRenderTarget().setSize(Math.round(w * dpr * 0.5), Math.round(h * dpr * 0.5));
   }
 
   setPose(x: number, y: number, z: number, yaw: number, pitch = 0) {
@@ -1044,6 +918,30 @@ export class GalleryScene {
     return (hit?.object.userData.pick as Pick) ?? null;
   }
 
+  /* Where work i's screen is on the page right now (CSS pixels), for the film to fly from. */
+  screenRect(i: number, rect: DOMRect) {
+    const w = this.works[i];
+    this.camera.updateMatrixWorld();
+    w.screen.updateWorldMatrix(true, false);
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const [cx, cy] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ]) {
+      const v = new THREE.Vector3((cx * SCREEN.w) / 2, (cy * SCREEN.h) / 2, 0)
+        .applyMatrix4(w.screen.matrixWorld)
+        .project(this.camera);
+      xs.push(rect.left + ((v.x + 1) / 2) * rect.width);
+      ys.push(rect.top + ((1 - v.y) / 2) * rect.height);
+    }
+    const l = Math.min(...xs);
+    const t = Math.min(...ys);
+    return new DOMRect(l, t, Math.max(...xs) - l, Math.max(...ys) - t);
+  }
+
   /* Where a work's screen centre is, to walk up to it. */
   workCentre(i: number) {
     const s = this.layout.works[i];
@@ -1060,12 +958,6 @@ export class GalleryScene {
       if (w.shader) w.shader.uniforms.uTime.value = time;
     });
     this.film.uniforms.uTime.value = time;
-    if (this.sculpture) {
-      // The light in the sculpture breathes, very slowly
-      const breath = 0.5 + 0.5 * Math.sin(time * 0.6);
-      this.sculpture.gap.color.setScalar(0.95 + 0.15 * breath);
-      this.sculpture.bow.opacity = 0.75 + 0.2 * breath;
-    }
     this.composer.render();
   }
 
@@ -1078,7 +970,6 @@ export class GalleryScene {
       }
     });
     this.disposables.forEach((d) => d.dispose());
-    this.reflector?.dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }

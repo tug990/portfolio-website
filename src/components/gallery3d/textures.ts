@@ -4,7 +4,7 @@ import * as THREE from "three";
   Light and text for the gallery, drawn in the browser instead of downloaded.
   Every surface in the room is a plain smooth material; these textures are only
   for things that glow: the skylight, the wash at the foot of the walls, the
-  rainbow from the prism, the doors, and the wall labels.
+  doors, and the wall labels.
 */
 
 function canvas(w: number, h = w) {
@@ -46,39 +46,6 @@ export function wallWashTexture() {
   g.addColorStop(1, "rgba(255,190,130,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 8, 256);
-  return done(c);
-}
-
-/*
-  The spectrum a prism throws: a fan of colour, narrow where it leaves the
-  glass and spreading out, every edge soft.
-*/
-export function rainbowTexture() {
-  const w = 512;
-  const h = 256;
-  const c = canvas(w, h);
-  const ctx = c.getContext("2d")!;
-  const bands = ["#ff3b30", "#ff9500", "#ffd60a", "#34c759", "#32ade6", "#5856d6", "#af52de"];
-  const img = ctx.createImageData(w, h);
-  const rgb = bands.map((b) => [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16)));
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const u = x / w; // 0 at the glass, 1 far out
-      const spread = 0.12 + u * 0.88;
-      const v = (y / h - 0.5) / spread + 0.5; // across the fan, 0..1 inside it
-      const i = (y * w + x) * 4;
-      if (v < 0 || v > 1) continue;
-      const f = v * (rgb.length - 1);
-      const k = Math.min(rgb.length - 2, Math.floor(f));
-      const t = f - k;
-      const across = Math.sin(v * Math.PI); // soft at both sides
-      const along = Math.min(1, u * 6) * Math.pow(1 - u, 1.4); // fades in, then away
-      const a = across * along;
-      for (let ch = 0; ch < 3; ch++) img.data[i + ch] = rgb[k][ch] * (1 - t) + rgb[k + 1][ch] * t;
-      img.data[i + 3] = 255 * a;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
   return done(c);
 }
 
@@ -180,45 +147,4 @@ export function textTexture(
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = maxAniso;
   return t;
-}
-
-/*
-  The light on a sculpture slab's face: black, with the logo's light pouring
-  over the top inner corner and fading out a third of the way down.
-  (Tall, to match the slab, so the glow isn't stretched.)
-*/
-export function slabGlowTexture(side: "left" | "right") {
-  const w = 128;
-  const h = 736;
-  const c = canvas(w, h);
-  const ctx = c.getContext("2d")!;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, w, h);
-  const cx = side === "left" ? w : 0;
-  const stops: [number, string][] =
-    side === "left"
-      ? [
-          [0, "rgba(255,255,255,1)"],
-          [0.07, "rgba(190,235,255,0.95)"],
-          [0.2, "rgba(43,184,255,0.8)"],
-          [0.45, "rgba(31,44,255,0.45)"],
-          [0.75, "rgba(70,20,200,0.1)"],
-          [1, "rgba(0,0,0,0)"],
-        ]
-      : [
-          [0, "rgba(255,255,255,1)"],
-          [0.07, "rgba(255,236,200,0.95)"],
-          [0.2, "rgba(255,170,60,0.8)"],
-          [0.45, "rgba(255,110,20,0.45)"],
-          [0.75, "rgba(200,40,10,0.1)"],
-          [1, "rgba(0,0,0,0)"],
-        ];
-  const g = ctx.createRadialGradient(cx, 0, 0, cx, 0, w * 1.6);
-  stops.forEach(([o, col]) => g.addColorStop(o, col));
-  ctx.save();
-  ctx.scale(1, 1.5); // falls further down than it spreads across
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h / 1.5);
-  ctx.restore();
-  return done(c);
 }

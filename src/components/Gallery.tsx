@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { SITE } from "@/content/site";
-import { PROJECTS } from "@/content/projects";
+import { PROJECTS, getProject } from "@/content/projects";
+import { ProjectSheet } from "@/components/work/ProjectSheet";
 import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
 import { LOGO, LogoDoorCanvas, type LogoDoorHandle } from "@/components/LogoDoor";
@@ -42,7 +43,8 @@ const STEP_LOCK_MS = 300; // one scroll gesture = one stop
 const FOLLOW = 6; // catching up after a resize (steps themselves are timed glides)
 const LEAN_IN = 3.4; // stepping in towards a film once you arrive
 const LEAN_OUT = 6;
-const VISIT_MS = 950; // walking up to a film
+const VISIT_MS = 720; // walking up to a film, before it lifts off the wall
+const RETURN_MS = 650; // stepping back from it when its page closes
 const DOOR_MS = 1400; // walking through a door
 const EYE = 1.6; // camera height, metres
 const SAVE_KEY = "insight-gallery-stop";
@@ -58,6 +60,17 @@ const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 
 
 export function Gallery() {
   const navigate = useNavigate();
+  const router = useRouter();
+  const { work } = useSearch({ from: "/" });
+  // The case study open over the gallery, if any
+  const [sheet, setSheet] = useState<null | {
+    slug: string;
+    flyFrom: DOMRect | null;
+    closing: boolean;
+  }>(null);
+  const flyFrom = useRef<DOMRect | null>(null);
+  const pushedSheet = useRef(false); // we added the history entry, so closing goes Back
+  const covered = useRef(false); // the sheet hides the room: no need to draw it
   const [inside, setInside] = useState(false);
   const [hint, setHint] = useState(true);
 
@@ -97,7 +110,7 @@ export function Gallery() {
       from: Pose & { y: number };
       to: Pose & { y: number };
       door: number; // -1 for a film
-      veil: HTMLElement;
+      veil?: HTMLElement;
       go: () => void;
       gone: boolean;
     },
@@ -253,7 +266,7 @@ export function Gallery() {
           yaw: v.from.yaw + (v.to.yaw - v.from.yaw) * e,
           y: v.from.y + (v.to.y - v.from.y) * e,
         };
-        v.veil.style.opacity = String(smooth((t - 0.45) / 0.5));
+        if (v.veil) v.veil.style.opacity = String(smooth((t - 0.45) / 0.5));
         if (t >= 1 && !v.gone) {
           v.gone = true;
           v.go();
@@ -282,7 +295,7 @@ export function Gallery() {
           s.playNear(playAt);
         }
         // Draw the room whenever it can be seen.
-        if (c.mode !== "intro" || c.p > 0.6) {
+        if ((c.mode !== "intro" || c.p > 0.6) && !covered.current) {
           s.setPose(pose.x, pose.y, pose.z, pose.yaw);
           s.setExposure(exposure);
           s.render((now - t0) / 1000);
@@ -406,35 +419,107 @@ export function Gallery() {
         () => veil.remove(),
       );
 
-  const openWork = (i: number) => {
-    const c = cam.current;
-    const s = gs.current;
-    const project = PROJECTS[i];
-    if (!s || !project || c.mode !== "free") return;
-    writeSaved(c.at);
-    const go = () => navigate({ to: "/projects/$slug", params: { slug: project.slug } });
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
-    // Walk up until the screen fills the view, then the page takes over.
+  /* Where you stand to look at film i up close: near enough that it fills the view. */
+  const closeUpPose = (i: number) => {
+    const s = gs.current!;
     const w = s.workCentre(i);
     const cam3 = s.camera;
     const hfov = 2 * Math.atan(Math.tan((cam3.fov * Math.PI) / 360) * cam3.aspect);
-    const d = 0.88 / Math.tan(hfov / 2) / 0.94;
-    const veil = makeVeil("#fcfcfc");
+    const d = 0.88 / Math.tan(hfov / 2) / 0.8;
+    return { x: w.x + w.nx * d, z: w.z + w.nz * d, yaw: w.yaw, y: 1.62 };
+  };
+
+  const workSlug = (i: number) => PROJECTS[i]?.slug;
+  const showWork = (slug: string, replace = false) =>
+    navigate({
+      to: "/",
+      search: { work: slug },
+      mask: { to: "/projects/$slug", params: { slug } },
+      replace,
+    });
+
+  // Walk up to the film; then it lifts off the wall into its case study.
+  const openWork = (i: number) => {
+    const c = cam.current;
+    const s = gs.current;
+    const slug = workSlug(i);
+    if (!s || !slug || c.mode !== "free") return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     c.mode = "visit";
     c.visit = {
       t0: performance.now(),
-      dur: VISIT_MS,
+      dur: reduce ? 1 : VISIT_MS,
       from: { ...c.pose },
-      to: { x: w.x + w.nx * d, z: w.z + w.nz * d, yaw: c.pose.yaw, y: 1.62 },
+      to: closeUpPose(i),
       door: -1,
-      veil,
       go: () => {
-        go();
-        fadeVeil(veil);
+        const rect = stageRef.current?.getBoundingClientRect();
+        flyFrom.current = rect ? s.screenRect(i, rect) : null;
+        pushedSheet.current = true;
+        showWork(slug);
       },
       gone: false,
     };
   };
+
+  // The sheet follows the address: ?work=<slug> (shown as /projects/<slug>).
+  useEffect(() => {
+    const c = cam.current;
+    const s = gs.current;
+    const i = work ? PROJECTS.findIndex((p) => p.slug === work) : -1;
+    if (work && i >= 0) {
+      if (sheet && !sheet.closing) {
+        if (sheet.slug === work) return;
+        // "Next film": swap in place, and move behind the sheet to that film
+        setSheet({ slug: work, flyFrom: null, closing: false });
+      } else {
+        setSheet({ slug: work, flyFrom: flyFrom.current, closing: false });
+        flyFrom.current = null;
+      }
+      if (s && c.mode !== "intro") {
+        const L = s.layout;
+        const k = L.stops.findIndex((st) => st.kind === "work" && st.index === i);
+        const to = closeUpPose(i);
+        c.mode = "visit";
+        c.at = k;
+        c.visit = { t0: 0, dur: 1, from: to, to, door: -1, go: () => {}, gone: true };
+      }
+    } else if (sheet && !sheet.closing) {
+      // Closed (×, Escape or Back): fade the sheet, step back from the film
+      covered.current = false;
+      setSheet({ ...sheet, closing: true });
+      const i2 = PROJECTS.findIndex((p) => p.slug === sheet.slug);
+      if (s && c.mode === "visit" && i2 >= 0) {
+        const L = s.layout;
+        const k = L.stops.findIndex((st) => st.kind === "work" && st.index === i2);
+        const stop = L.stops[k];
+        c.visit = {
+          t0: performance.now(),
+          dur: RETURN_MS,
+          from: { ...c.pose },
+          to: { ...leaned(L, poseAt(L.stops, stop.s), 1), y: EYE },
+          door: -1,
+          go: () => {
+            c.mode = "free";
+            c.visit = null;
+            c.at = k;
+            c.q = c.goal = stop.s;
+            c.glide = null;
+            c.lean = 1;
+          },
+          gone: false,
+        };
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [work]);
+
+  const closeSheet = useCallback(() => {
+    if (pushedSheet.current) {
+      pushedSheet.current = false;
+      router.history.back();
+    } else navigate({ to: "/", search: {}, replace: true });
+  }, [navigate, router]);
 
   const openDoor = (i: number) => {
     const c = cam.current;
@@ -612,95 +697,110 @@ export function Gallery() {
   };
 
   return (
-    <div
-      ref={stageRef}
-      aria-label="Gallery"
-      className="fixed inset-0 select-none overflow-hidden bg-[#f2f0ec]"
-      style={{ touchAction: "none" }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={() => (cam.current.drag.on = false)}
-    >
-      <h1 className="sr-only">{SITE.tagline}</h1>
-
-      {/* The room */}
-      <canvas ref={roomCanvas} aria-hidden className="absolute inset-0 h-full w-full" />
-
-      {/* The logo you fly into */}
-      <IntroDoor
-        rootRef={introRef}
-        scene={scene}
-        logoGl={logoGl}
-        onClick={() => {
-          if (cam.current.drag.dist <= 6) goIn();
-        }}
-      />
-
-      {/* For keyboards and screen readers: every film and both doors */}
-      <nav aria-label="Works in the gallery" className="sr-only">
-        <ul>
-          {PROJECTS.map((p, i) => (
-            <li key={p.slug}>
-              <button
-                type="button"
-                tabIndex={inside ? 0 : -1}
-                onFocus={() => {
-                  const L = gs.current?.layout;
-                  const k = L?.stops.findIndex((st) => st.kind === "work" && st.index === i) ?? -1;
-                  if (k >= 0) stepTo(k);
-                }}
-                onClick={() => clickWork(i, true)}
-              >
-                {p.title}, {p.year}
-              </button>
-            </li>
-          ))}
-          {["All work", "About us"].map((label, i) => (
-            <li key={label}>
-              <button
-                type="button"
-                tabIndex={inside ? 0 : -1}
-                onFocus={() => {
-                  const L = gs.current?.layout;
-                  if (L) stepTo(L.stops.length - 1);
-                }}
-                onClick={() => clickDoor(i, true)}
-              >
-                {label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      {/* Controls once inside */}
+    <>
       <div
-        className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-6 z-10 flex items-center justify-between gap-4 px-6 transition-opacity duration-700",
-          inside ? "opacity-100" : "opacity-0",
-        )}
+        ref={stageRef}
+        aria-label="Gallery"
+        className="fixed inset-0 select-none overflow-hidden bg-[#f2f0ec]"
+        style={{ touchAction: "none" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => (cam.current.drag.on = false)}
       >
-        <button
-          type="button"
-          onClick={() => goOut(true)}
-          tabIndex={inside ? 0 : -1}
-          className="tracked pointer-events-auto whitespace-nowrap rounded-md border border-black/10 bg-white/85 px-4 py-2.5 text-[10px] text-black/75 shadow-sm transition-colors hover:text-black"
-        >
-          ← Leave
-        </button>
-        <p
+        <h1 className="sr-only">{SITE.tagline}</h1>
+
+        {/* The room */}
+        <canvas ref={roomCanvas} aria-hidden className="absolute inset-0 h-full w-full" />
+
+        {/* The logo you fly into */}
+        <IntroDoor
+          rootRef={introRef}
+          scene={scene}
+          logoGl={logoGl}
+          onClick={() => {
+            if (cam.current.drag.dist <= 6) goIn();
+          }}
+        />
+
+        {/* For keyboards and screen readers: every film and both doors */}
+        <nav aria-label="Works in the gallery" className="sr-only">
+          <ul>
+            {PROJECTS.map((p, i) => (
+              <li key={p.slug}>
+                <button
+                  type="button"
+                  tabIndex={inside ? 0 : -1}
+                  onFocus={() => {
+                    const L = gs.current?.layout;
+                    const k =
+                      L?.stops.findIndex((st) => st.kind === "work" && st.index === i) ?? -1;
+                    if (k >= 0) stepTo(k);
+                  }}
+                  onClick={() => clickWork(i, true)}
+                >
+                  {p.title}, {p.year}
+                </button>
+              </li>
+            ))}
+            {["All work", "About us"].map((label, i) => (
+              <li key={label}>
+                <button
+                  type="button"
+                  tabIndex={inside ? 0 : -1}
+                  onFocus={() => {
+                    const L = gs.current?.layout;
+                    if (L) stepTo(L.stops.length - 1);
+                  }}
+                  onClick={() => clickDoor(i, true)}
+                >
+                  {label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/* Controls once inside */}
+        <div
           className={cn(
-            "tracked rounded-full bg-white/70 px-3 py-1.5 text-center text-[10px] text-black/55 transition-opacity duration-700",
-            !hint && "opacity-0",
+            "pointer-events-none absolute inset-x-0 bottom-6 z-10 flex items-center justify-between gap-4 px-6 transition-opacity duration-700",
+            inside ? "opacity-100" : "opacity-0",
           )}
         >
-          <span className="hidden sm:inline">Scroll for the next film</span>
-          <span className="sm:hidden">Swipe for the next film</span>
-        </p>
-        <span className="w-[86px]" aria-hidden />
+          <button
+            type="button"
+            onClick={() => goOut(true)}
+            tabIndex={inside ? 0 : -1}
+            className="tracked pointer-events-auto whitespace-nowrap rounded-md border border-black/10 bg-white/85 px-4 py-2.5 text-[10px] text-black/75 shadow-sm transition-colors hover:text-black"
+          >
+            ← Leave
+          </button>
+          <p
+            className={cn(
+              "tracked rounded-full bg-white/70 px-3 py-1.5 text-center text-[10px] text-black/55 transition-opacity duration-700",
+              !hint && "opacity-0",
+            )}
+          >
+            <span className="hidden sm:inline">Scroll for the next film</span>
+            <span className="sm:hidden">Swipe for the next film</span>
+          </p>
+          <span className="w-[86px]" aria-hidden />
+        </div>
       </div>
-    </div>
+      {/* A film's case study, over the gallery */}
+      {sheet && getProject(sheet.slug) && (
+        <ProjectSheet
+          project={getProject(sheet.slug)!}
+          flyFrom={sheet.flyFrom}
+          closing={sheet.closing}
+          onRequestClose={closeSheet}
+          onOpened={() => (covered.current = true)}
+          onClosed={() => setSheet(null)}
+          onNext={(slug) => showWork(slug, true)}
+        />
+      )}
+    </>
   );
 }
 
