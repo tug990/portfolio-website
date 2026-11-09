@@ -50,6 +50,21 @@
   }
 }
 
+/* About page: headline cards swaying on their strings */
+@keyframes sway {
+  from {
+    rotate: -1.2deg;
+  }
+  to {
+    rotate: 1.2deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="sway"] {
+    animation: none !important;
+  }
+}
+
 @layer components {
   /* Wide-tracked uppercase, as in the Insight Lab wordmark */
   .tracked {
