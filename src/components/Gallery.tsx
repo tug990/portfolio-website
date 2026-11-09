@@ -6,6 +6,7 @@ import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
 import { LOGO, LogoDoorCanvas, type LogoDoorHandle } from "@/components/LogoDoor";
 import type { GalleryScene, Layout, Pose, Stop } from "@/components/gallery3d/GalleryScene";
+import { GallerySound, rememberSound, soundPreferred } from "@/components/gallery3d/sound";
 
 /*
   The home page.
@@ -60,6 +61,9 @@ export function Gallery() {
   const navigate = useNavigate();
   const [inside, setInside] = useState(false);
   const [hint, setHint] = useState(true);
+  const [soundOn, setSoundOn] = useState(false);
+  const sound = useRef<GallerySound | null>(null);
+  const wantSound = useRef(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const roomCanvas = useRef<HTMLCanvasElement>(null);
@@ -172,12 +176,64 @@ export function Gallery() {
     };
   }, []);
 
+  /* ---------- sound ---------- */
+
+  // Sound can only start from a click, tap or key press (a browser rule).
+  const startSound = () => {
+    const g = gs.current;
+    if (!g) return false;
+    if (!sound.current) {
+      try {
+        sound.current = new GallerySound(g.filmVideos());
+      } catch {
+        return false; // no Web Audio: stay silent
+      }
+    }
+    void sound.current.setEnabled(true);
+    return true;
+  };
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    wantSound.current = next;
+    rememberSound(next);
+    if (next) startSound();
+    else void sound.current?.setEnabled(false);
+  };
+
+  useEffect(() => {
+    // Turned on last time: come back on with the first click, tap or key.
+    if (soundPreferred()) {
+      setSoundOn(true);
+      wantSound.current = true;
+      const arm = () => {
+        if (startSound()) disarm();
+      };
+      const disarm = () => {
+        window.removeEventListener("pointerdown", arm);
+        window.removeEventListener("keydown", arm);
+      };
+      window.addEventListener("pointerdown", arm);
+      window.addEventListener("keydown", arm);
+      return () => {
+        disarm();
+        sound.current?.dispose();
+        sound.current = null;
+      };
+    }
+    return () => {
+      sound.current?.dispose();
+      sound.current = null;
+    };
+  }, []);
+
   /* ---------- the frame loop ---------- */
 
   useEffect(() => {
     let raf = 0;
     const t0 = performance.now();
     let last = t0;
+    let lastP = 0;
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
@@ -209,6 +265,9 @@ export function Gallery() {
           c.p = Math.min(c.p, 0.78); // wait in the light until the room is ready
         }
         drawIntro(c.p);
+        // Passing into the light: the swell of air and a chord as you arrive
+        if (c.p > 0.3 && lastP <= 0.3 && c.pGoal > c.p) sound.current?.swell();
+        lastP = c.p;
         // Behind the light you're already in the room, gliding the last stretch
         // to the spot that shows the whole gallery.
         const first: Pose = L?.stops[0] ?? { x: 0, z: 4, yaw: 0 };
@@ -287,6 +346,12 @@ export function Gallery() {
           s.setExposure(exposure);
           s.render((now - t0) / 1000);
         }
+        // Back from a page (the site already has your click): sound resumes by itself.
+        if (wantSound.current && !sound.current && navigator.userActivation?.hasBeenActive) {
+          startSound();
+        }
+        const presence = c.mode === "intro" ? band(c.p, [0.55, 1]) : 1;
+        sound.current?.update(pose, presence, s.filmSpots());
       }
       c.pose = pose;
       raf = requestAnimationFrame(tick);
@@ -350,6 +415,7 @@ export function Gallery() {
     // Quick and smooth: about 0.4 s to a neighbour; the longer first move from the
     // overview to the left wall gets a little more, so it never lurches.
     c.glide = { from: c.q, to: c.goal, t0: performance.now(), dur: clamp(300 + d * 40, 380, 850) };
+    if (d > 0.01) sound.current?.steps();
     setHint(false);
   };
 
@@ -420,6 +486,7 @@ export function Gallery() {
     const hfov = 2 * Math.atan(Math.tan((cam3.fov * Math.PI) / 360) * cam3.aspect);
     const d = 0.88 / Math.tan(hfov / 2) / 0.94;
     const veil = makeVeil("#fcfcfc");
+    sound.current?.fadeOut(VISIT_MS / 1000);
     c.mode = "visit";
     c.visit = {
       t0: performance.now(),
@@ -447,6 +514,7 @@ export function Gallery() {
     const veil = makeVeil(
       "linear-gradient(90deg, rgba(31,44,255,.18), transparent 30%, transparent 70%, rgba(255,138,31,.2)), radial-gradient(circle at 50% 50%, #fff 0 40%, #fbfbfa 100%)",
     );
+    sound.current?.fadeOut(DOOR_MS / 1000);
     c.mode = "visit";
     c.visit = {
       t0: performance.now(),
@@ -700,7 +768,41 @@ export function Gallery() {
         </p>
         <span className="w-[86px]" aria-hidden />
       </div>
+
+      {/* Sound on / off, always in the corner */}
+      <button
+        type="button"
+        onClick={toggleSound}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        aria-pressed={soundOn}
+        aria-label={soundOn ? "Sound on. Turn sound off" : "Sound off. Turn sound on"}
+        className="tracked absolute bottom-6 right-6 z-20 flex items-center gap-2 whitespace-nowrap rounded-md border border-black/10 bg-white/85 px-4 py-2.5 text-[10px] text-black/75 shadow-sm transition-colors hover:text-black"
+      >
+        <SoundBars on={soundOn} />
+        {soundOn ? "Sound" : "Sound off"}
+      </button>
     </div>
+  );
+}
+
+/* Four little bars: moving gently when the sound is on, flat when it's off. */
+function SoundBars({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden className="flex h-3 items-end gap-[2px]">
+      {[0.55, 1, 0.7, 0.85].map((h, i) => (
+        <span
+          key={i}
+          className={cn("w-[2px] origin-bottom rounded-full bg-current", on && "animate-sound-bar")}
+          style={{
+            height: "100%",
+            transform: on ? `scaleY(${h})` : "scaleY(0.18)",
+            animationDelay: `${i * -0.27}s`,
+            transition: "transform 300ms",
+          }}
+        />
+      ))}
+    </span>
   );
 }
 
