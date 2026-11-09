@@ -8,6 +8,7 @@ export type Project = {
   featured?: boolean;
   image?: string; // poster or still hung in the gallery, e.g. "/work/my-film.webp" (put the file in public/work/)
   client?: string; // who it was made for
+  trailer?: string; // a short silent clip (15–30 s, 720p MP4) that plays in the gallery frame
   video?: string; // a video file, e.g. "/work/my-film.mp4", shown on the project page
   link?: string; // watch / live link
   repo?: string; // secondary link

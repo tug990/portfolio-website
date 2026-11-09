@@ -3,25 +3,14 @@ import {
   createRootRoute,
   HeadContent,
   Scripts,
-  Link,
   useRouterState,
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SITE } from "@/content/site";
+import { NotFound } from "@/components/NotFound";
 import appCss from "../styles.css?url";
-
-function NotFound() {
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-24 text-center">
-      <h1 className="text-3xl font-bold">Page not found</h1>
-      <Link to="/" className="mt-4 inline-block text-primary underline">
-        Go home
-      </Link>
-    </div>
-  );
-}
 
 export const Route = createRootRoute({
   head: () => ({
