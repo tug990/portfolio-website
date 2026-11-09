@@ -56,3 +56,11 @@ export const FAQ = [
   { q: "How long does a project take?", a: "Replace this with your typical timeline." },
   { q: "Who owns the work?", a: "Replace this with your rights and licensing policy." },
 ];
+
+/* Work history: shown on the About page and on the gallery wall beside the door.
+   Newest first. `place` is optional. */
+export const HISTORY: { years: string; title: string; place?: string }[] = [
+  { years: "2024 – now", title: "Founded Insight Lab", place: "Famecast" },
+  { years: "2021 – 2024", title: "Replace with a role", place: "Company or project" },
+  { years: "2018 – 2021", title: "Replace with a role", place: "Company or project" },
+];

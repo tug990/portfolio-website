@@ -6,6 +6,9 @@ export type Project = {
   year: number;
   tags: string[];
   featured?: boolean;
+  image?: string; // poster or still hung in the gallery, e.g. "/work/my-film.webp" (put the file in public/work/)
+  client?: string; // who it was made for
+  video?: string; // a video file, e.g. "/work/my-film.mp4", shown on the project page
   link?: string; // watch / live link
   repo?: string; // secondary link
   body: string[]; // paragraphs for the case-study page

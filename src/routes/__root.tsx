@@ -1,4 +1,11 @@
-import { Outlet, createRootRoute, HeadContent, Scripts, Link } from "@tanstack/react-router";
+import {
+  Outlet,
+  createRootRoute,
+  HeadContent,
+  Scripts,
+  Link,
+  useRouterState,
+} from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -55,13 +62,15 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  // The home page is the full-screen gallery, so it has no footer.
+  const isHome = useRouterState({ select: (s) => s.location.pathname === "/" });
   return (
     <div className="flex min-h-screen flex-col">
       <SiteNav />
       <main className="flex-1">
         <Outlet />
       </main>
-      <SiteFooter />
+      {!isHome && <SiteFooter />}
       <Toaster richColors position="top-center" />
     </div>
   );
