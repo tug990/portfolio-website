@@ -11,9 +11,7 @@ import { useEffect, useRef } from "react";
       slab, cyan, white at the centre, yellow/orange/red on the right slab,
       falling off down the slabs, with white light bleeding round the edges
     - soft grey floor shadows under the slabs, and the light spilling forwards
-    - dust motes drifting in the light
-    - slow film light leaks at the screen edges, a faint vignette
-    - moving film grain, per device pixel
+    - the faintest vignette; everything else is clean, smooth gradient
 
   Geometry uses the logo image's own pixel grid (1254 x 1254), so it can be
   checked straight against the artwork.
@@ -127,30 +125,6 @@ void main() {
   float bloom = exp(-length((p - vec2(644.0, 318.0)) / vec2(34.0, 22.0)));
   col += spec * bloom * 0.18 * (inL + inR);
 
-  // Dust drifting up through the light
-  for (int i = 0; i < 26; i++) {
-    float fi = float(i);
-    float sp = 6.0 + hash(vec2(fi, 3.1)) * 10.0;
-    vec2 mote = vec2(
-      590.0 + hash(vec2(fi, 1.7)) * 110.0 + sin(uTime * 0.35 + fi) * 6.0,
-      640.0 - mod(uTime * sp + hash(vec2(fi, 9.2)) * 340.0, 340.0)
-    );
-    float r = 0.55 + hash(vec2(fi, 4.4)) * 0.9;
-    float d = length(p - mote);
-    float m = exp(-(d * d) / (r * r)) * (0.35 + 0.65 * hash(vec2(fi, 6.6)));
-    float tm = clamp((mote.x - 644.0) / 230.0 + 0.5, 0.0, 1.0);
-    vec3 mc = mix(spectrum(tm), vec3(1.0), 0.55);
-    float onDark = clamp(inL + inR, 0.0, 1.0);
-    col = mix(col, mc, m * onDark * 0.9);                                  // glinting against the black slabs
-    col = mix(col, col * 0.86, m * clamp(1.0 - onDark - inG, 0.0, 1.0) * 0.25); // a faint speck over white
-  }
-
-  // Film light leaks drifting at the edges: warm top-right, cool bottom-left
-  float lw = exp(-pow(length((scr - vec2(1.04 + 0.03 * sin(uTime * 0.21), -0.04)) / vec2(0.55, 0.45)), 2.0));
-  float lc = exp(-pow(length((scr - vec2(-0.05, 1.06 + 0.03 * cos(uTime * 0.17))) / vec2(0.6, 0.5)), 2.0));
-  col = mix(col, col * vec3(1.0, 0.88, 0.76), lw * 0.18);
-  col = mix(col, col * vec3(0.84, 0.9, 1.0), lc * 0.16);
-
   // The faintest vignette
   col *= 1.0 - 0.035 * pow(length(scr - 0.5) * 1.35, 2.2);
 
@@ -189,9 +163,8 @@ void main() {
     col = clamp(flood, 0.0, 1.0);
   }
 
-  // Film grain, a fresh pattern 24 times a second, per device pixel
-  float g = hash(floor(gl_FragCoord.xy) + floor(uTime * 24.0) * vec2(17.0, 31.0)) - 0.5;
-  col += g * 0.035;
+  // An invisible dither (under one shade step) so soft gradients never band
+  col += (hash(floor(gl_FragCoord.xy)) - 0.5) / 255.0;
 
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
