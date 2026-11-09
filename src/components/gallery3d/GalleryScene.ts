@@ -8,6 +8,9 @@ import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLigh
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import type { Project } from "@/content/projects";
+import { FontLoader, type FontData } from "three/examples/jsm/loaders/FontLoader.js";
+import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
+import signFont from "three/examples/fonts/helvetiker_bold.typeface.json";
 import {
   doorLightTexture,
   leafTextures,
@@ -40,6 +43,7 @@ const WORK_START = 4.2; // first side-wall screen, metres in from z = 0
 const WORK_GAP = 3.2; // between screens along a side wall
 const CENTRE_GAP = 3.4; // between the screens on the far wall
 const DOOR = { w: 1.15, h: 2.45, x: 1.35 };
+const SIGN = { z: -3 }; // where the INSIGHT LAB sign hangs
 const LABEL = { w: 0.34, h: 0.21 };
 
 export type Pose = { x: number; z: number; yaw: number }; // yaw: 0 looks down the room (-z)
@@ -350,6 +354,7 @@ export class GalleryScene {
     this.addFloatingWalls(W, D, FRONT, len, mid);
     this.addSkylight(H, len, mid);
     this.addSculpture(D, H);
+    this.addSign(H);
 
     /* ---------- the screens ---------- */
     opts.projects.forEach((p, i) => this.addWork(p, i, aniso));
@@ -426,10 +431,14 @@ export class GalleryScene {
     A long skylight down the middle of the ceiling: a softly glowing panel in a
     shallow recess, lighting the room like daylight through a diffuser.
   */
-  private addSkylight(H: number, len: number, mid: number) {
+  private addSkylight(H: number, len: number, roomMid: number) {
     RectAreaLightUniformsLib.init();
     const w = 1.7;
-    const l = len - 2.4;
+    // From near the door wall to just short of the sign, so plain ceiling sits behind the letters
+    const near = roomMid + len / 2 - 1.2;
+    const far = SIGN.z + 0.5;
+    const l = near - far;
+    const mid = (near + far) / 2;
     const tex = skylightTexture();
     const panelMat = new THREE.MeshBasicMaterial({
       map: tex,
@@ -594,6 +603,161 @@ export class GalleryScene {
     this.scene.add(g, sl, sl.target);
     this.addDownlight(new THREE.Vector3(0, H, z + 0.5));
     this.sculpture = { gap: gapMat, bow: bowMat };
+  }
+
+  /*
+    The name, hung from the ceiling as you enter: INSIGHT LAB in cut glass,
+    every letter faceted at its edges, the light running blue on the left
+    through white to orange on the right, like the logo. Chrome rods hang it
+    from a glass rail, and a glint of light sweeps slowly across it.
+  */
+  private signShader?: { uniforms: { uTime: { value: number } } };
+  private addSign(H: number) {
+    const font = new FontLoader().parse(signFont as unknown as FontData);
+    const size = 0.42;
+    const textGeo = new TextGeometry("INSIGHT LAB", {
+      font,
+      size,
+      depth: 0.07,
+      curveSegments: 10,
+      bevelEnabled: true,
+      bevelThickness: 0.045,
+      bevelSize: 0.03,
+      bevelSegments: 1, // one flat chamfer: reads as cut glass
+    });
+    textGeo.center();
+    textGeo.computeBoundingBox();
+    const box = textGeo.boundingBox!;
+    const minX = box.min.x - 0.25;
+    const maxX = box.max.x + 0.25;
+
+    // Colour across the word, from the logo: blue, cyan, white, amber, orange.
+    const stops: [number, THREE.Color][] = [
+      [0, new THREE.Color("#2a4dff")],
+      [0.22, new THREE.Color("#2bb8ff")],
+      [0.44, new THREE.Color("#93a6ff")],
+      [0.56, new THREE.Color("#ffd27e")],
+      [0.8, new THREE.Color("#ff9a2e")],
+      [1, new THREE.Color("#ff5e1a")],
+    ];
+    const spectrum = (t: number, out: THREE.Color) => {
+      let k = 0;
+      while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+      const [t0, c0] = stops[k];
+      const [t1, c1] = stops[k + 1];
+      return out.copy(c0).lerp(c1, THREE.MathUtils.clamp((t - t0) / (t1 - t0), 0, 1));
+    };
+    // The chamfers and sides catch more light than the faces, like cut crystal.
+    const colourise = (geo: THREE.BufferGeometry) => {
+      const pos = geo.attributes.position;
+      const nor = geo.attributes.normal;
+      const col = new Float32Array(pos.count * 3);
+      const c = new THREE.Color();
+      const white = new THREE.Color(1, 1, 1);
+      for (let k = 0; k < pos.count; k++) {
+        spectrum((pos.getX(k) - minX) / (maxX - minX), c);
+        const facet = 1 - Math.abs(nor.getZ(k)); // 0 on the face, 1 on sides and chamfers
+        c.lerp(white, facet * 0.32);
+        // faces a touch brighter towards the top, like light caught in glass
+        c.multiplyScalar(0.8 + 0.3 * THREE.MathUtils.clamp((pos.getY(k) + 0.25) / 0.5, 0, 1));
+        col[k * 3] = c.r;
+        col[k * 3 + 1] = c.g;
+        col[k * 3 + 2] = c.b;
+      }
+      geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    };
+    colourise(textGeo);
+
+    const glass = new THREE.MeshPhysicalMaterial({
+      vertexColors: true,
+      color: 0x2c2c2c, // dim body, so the colour comes from the glow, not the room's white light
+      emissive: 0xffffff,
+      emissiveIntensity: 0.75,
+      roughness: 0.12,
+      metalness: 0,
+      clearcoat: 1,
+      clearcoatRoughness: 0.04,
+      iridescence: 0.55,
+      iridescenceIOR: 1.35,
+      iridescenceThicknessRange: [200, 600],
+    });
+    // The glow takes the glass's colour, and a glint sweeps across it now and then.
+    glass.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = { value: 0 };
+      this.signShader = shader as unknown as { uniforms: { uTime: { value: number } } };
+      shader.vertexShader = shader.vertexShader.replace(
+        "void main() {",
+        "varying float vSignX;\nvoid main() {\n  vSignX = position.x;",
+      );
+      shader.fragmentShader = shader.fragmentShader
+        .replace("void main() {", "uniform float uTime;\nvarying float vSignX;\nvoid main() {")
+        .replace(
+          "#include <emissivemap_fragment>",
+          `#include <emissivemap_fragment>
+          float sweep = mod(uTime * 0.9, 9.0) - 4.5;
+          float glint = exp(-pow((vSignX - sweep) * 2.2, 2.0));
+          totalEmissiveRadiance *= vColor.rgb * (1.0 + 1.1 * glint);`,
+        );
+    };
+    glass.customProgramCacheKey = () => "insight-sign";
+    this.disposables.push(textGeo, glass);
+
+    const sign = new THREE.Group();
+    const { z } = SIGN;
+    const textY = H - 1.35;
+    sign.position.set(0, 0, z);
+    const letters = new THREE.Mesh(textGeo, glass);
+    letters.position.y = textY;
+    sign.add(letters);
+
+    // The glass rail, and the chrome rods it hangs the letters from
+    const railY = textY + size / 2 + 0.5;
+    const railGeo = new THREE.BoxGeometry(maxX - minX, 0.07, 0.09, 24, 1, 1);
+    colourise(railGeo);
+    const rail = new THREE.Mesh(railGeo, glass);
+    rail.position.y = railY;
+    const chrome = new THREE.MeshStandardMaterial({
+      color: 0xe8e8ea,
+      metalness: 1,
+      roughness: 0.18,
+    });
+    const rodGeo = new THREE.CylinderGeometry(0.006, 0.006, 1, 10);
+    const capGeo = new THREE.CylinderGeometry(0.016, 0.016, 0.045, 16);
+    this.disposables.push(railGeo, chrome, rodGeo, capGeo);
+    sign.add(rail);
+    const rod = (x: number, y0: number, y1: number) => {
+      const r = new THREE.Mesh(rodGeo, chrome);
+      r.scale.y = y1 - y0;
+      r.position.set(x, (y0 + y1) / 2, 0);
+      const a = new THREE.Mesh(capGeo, chrome);
+      a.position.set(x, y1 - 0.022, 0);
+      const b = new THREE.Mesh(capGeo, chrome);
+      b.position.set(x, y0 + 0.022, 0);
+      sign.add(r, a, b);
+    };
+    const n = 7;
+    for (let k = 0; k < n; k++) {
+      const x = box.min.x + 0.12 + ((box.max.x - box.min.x - 0.24) * k) / (n - 1);
+      rod(x, textY + size / 2 - 0.02, railY - 0.035);
+    }
+    // Two short rods up to the ceiling
+    rod(minX + 0.35, railY + 0.035, H);
+    rod(maxX - 0.35, railY + 0.035, H);
+
+    // Its coloured light on the ceiling and the air around it
+    if (this.hq) {
+      const lights: [number, number][] = [
+        [0x3a5cff, minX + 0.6],
+        [0x8a7dff, 0],
+        [0xff8a2a, maxX - 0.6],
+      ];
+      lights.forEach(([c, x]) => {
+        const l = new THREE.PointLight(c, 1.3, 3.2, 2);
+        l.position.set(x, textY + 0.25, 0.35);
+        sign.add(l);
+      });
+    }
+    this.scene.add(sign);
   }
 
   /* A small recessed light in the ceiling: just a glowing disc, no fittings. */
@@ -1060,6 +1224,7 @@ export class GalleryScene {
       if (w.shader) w.shader.uniforms.uTime.value = time;
     });
     this.film.uniforms.uTime.value = time;
+    if (this.signShader) this.signShader.uniforms.uTime.value = time;
     if (this.sculpture) {
       // The light in the sculpture breathes, very slowly
       const breath = 0.5 + 0.5 * Math.sin(time * 0.6);
