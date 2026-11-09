@@ -94,6 +94,10 @@ export function Gallery() {
   const room = useMemo(() => buildRoom(PROJECTS.length, view.w, view.h), [view]);
   // Narrow screens get a wider field of view so the room doesn't feel like a tunnel.
   const persp = Math.round(clamp(view.w * 0.62, 520, 950));
+  // Phones get lower-resolution surfaces to stay inside iOS Safari's memory limit.
+  const phone = view.w < 700;
+  const surfaceK = phone ? 8 : 4;
+  const contentK = phone ? 2 : 1;
 
   const stageRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
@@ -452,7 +456,8 @@ export function Gallery() {
         // re-render must not snap the camera back. Untransformed = door at 1:1.
         style={{ transformStyle: "preserve-3d" }}
       >
-        <Room room={room} viewW={view.w} viewH={view.h} lit={lit} />
+        <Room room={room} viewW={view.w} viewH={view.h} lit={lit} k={surfaceK} />
+        {room.about && <AboutPlaque at={room.about} k={contentK} />}
 
         {room.pieces.map((s, i) => (
           <Artwork
@@ -460,6 +465,7 @@ export function Gallery() {
             project={PROJECTS[i]}
             slot={s}
             interactive={phase === "inside"}
+            k={contentK}
             frameRef={(el) => {
               frameEls.current[i] = el;
             }}
@@ -484,6 +490,17 @@ export function Gallery() {
           />
         ))}
       </div>
+
+      {/* The room starts dim and brightens as the lights come on. One flat
+          screen-sized layer: far cheaper than shading every wall. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-black"
+        style={{
+          opacity: 0,
+          animation: phase === "opening" ? "lights-on 2.4s ease-out" : undefined,
+        }}
+      />
 
       {/* Controls once inside */}
       <div
@@ -701,15 +718,31 @@ function zoomInto(el: HTMLElement, go: () => void) {
 
 /* ---------- 3D building blocks ---------- */
 
-// A flat panel centred at (x, y, z), turned by `turn`.
-function panel(w: number, h: number, x: number, y: number, z: number, turn: string): CSSProperties {
+/*
+  Memory matters here. Every 3D surface becomes its own GPU texture, sized by
+  its CSS size times the screen's pixel density. A 2600 x 3400 floor on a 3x
+  iPhone alone is ~320 MB, and iOS Safari kills the tab well before the whole
+  room adds up. So big plain surfaces are drawn small and scaled up (`k`):
+  their gradients are soft anyway, so nobody can tell.
+*/
+
+// A flat panel centred at (x, y, z), turned by `turn`, drawn at 1/k resolution.
+function panel(
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  z: number,
+  turn: string,
+  k = 1,
+): CSSProperties {
   return {
     position: "absolute",
-    left: -w / 2,
-    top: -h / 2,
-    width: w,
-    height: h,
-    transform: `translate3d(${x}px, ${y}px, ${z}px) ${turn}`,
+    left: -w / k / 2,
+    top: -h / k / 2,
+    width: w / k,
+    height: h / k,
+    transform: `translate3d(${x}px, ${y}px, ${z}px) ${turn} scale(${k})`,
   };
 }
 
@@ -721,17 +754,27 @@ const WALL = wall(95);
 const SIDE_WALL = wall(91.5);
 const CORNER_WALL = wall(93);
 
-/* Before the lights come on, every surface sits in shadow. */
-function Dim({ lit, delay = 0 }: { lit: boolean; delay?: number }) {
+/*
+  Content with text (pieces, the about panel) is laid out at full size, then
+  painted into a box `k` times smaller and scaled back up. k = 1 on desktop,
+  2 on phones: still sharp at the size it appears, at a quarter of the memory.
+*/
+function Lowres({
+  w,
+  h,
+  k,
+  children,
+}: {
+  w: number;
+  h: number;
+  k: number;
+  children: React.ReactNode;
+}) {
+  if (k === 1) return <>{children}</>;
   return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute inset-0 bg-black"
-      style={{
-        opacity: lit ? 0 : 0.32,
-        transition: lit ? `opacity 1.4s ease ${delay}ms` : "opacity .6s ease",
-      }}
-    />
+    <div style={{ width: w, height: h, transform: `scale(${1 / k})`, transformOrigin: "0 0" }}>
+      {children}
+    </div>
   );
 }
 
@@ -740,108 +783,100 @@ function Room({
   viewW,
   viewH,
   lit,
+  k,
 }: {
   room: RoomLayout;
   viewW: number;
   viewH: number;
   lit: boolean;
+  k: number;
 }) {
   const { width: W, height: H, depth: D, floorY, ceilY, midY, corner, cut } = room;
   const side = (W - viewW) / 2; // entrance wall either side of the door
   const above = H - viewH; // entrance wall above the door
   const lights = Math.max(3, Math.floor((D - 300) / 520));
+  const tile = 320 / k; // floor tile size at the reduced resolution
 
   return (
     <>
       {/* Floor: pale tiles with light pooling down the middle */}
       <div
         style={{
-          ...panel(W, D, 0, floorY, -D / 2, "rotateX(90deg)"),
-          background:
-            "radial-gradient(ellipse 45% 60% at 50% 40%, rgba(255,255,255,.75), transparent 75%), repeating-linear-gradient(90deg, rgba(0,0,0,.09) 0 2px, transparent 2px 320px), repeating-linear-gradient(0deg, rgba(0,0,0,.09) 0 2px, transparent 2px 320px), #d9d6d0",
+          ...panel(W, D, 0, floorY, -D / 2, "rotateX(90deg)", k),
+          background: `radial-gradient(ellipse 45% 60% at 50% 40%, rgba(255,255,255,.75), transparent 75%), repeating-linear-gradient(90deg, rgba(0,0,0,.08) 0 1px, transparent 1px ${tile}px), repeating-linear-gradient(0deg, rgba(0,0,0,.08) 0 1px, transparent 1px ${tile}px), #d9d6d0`,
         }}
-      >
-        <Dim lit={lit} delay={300} />
-      </div>
+      />
       {/* Ceiling */}
       <div
         style={{
-          ...panel(W, D, 0, ceilY, -D / 2, "rotateX(-90deg)"),
-          background: "#e9e8e5",
-          boxShadow: "inset 0 0 160px rgba(0,0,0,.08)",
+          ...panel(W, D, 0, ceilY, -D / 2, "rotateX(-90deg)", k),
+          background:
+            "linear-gradient(90deg, rgba(0,0,0,.06), transparent 18%, transparent 82%, rgba(0,0,0,.06)), #e9e8e5",
         }}
-      >
-        <Dim lit={lit} delay={200} />
-      </div>
-      {/* Light panels across the ceiling, switching on one after another as you walk in */}
+      />
+      {/* Light panels across the ceiling, switching on one after another as you walk in.
+          A soft gradient stands in for a glow (a blurred box-shadow costs far more). */}
       {Array.from({ length: lights }, (_, i) => (
         <div
           key={i}
           style={{
-            ...panel(W * 0.72, 34, 0, ceilY + 2, -300 - i * 520, "rotateX(-90deg)"),
-            background: lit ? "#ffffff" : "#d4d2cd",
-            boxShadow: lit ? "0 0 46px 10px rgba(255,255,255,.95)" : "none",
-            transition: lit
-              ? `background-color .9s ease ${i * 120}ms, box-shadow .9s ease ${i * 120}ms`
-              : "background-color .4s ease, box-shadow .4s ease",
+            ...panel(W * 0.72, 150, 0, ceilY + 2, -300 - i * 520, "rotateX(-90deg)", k),
+            background:
+              "linear-gradient(180deg, transparent, rgba(255,255,255,.55) 32%, #fff 44%, #fff 56%, rgba(255,255,255,.55) 68%, transparent)",
+            opacity: lit ? 1 : 0.15,
+            transition: lit ? `opacity .9s ease ${i * 120}ms` : "opacity .4s ease",
           }}
         />
       ))}
       {/* Side walls */}
       <div
-        style={{ ...panel(D, H, -W / 2, midY, -D / 2, "rotateY(90deg)"), background: SIDE_WALL }}
-      >
-        <Dim lit={lit} delay={150} />
-      </div>
+        style={{
+          ...panel(D, H, -W / 2, midY, -D / 2, "rotateY(90deg)", k),
+          background: SIDE_WALL,
+        }}
+      />
       <div
-        style={{ ...panel(D, H, W / 2, midY, -D / 2, "rotateY(-90deg)"), background: SIDE_WALL }}
-      >
-        <Dim lit={lit} delay={150} />
-      </div>
+        style={{
+          ...panel(D, H, W / 2, midY, -D / 2, "rotateY(-90deg)", k),
+          background: SIDE_WALL,
+        }}
+      />
       {/* Back wall and the two angled corners */}
-      <div style={{ ...panel(W - cut * 2, H, 0, midY, -D, ""), background: WALL }}>
-        <Dim lit={lit} delay={500} />
-      </div>
+      <div style={{ ...panel(W - cut * 2, H, 0, midY, -D, "", k), background: WALL }} />
       <div
         style={{
-          ...panel(corner, H, -W / 2 + cut / 2, midY, -D + cut / 2, "rotateY(45deg)"),
+          ...panel(corner, H, -W / 2 + cut / 2, midY, -D + cut / 2, "rotateY(45deg)", k),
           background: CORNER_WALL,
         }}
-      >
-        <Dim lit={lit} delay={450} />
-      </div>
+      />
       <div
         style={{
-          ...panel(corner, H, W / 2 - cut / 2, midY, -D + cut / 2, "rotateY(-45deg)"),
+          ...panel(corner, H, W / 2 - cut / 2, midY, -D + cut / 2, "rotateY(-45deg)", k),
           background: CORNER_WALL,
         }}
-      >
-        <Dim lit={lit} delay={450} />
-      </div>
+      />
 
       {/* Entrance wall, seen from inside (faces into the room) */}
       {side > 0 && (
         <>
           <div
             style={{
-              ...panel(side, H, -(viewW / 2 + side / 2), midY, 0, "rotateY(180deg)"),
+              ...panel(side, H, -(viewW / 2 + side / 2), midY, 0, "rotateY(180deg)", k),
               background: WALL,
             }}
           />
           <div
             style={{
-              ...panel(side, H, viewW / 2 + side / 2, midY, 0, "rotateY(180deg)"),
+              ...panel(side, H, viewW / 2 + side / 2, midY, 0, "rotateY(180deg)", k),
               background: WALL,
             }}
-          >
-            {room.about && <AboutPlaque />}
-          </div>
+          />
         </>
       )}
       {above > 0 && (
         <div
           style={{
-            ...panel(viewW, above, 0, ceilY + above / 2, 0, "rotateY(180deg)"),
+            ...panel(viewW, above, 0, ceilY + above / 2, 0, "rotateY(180deg)", k),
             background: "#fbfaf8",
           }}
         />
@@ -850,31 +885,42 @@ function Room({
   );
 }
 
-/* About + work history, on the wall beside the door (the last stop on the walk). */
-function AboutPlaque() {
+/* About + work history, hung beside the door (the last stop on the walk). */
+const PLAQUE_W = 520;
+const PLAQUE_H = 720;
+
+function AboutPlaque({ at, k }: { at: Piece; k: number }) {
+  // Just in front of the entrance wall, facing into the room.
   return (
-    <div className="flex h-full items-center justify-center px-[8%] text-black">
-      <div className="w-full max-w-[460px]">
-        <p className="tracked text-[13px] text-black/50">{SITE.role}</p>
-        <p className="mt-4 text-[34px] font-light leading-tight">{SITE.name}</p>
-        <p className="mt-5 text-[17px] leading-relaxed text-black/65">{SITE.description}</p>
-        {HISTORY.length > 0 && (
-          <ol className="mt-8 border-t border-black/15">
-            {HISTORY.map((h) => (
-              <li
-                key={`${h.years}-${h.title}`}
-                className="grid grid-cols-[110px_1fr] gap-4 border-b border-black/15 py-3 text-[15px]"
-              >
-                <span className="text-black/50">{h.years}</span>
-                <span>
-                  <span className="block">{h.title}</span>
-                  {h.place && <span className="block text-black/50">{h.place}</span>}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </div>
+    <div style={panel(PLAQUE_W, PLAQUE_H, at.x, at.y + 60, at.z - 3, "rotateY(180deg)", k)}>
+      <Lowres w={PLAQUE_W} h={PLAQUE_H} k={k}>
+        <div
+          className="flex h-full items-center text-black"
+          style={{ width: PLAQUE_W, height: PLAQUE_H }}
+        >
+          <div className="w-full">
+            <p className="tracked text-[13px] text-black/50">{SITE.role}</p>
+            <p className="mt-4 text-[34px] font-light leading-tight">{SITE.name}</p>
+            <p className="mt-5 text-[17px] leading-relaxed text-black/65">{SITE.description}</p>
+            {HISTORY.length > 0 && (
+              <ol className="mt-8 border-t border-black/15">
+                {HISTORY.map((h) => (
+                  <li
+                    key={`${h.years}-${h.title}`}
+                    className="grid grid-cols-[110px_1fr] gap-4 border-b border-black/15 py-3 text-[15px]"
+                  >
+                    <span className="text-black/50">{h.years}</span>
+                    <span>
+                      <span className="block">{h.title}</span>
+                      {h.place && <span className="block text-black/50">{h.place}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        </div>
+      </Lowres>
     </div>
   );
 }
@@ -883,6 +929,7 @@ function Artwork({
   project,
   slot,
   interactive,
+  k,
   frameRef,
   onFocus,
   onClick,
@@ -890,6 +937,7 @@ function Artwork({
   project: Project;
   slot: Piece;
   interactive: boolean;
+  k: number;
   frameRef: (el: HTMLElement | null) => void;
   onFocus: () => void;
   onClick: (e: React.MouseEvent) => void;
@@ -901,38 +949,40 @@ function Artwork({
   const boxH = FRAME_H + 110; // frame plus caption
 
   return (
-    <div style={panel(FRAME_W, boxH, x, slot.y + 55, z, `rotateY(${slot.a}deg)`)}>
-      <Link
-        to="/projects/$slug"
-        params={{ slug: project.slug }}
-        draggable={false}
-        tabIndex={interactive ? 0 : -1}
-        onFocus={onFocus}
-        onClick={onClick}
-        className="group block outline-none"
-        aria-label={`${project.title}, ${project.year}`}
-      >
-        <span
-          ref={frameRef}
-          className="block border-[10px] border-[#111] bg-black shadow-[0_40px_60px_-20px_rgba(0,0,0,.45)] transition-transform duration-500 group-hover:-translate-y-2 group-focus-visible:ring-4 group-focus-visible:ring-black/30"
-          style={{ height: FRAME_H }}
+    <div style={panel(FRAME_W, boxH, x, slot.y + 55, z, `rotateY(${slot.a}deg)`, k)}>
+      <Lowres w={FRAME_W} h={boxH} k={k}>
+        <Link
+          to="/projects/$slug"
+          params={{ slug: project.slug }}
+          draggable={false}
+          tabIndex={interactive ? 0 : -1}
+          onFocus={onFocus}
+          onClick={onClick}
+          className="group block outline-none"
+          aria-label={`${project.title}, ${project.year}`}
         >
-          {project.image ? (
-            <img
-              src={project.image}
-              alt=""
-              draggable={false}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <Poster title={project.title} />
-          )}
-        </span>
-        <span className="mt-5 block text-left text-black">
-          <span className="block text-[22px] font-medium leading-tight">{project.title}</span>
-          <span className="mt-1 block text-[16px] text-black/50">{project.tags.join(", ")}</span>
-        </span>
-      </Link>
+          <span
+            ref={frameRef}
+            className="block border-[10px] border-[#111] bg-black shadow-[0_30px_40px_-20px_rgba(0,0,0,.4)] transition-transform duration-500 group-hover:-translate-y-2 group-focus-visible:ring-4 group-focus-visible:ring-black/30"
+            style={{ height: FRAME_H }}
+          >
+            {project.image ? (
+              <img
+                src={project.image}
+                alt=""
+                draggable={false}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <Poster title={project.title} />
+            )}
+          </span>
+          <span className="mt-5 block text-left text-black">
+            <span className="block text-[22px] font-medium leading-tight">{project.title}</span>
+            <span className="mt-1 block text-[16px] text-black/50">{project.tags.join(", ")}</span>
+          </span>
+        </Link>
+      </Lowres>
     </div>
   );
 }
