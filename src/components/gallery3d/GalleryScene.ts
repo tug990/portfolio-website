@@ -4,6 +4,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { Project } from "@/content/projects";
@@ -144,6 +145,13 @@ export function buildLayout(count: number, aspect: number, front: number) {
 }
 export type Layout = ReturnType<typeof buildLayout>;
 
+/* Ambient occlusion at half resolution: soft by nature, and a quarter of the cost. */
+class HalfResAO extends GTAOPass {
+  setSize(width: number, height: number) {
+    super.setSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
+  }
+}
+
 /* Finishing: just a gentle vignette. (No grain or lens fringing: the room stays smooth.) */
 const FilmShader = {
   uniforms: {
@@ -252,7 +260,8 @@ export class GalleryScene {
       powerPreference: "high-performance",
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // Neutral keeps white walls white (ACES greys them), as a camera would see them.
+    renderer.toneMapping = THREE.NeutralToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = this.hq;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -267,13 +276,13 @@ export class GalleryScene {
     const pmrem = new THREE.PMREMGenerator(renderer);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = env;
-    this.scene.environmentIntensity = 0.22;
+    this.scene.environmentIntensity = 0.32;
     this.scene.background = new THREE.Color(0xf2f0ec);
     pmrem.dispose();
     this.disposables.push(env);
 
     // A soft fill only: the spotlights and the skylight do the drama.
-    const hemi = new THREE.HemisphereLight(0xfffaf2, 0xd9d3c9, 0.32);
+    const hemi = new THREE.HemisphereLight(0xfffaf2, 0xd9d3c9, 0.62);
     this.scene.add(hemi);
 
     /* ---------- the room: smooth, seamless surfaces ---------- */
@@ -310,18 +319,21 @@ export class GalleryScene {
     this.scene.add(left, right, back, entrance);
 
     // Ceiling
-    const ceiling = plane(W, len, matte(0xf6f4f0, 0.98));
+    // Lit by light bouncing up off the walls and floor, as a real ceiling is
+    const ceilMat = matte(0xf6f4f0, 0.98);
+    ceilMat.emissive.set(0x4a4843);
+    const ceiling = plane(W, len, ceilMat);
     ceiling.position.set(0, H, mid);
     ceiling.rotation.x = Math.PI / 2;
     this.scene.add(ceiling);
 
-    // A seamless floor of smooth honed stone: solid and matte, so it never
+    // A seamless floor of pale polished concrete: solid and matte, so it never
     // reads as water. Light falls on it softly; nothing mirrors in it.
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x6f6b65,
-      roughness: 0.78,
+      color: 0xa29c93, // pale warm concrete grey
+      roughness: 0.5, // honed: a soft sheen under the lights, never a mirror
       metalness: 0,
-      envMapIntensity: 0.35,
+      envMapIntensity: 0.45,
     });
     this.disposables.push(floorMat);
     const floor = plane(W, len, floorMat);
@@ -354,6 +366,28 @@ export class GalleryScene {
     });
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    if (this.hq) {
+      // Soft contact shadows where surfaces meet (wall and floor, wall and
+      // ceiling, behind each screen): what makes a room read as real.
+      const ao = new HalfResAO(this.scene, this.camera, 512, 512);
+      ao.blendIntensity = 0.7;
+      ao.updateGtaoMaterial({
+        radius: 0.45,
+        distanceExponent: 1.5,
+        thickness: 1.5,
+        scale: 1,
+        samples: 16,
+      });
+      ao.updatePdMaterial({
+        lumaPhi: 10,
+        depthPhi: 2,
+        normalPhi: 3,
+        radius: 6,
+        rings: 2,
+        samples: 16,
+      });
+      this.composer.addPass(ao);
+    }
     // Glow only on what truly emits light: the skylight, the light lines, the doors.
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.38, 0.55, 0.93);
     this.composer.addPass(this.bloom);
