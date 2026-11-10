@@ -22,11 +22,10 @@ import {
   addFloorReflection,
   addFramedPicture,
   addPrismPlinth,
-  addWallLight,
-  addDownlights,
+  addCoveLighting,
+  microcement,
   addWallTitle,
   sizeFloorReflection,
-  type Fixture,
   type SetCtx,
 } from "./warmset";
 import type { Reflector } from "three/examples/jsm/objects/Reflector.js";
@@ -197,7 +196,8 @@ class HalfResAO extends GTAOPass {
         (o as THREE.Sprite).isSprite ||
         (o as THREE.Points).isPoints ||
         (o as THREE.Line).isLine ||
-        (!!m && !Array.isArray(m) && m.blending === THREE.AdditiveBlending);
+        (!!m && !Array.isArray(m) && m.blending === THREE.AdditiveBlending) ||
+        o.layers.mask === 2; // seen-only things (glows, the journey's corridor)
       if (glow && o.visible) {
         o.visible = false;
         cache.push(o);
@@ -212,14 +212,24 @@ const FilmShader = {
     tDiffuse: { value: null as THREE.Texture | null },
     uTime: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
+    uCA: { value: 0 }, // radial colour fringe (the journey only)
+    uFlash: { value: 0 }, // white light out of the logo (the journey only)
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uCA; uniform float uFlash; varying vec2 vUv;
     void main(){
       vec2 d = vUv - 0.5;
-      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      vec3 c;
+      if (uCA > 0.0) {
+        // a lens's lateral colour: red and blue pulled apart radially, none at the centre
+        vec2 o = d * uCA * (0.3 + dot(d, d) * 4.0);
+        c = vec3(texture2D(tDiffuse, vUv + o).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - o).b);
+      } else {
+        c = texture2D(tDiffuse, vUv).rgb;
+      }
       c *= 1.0 - 0.3 * smoothstep(0.15, 0.75, dot(d, d) * 1.7);
+      c = mix(c, vec3(2.0), uFlash);
       gl_FragColor = vec4(c, 1.0);
     }`,
 };
@@ -295,8 +305,10 @@ export class GalleryScene {
   private labels: THREE.Mesh[] = [];
   private count: number;
   readonly front: number; // z of the wall with the doors, behind where you arrive
-  private fixtures: Fixture[] = []; // the hidden spotlights, gathered as the room is built
   private reflector?: Reflector;
+  private ao?: HalfResAO;
+  private entranceParts: THREE.Object3D[] = []; // the wall behind you as you arrive
+  private entranceShown = true;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -370,8 +382,9 @@ export class GalleryScene {
     const mid = (FRONT - D) / 2;
     const allLen = len + BACK; // with the side gallery
     const allMid = (FRONT - D - BACK) / 2;
-    const wallMat = matte(0xdcc0a0, 0.92); // warm taupe plaster
-    wallMat.emissive.set(0x110a05); // a little warm glow between the spots; the spots do the rest
+    const wallMat = matte(0xddc6a8, 0.9); // warm beige microcement
+    microcement(wallMat);
+    wallMat.emissive.set(0x1e130a); // the warm light the cove and skylight leave on the walls
     const left = plane(allLen, H, wallMat);
     left.position.set(-W / 2, H / 2, allMid);
     left.rotation.y = Math.PI / 2;
@@ -384,6 +397,7 @@ export class GalleryScene {
     const galleryBack = plane(W, H, wallMat);
     galleryBack.position.set(0, H / 2, -D - BACK);
     this.scene.add(left, right, entrance, galleryBack);
+    this.entranceParts.push(entrance);
     // The far wall: solid in the middle, openings at both ends with a lintel over each
     const block = (bw: number, bh: number, x: number, y: number) => {
       const g = new THREE.BoxGeometry(bw, bh, 0.2);
@@ -399,7 +413,7 @@ export class GalleryScene {
 
     // Ceiling: darker, warm grey
     const ceilMat = matte(0x8a7766, 0.95);
-    ceilMat.emissive.set(0x2b1f16); // warm light bouncing up off the walls
+    ceilMat.emissive.set(0x3d2b1e); // warm light bouncing up off the lit walls
     const ceiling = plane(W, allLen, ceilMat);
     ceiling.position.set(0, H, allMid);
     ceiling.rotation.x = Math.PI / 2;
@@ -437,10 +451,6 @@ export class GalleryScene {
       panel.rotation.x = Math.PI / 2;
       panel.position.set(sx * (W / 2 - 0.55), H - 0.005, -D - 1.1);
       this.scene.add(panel);
-      const cool = new THREE.RectAreaLight(0xf0f4ff, 4, 0.5, 1.6);
-      cool.position.set(sx * (W / 2 - 0.55), H - 0.01, -D - 1.1);
-      cool.lookAt(sx * (W / 2 - 0.55), 0, -D - 1.1);
-      this.scene.add(cool);
       const l = new THREE.PointLight(0xffb36b, 10, 7, 2);
       l.position.set(sx * (W / 2 - 1.2), 2.9, -D - 2.4);
       this.scene.add(l);
@@ -449,7 +459,15 @@ export class GalleryScene {
       this.scene.add(deep);
     }
 
-    this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK);
+    this.entranceParts.push(this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK));
+    // Concealed cove light along the top of the room's walls: the architecture lights itself
+    const coves = addCoveLighting(set, H, [
+      { len, x: -W / 2, z: mid, ry: Math.PI / 2 },
+      { len, x: W / 2, z: mid, ry: -Math.PI / 2 },
+      { len: W - 2 * OPEN, x: 0, z: -D, ry: 0 },
+      { len: W, x: 0, z: FRONT, ry: Math.PI },
+    ]);
+    this.entranceParts.push(coves[3]);
     this.addSkylight(H, len, mid);
 
     /* ---------- the screens ---------- */
@@ -465,6 +483,7 @@ export class GalleryScene {
     doorWall.position.set(0, 0, this.front);
     doorWall.rotation.y = Math.PI;
     this.scene.add(doorWall);
+    this.entranceParts.push(doorWall);
     [
       { label: "All work", x: -DOOR.x },
       { label: "About us", x: DOOR.x },
@@ -498,6 +517,7 @@ export class GalleryScene {
         samples: 16,
       });
       this.composer.addPass(ao);
+      this.ao = ao;
     }
     // Glow only on what truly emits light: the skylight, the light lines, the doors.
     // Glow on what emits light, and a little on the brightest light falling on things, as a lens sees it
@@ -517,21 +537,9 @@ export class GalleryScene {
   */
   private addExhibition(set: SetCtx, W: number, D: number, H: number, aniso: number) {
     const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-    const lit = (at: THREE.Vector3, n: THREE.Vector3) =>
-      this.fixtures.push({
-        at: v(at.x + n.x * 1.55, H - 0.32, at.z + n.z * 1.55),
-        aim: at.clone(),
-        wash: { at: v(at.x, 0, at.z), normal: n.clone() },
-      });
-
-    const sides = [
-      { x: -W / 2, n: v(1, 0, 0) },
-      { x: W / 2, n: v(-1, 0, 0) },
-    ];
     // The far wall: the exhibition title, left of the films (nothing else hangs between them)
     const farN = v(0, 0, 1);
     addWallTitle(set, v(-3.5, 1.72, -D), farN, aniso);
-    lit(v(-3.5, 1.6, -D), farN);
 
     // In each passage, a film on the outer wall, seen through the opening:
     // a glimpse of more work (not one of the stops)
@@ -539,19 +547,10 @@ export class GalleryScene {
       const n = v(-sx, 0, 0);
       const at = v(sx * (W / 2 - 0.004), SCREEN.y, -D - 1.95);
       this.addGlimpseFilm(at, n, sx > 0 ? 7 : 8, aniso);
-      lit(v(sx * (W / 2), SCREEN.y, -D - 1.95), n);
     }
 
-    // The light on the walls, and where it comes from: a recessed spotlight
-    // over each work, the title and the passage films
-    addWallLight(set, H, this.fixtures);
     const prismAt = v(0, 0, -D + 3.6);
     const benchAt = v(0, 0, this.layout.stops[0].z - 4.4);
-    addDownlights(set, H, [
-      ...this.fixtures.map((f) => f.at),
-      v(prismAt.x, H, prismAt.z + 0.9),
-      v(benchAt.x, H, benchAt.z + 1.2),
-    ]);
 
     // The prism on its plinth, out from the far wall between the films
     addPrismPlinth(set, prismAt, "/brand/mark-transparent.webp");
@@ -632,8 +631,10 @@ export class GalleryScene {
       { len: W, x: 0, z: -D - back, ry: 0 }, // the side gallery's back wall
       { len: W, x: 0, z: front, ry: Math.PI },
     ];
-    walls.forEach((w) => {
+    let entrance!: THREE.Group;
+    walls.forEach((w, i) => {
       const g = new THREE.Group();
+      if (i === walls.length - 1) entrance = g;
       g.position.set(w.x, 0, w.z);
       g.rotation.y = w.ry;
       const lineGeo = new THREE.BoxGeometry(w.len, 0.012, 0.012);
@@ -646,6 +647,7 @@ export class GalleryScene {
       g.add(line, wash);
       this.scene.add(g);
     });
+    return entrance;
   }
 
   /*
@@ -654,7 +656,7 @@ export class GalleryScene {
   */
   private addSkylight(H: number, len: number, mid: number) {
     RectAreaLightUniformsLib.init();
-    const w = 2.6;
+    const w = 3.2; // a large recessed luminous panel
     const l = len - 2.4;
     const tex = skylightTexture();
     const panelMat = new THREE.MeshBasicMaterial({
@@ -817,30 +819,6 @@ export class GalleryScene {
     [bezel, screen, glass, lab].forEach((m) => {
       m.userData.pick = { kind: "work", index: i };
       this.pickables.push(m);
-    });
-
-    // The spotlight on it, from a hidden lamp in the ceiling
-    const H = ROOM.H;
-    const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.32, spot.z + spot.nz * 1.55);
-    const sl = new THREE.SpotLight(0xffc88e, this.hq ? 34 : 26, 0, 0.36, 0.7, 2);
-    sl.position.copy(head);
-    sl.target.position.set(spot.x, SCREEN.y + 0.05, spot.z);
-    if (this.hq) {
-      sl.castShadow = true;
-      sl.shadow.mapSize.set(1024, 1024);
-      sl.shadow.bias = -0.0004;
-      sl.shadow.normalBias = 0.02;
-      sl.shadow.camera.near = 0.3;
-      sl.shadow.camera.far = 6;
-    }
-    this.scene.add(sl, sl.target);
-    this.fixtures.push({
-      at: head,
-      aim: new THREE.Vector3(spot.x, SCREEN.y + 0.05, spot.z),
-      wash: {
-        at: new THREE.Vector3(spot.x, 0, spot.z),
-        normal: new THREE.Vector3(spot.nx, 0, spot.nz),
-      },
     });
 
     this.works.push(w);
@@ -1078,6 +1056,49 @@ export class GalleryScene {
   setPose(x: number, y: number, z: number, yaw: number, pitch = 0) {
     this.camera.position.set(x, y, z);
     this.camera.rotation.set(pitch, yaw, 0);
+  }
+
+  /* ---------- the journey in (see PrismTunnel.ts) ---------- */
+
+  /* The corridor is built in this room's own scene: one renderer, one camera, one exposure. */
+  addJourney(o: THREE.Object3D) {
+    this.scene.add(o);
+  }
+
+  get environment() {
+    return this.scene.environment;
+  }
+
+  /* The gallery's own lens for this window's shape: where the journey's lens ends. */
+  galleryFov() {
+    return fovFor(this.camera.aspect);
+  }
+
+  /* The entrance wall (and its doors) stands aside while you come through it. */
+  showEntrance(on: boolean) {
+    if (on === this.entranceShown) return;
+    this.entranceShown = on;
+    this.entranceParts.forEach((o) => (o.visible = on));
+  }
+
+  /*
+    Post-processing during the journey, blended back to the gallery's own as
+    you arrive (null: the gallery's own). bloom 1 = the corridor's selective
+    bloom (only light sources: a higher threshold, more strength); ao 0..1
+    fades the room's contact shadows in for the arrival.
+  */
+  setJourneyPost(p: { flash: number; ca: number; bloom: number; ao: number } | null) {
+    const b = p?.bloom ?? 0;
+    this.bloom.strength = 0.55 + 0.4 * b;
+    this.bloom.threshold = 0.86 + 0.24 * b;
+    this.bloom.radius = 0.6 + 0.15 * b;
+    this.film.uniforms.uCA.value = p?.ca ?? 0;
+    this.film.uniforms.uFlash.value = p?.flash ?? 0;
+    if (this.ao) {
+      const a = p ? p.ao : 1;
+      this.ao.enabled = a > 0.01;
+      this.ao.blendIntensity = 0.7 * a;
+    }
   }
 
   setExposure(e: number) {

@@ -38,37 +38,6 @@ function canvasTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2
   return t;
 }
 
-/*
-  A scallop: what a spotlight close to a wall throws on it. Bright and narrow
-  just under the lamp, widening as it falls, with a soft curved lower edge.
-*/
-function scallopTexture() {
-  return canvasTexture(128, 256, (ctx) => {
-    const w = 128;
-    const h = 256;
-    const img = ctx.createImageData(w, h);
-    for (let y = 0; y < h; y++) {
-      const v = y / (h - 1);
-      for (let x = 0; x < w; x++) {
-        const u = (x / (w - 1)) * 2 - 1;
-        const half = 0.12 + 0.88 * Math.pow(v, 0.55); // how wide the beam is at this height
-        const across = Math.max(0, 1 - Math.pow(Math.abs(u) / half, 2.2));
-        const bottom = 0.92 - 0.3 * u * u; // the curved lower edge
-        const fade = Math.min(1, Math.max(0, (bottom - v) / 0.16));
-        const top = Math.min(1, v / 0.05);
-        const rim = Math.exp(-Math.pow((v - bottom + 0.06) / 0.05, 2)) * 0.35; // a little brighter at the edge
-        const a = (across * (0.35 + 0.65 * Math.pow(1 - v, 0.7)) + rim * across) * fade * top;
-        const i = (y * w + x) * 4;
-        img.data[i] = 255;
-        img.data[i + 1] = 214;
-        img.data[i + 2] = 160;
-        img.data[i + 3] = Math.min(255, 255 * a);
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-  });
-}
-
 /* A soft pool of light: white at the centre, gone at the edge. */
 function poolTexture(rgb: string) {
   return canvasTexture(128, 128, (ctx) => {
@@ -249,124 +218,122 @@ export function landscapeTexture(seed: number, w: number, h: number) {
   return tex;
 }
 
-/* ---------- the light on the walls ---------- */
-
-export type Fixture = {
-  at: THREE.Vector3; // the (hidden) lamp
-  aim: THREE.Vector3; // where it points
-  /* the wall it washes, if any: the point on the wall under the lamp, and the wall's normal */
-  wash?: { at: THREE.Vector3; normal: THREE.Vector3; strength?: number };
-};
-
 /*
-  The light from the hidden lamps: a warm scallop on the wall above each
-  work. The lamps themselves aren't shown; only their light is.
+  Warm microcement on the walls: a near-flat finish with the faintest
+  natural variation (soft clouding, a whisper of trowel grain) in colour and
+  sheen, so they read as a real material under light, not a flat colour.
 */
-export function addWallLight(ctx: SetCtx, H: number, fixtures: Fixture[]) {
-  const { scene, keep } = ctx;
-
-  // The scallops they throw on the walls
-  const tex = scallopTexture();
-  const mat = new THREE.MeshBasicMaterial({
-    map: tex,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    color: WARM,
-    opacity: 0.55,
-  });
-  const geo = new THREE.PlaneGeometry(1.9, 3.1);
-  geo.translate(0, -1.55, 0); // hang from its top edge
-  keep(tex, mat, geo);
-  fixtures.forEach((f) => {
-    if (!f.wash) return;
-    const m = new THREE.Mesh(geo, f.wash.strength === undefined ? mat : mat.clone());
-    if (f.wash.strength !== undefined) {
-      (m.material as THREE.MeshBasicMaterial).opacity = 0.55 * f.wash.strength;
-      keep(m.material as THREE.Material);
-    }
-    const p = f.wash.at.clone().addScaledVector(f.wash.normal, 0.012);
-    p.y = H - 0.18;
-    m.position.copy(p);
-    m.lookAt(p.clone().add(f.wash.normal));
-    m.renderOrder = 2;
-    scene.add(m);
-  });
+export function microcement(mat: THREE.MeshStandardMaterial) {
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vMcPos;")
+      .replace(
+        "#include <begin_vertex>",
+        "#include <begin_vertex>\nvMcPos = (modelMatrix * vec4(transformed, 1.0)).xyz;",
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        /* glsl */ `#include <common>
+        varying vec3 vMcPos;
+        float mcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float mcNoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mcHash(i), mcHash(i + vec2(1, 0)), u.x), mix(mcHash(i + vec2(0, 1)), mcHash(i + vec2(1, 1)), u.x), u.y);
+        }
+        float mcFbm(vec2 p) {
+          float v = 0.0, a = 0.5;
+          for (int k = 0; k < 4; k++) { v += a * mcNoise(p); p = p * 2.07 + 11.3; a *= 0.5; }
+          return v;
+        }
+        float gMc;`,
+      )
+      .replace(
+        "#include <map_fragment>",
+        /* glsl */ `#include <map_fragment>
+        vec2 mcUv = vec2(vMcPos.x + vMcPos.z, vMcPos.y);
+        float mcCloud = mcFbm(mcUv * 0.45);
+        float mcFine = mcNoise(mcUv * 9.0) * 0.6 + mcNoise(mcUv * 23.0) * 0.4;
+        gMc = mcCloud;
+        // fade the fine grain with distance, so it never shimmers
+        float mcFar = clamp(fwidth(mcUv.x * 23.0), 0.0, 1.0);
+        diffuseColor.rgb *= 1.0 + (mcCloud - 0.5) * 0.07 + (mcFine - 0.5) * 0.025 * (1.0 - mcFar);`,
+      )
+      .replace(
+        "#include <roughnessmap_fragment>",
+        "#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor + (gMc - 0.5) * 0.12, 0.0, 1.0);",
+      );
+  };
+  mat.customProgramCacheKey = () => "microcement-v1";
 }
 
 /*
-  Where the light comes from: an adjustable spotlight recessed in the ceiling.
-  A dark trim ring flush with the ceiling, a gold reflector inside, and the
-  warm lamp glowing at the back of it. One over each thing that's lit.
+  Concealed cove lighting along the top of the walls: a light line hidden
+  where wall meets ceiling, washing softly down the wall and spilling a little
+  onto the ceiling. (Painted light, not real lights: a real light per wall
+  costs too much to draw on every device.)
 */
-export function addDownlights(ctx: SetCtx, H: number, at: THREE.Vector3[]) {
+export function addCoveLighting(
+  ctx: SetCtx,
+  H: number,
+  walls: { len: number; x: number; z: number; ry: number }[],
+) {
   const { scene, keep } = ctx;
-  const n = at.length;
-  if (!n) return;
-  const trimGeo = new THREE.RingGeometry(0.052, 0.085, 40);
-  trimGeo.rotateX(Math.PI / 2); // facing down
-  const cupGeo = new THREE.CylinderGeometry(0.052, 0.04, 0.07, 32, 1, true);
-  cupGeo.translate(0, 0.035, 0); // up into the ceiling
-  const lampGeo = new THREE.CircleGeometry(0.038, 32);
-  lampGeo.rotateX(Math.PI / 2);
-  lampGeo.translate(0, 0.012, 0); // set just inside the trim, so it shows from across the room
-  const trimMat = new THREE.MeshStandardMaterial({
-    color: 0x1c1917,
-    roughness: 0.45,
-    metalness: 0.4,
-  });
-  const cupMat = new THREE.MeshStandardMaterial({
-    color: 0xc9a46a,
-    roughness: 0.25,
-    metalness: 1,
-    side: THREE.BackSide,
-    emissive: new THREE.Color(0.35, 0.22, 0.1), // lit by its own lamp
-  });
-  const lampMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(1, 0.84, 0.6).multiplyScalar(6),
-    toneMapped: false,
-    side: THREE.DoubleSide,
-  });
-  keep(trimGeo, cupGeo, lampGeo, trimMat, cupMat, lampMat);
-  const trims = new THREE.InstancedMesh(trimGeo, trimMat, n);
-  const cups = new THREE.InstancedMesh(cupGeo, cupMat, n);
-  const lamps = new THREE.InstancedMesh(lampGeo, lampMat, n);
-  const o = new THREE.Object3D();
-  at.forEach((p, i) => {
-    o.position.set(p.x, H - 0.002, p.z);
-    o.updateMatrix();
-    trims.setMatrixAt(i, o.matrix);
-    cups.setMatrixAt(i, o.matrix);
-    lamps.setMatrixAt(i, o.matrix);
-  });
-  lamps.layers.set(1); // a bright point: not mirrored in the floor
-  scene.add(trims, cups, lamps);
-  keep(trims, cups, lamps);
-
-  // A small soft glow just below each, as a lit lamp has from across a room
-  const pos = new Float32Array(n * 3);
-  at.forEach((p, i) => {
-    pos[i * 3] = p.x;
-    pos[i * 3 + 1] = H - 0.03;
-    pos[i * 3 + 2] = p.z;
-  });
-  const glowGeo = new THREE.BufferGeometry();
-  glowGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  const glowTex = poolTexture("255,214,160");
-  const glowMat = new THREE.PointsMaterial({
-    map: glowTex,
-    size: 0.2,
-    sizeAttenuation: true,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    color: new THREE.Color(1, 0.82, 0.58).multiplyScalar(1.4),
+  const fade = (stops: [number, string][]) =>
+    canvasTexture(8, 256, (c) => {
+      const g = c.createLinearGradient(0, 0, 0, 256);
+      stops.forEach(([o, col]) => g.addColorStop(o, col));
+      c.fillStyle = g;
+      c.fillRect(0, 0, 8, 256);
+    });
+  const washTex = fade([
+    [0, "rgba(255,206,150,1)"],
+    [0.08, "rgba(255,198,140,0.75)"],
+    [0.4, "rgba(255,190,130,0.22)"],
+    [1, "rgba(255,190,130,0)"],
+  ]);
+  const ceilTex = fade([
+    [0, "rgba(255,206,150,1)"],
+    [0.25, "rgba(255,196,140,0.3)"],
+    [1, "rgba(255,196,140,0)"],
+  ]);
+  const add = (map: THREE.Texture, opacity: number) =>
+    new THREE.MeshBasicMaterial({
+      map,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      opacity,
+    });
+  const washMat = add(washTex, 0.7);
+  const ceilMat = add(ceilTex, 0.55);
+  const lineMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(1, 0.82, 0.58).multiplyScalar(2.6),
     toneMapped: false,
   });
-  keep(glowGeo, glowTex, glowMat);
-  const glows = new THREE.Points(glowGeo, glowMat);
-  glows.layers.set(1);
-  scene.add(glows);
+  keep(washTex, ceilTex, washMat, ceilMat, lineMat);
+  return walls.map((w) => {
+    const g = new THREE.Group();
+    g.position.set(w.x, 0, w.z);
+    g.rotation.y = w.ry;
+    const lineGeo = new THREE.BoxGeometry(w.len, 0.018, 0.012);
+    const washGeo = new THREE.PlaneGeometry(w.len, 2.0);
+    const ceilGeo = new THREE.PlaneGeometry(w.len, 1.3);
+    keep(lineGeo, washGeo, ceilGeo);
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.position.set(0, H - 0.02, 0.012);
+    const wash = new THREE.Mesh(washGeo, washMat);
+    wash.position.set(0, H - 1.0, 0.006);
+    wash.renderOrder = 2;
+    const ceil = new THREE.Mesh(ceilGeo, ceilMat);
+    ceil.rotation.x = Math.PI / 2; // facing down, the bright edge at the wall
+    ceil.position.set(0, H - 0.004, 0.65);
+    ceil.renderOrder = 2;
+    g.add(line, wash, ceil);
+    scene.add(g);
+    return g;
+  });
 }
 
 /* ---------- the centrepiece ---------- */
@@ -505,9 +472,9 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-    opacity: 0.95,
+    opacity: 0.68, // a controlled dispersion, fading across the floor
   });
-  const bGeo = new THREE.PlaneGeometry(4.6, 2.6);
+  const bGeo = new THREE.PlaneGeometry(4.2, 1.6);
   bGeo.translate(2.3, 0, 0); // starts at its own origin
   keep(bTex, bMat, bGeo);
   for (const side of [-1, 1]) {
@@ -532,8 +499,8 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   inner.position.y = 0.03 + PH + pyrH * 0.3;
   g.add(inner);
 
-  // Light on it from above, and a little coloured light thrown sideways
-  const key = new THREE.SpotLight(0xffe2bc, hq ? 14 : 10, 0, 0.32, 0.7, 2);
+  // Light on it from above
+  const key = new THREE.SpotLight(0xffe2bc, hq ? 7 : 5, 0, 0.32, 0.8, 2); // from the skylight above
   key.position.set(0, 4.05, 0.9);
   key.target.position.set(0, 0.9, 0);
   if (hq) {
@@ -545,13 +512,6 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
     key.shadow.camera.far = 6;
   }
   g.add(key, key.target);
-  if (hq) {
-    const l = new THREE.PointLight(0x7a6cff, 1.2, 3.5, 2);
-    l.position.set(-1.6, 0.3, 0.4);
-    const r = new THREE.PointLight(0xff8a2a, 1.2, 3.5, 2);
-    r.position.set(1.6, 0.3, 0.4);
-    g.add(l, r);
-  }
   scene.add(g);
   return { core: coreMat };
 }
@@ -627,19 +587,6 @@ export function addBench(ctx: SetCtx, at: THREE.Vector3) {
     rod(D - 0.07, x, frameTop, 0, "z"); // and under the seat
   }
 
-  // A lamp above, lighting its top warmly and casting its shadow on the floor
-  const key = new THREE.SpotLight(0xffd2a0, hq ? 9 : 7, 0, 0.5, 0.85, 2);
-  key.position.set(0, 4.0, 1.2);
-  key.target.position.set(0, 0.3, 0);
-  if (hq) {
-    key.castShadow = false; // no hard shadow pooled on the floor
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.bias = -0.0004;
-    key.shadow.normalBias = 0.02;
-    key.shadow.camera.near = 1;
-    key.shadow.camera.far = 6;
-  }
-  g.add(key, key.target);
   scene.add(g);
 }
 
@@ -786,7 +733,7 @@ export function addFloorReflection(ctx: SetCtx, w: number, len: number, mid: num
   const r = new Reflector(geo, {
     textureWidth: 1024,
     textureHeight: 1024,
-    color: new THREE.Color(0.62, 0.6, 0.57), // a soft sheen of the room, not a mirror
+    color: new THREE.Color(0.5, 0.48, 0.46), // a soft sheen of the room, not a mirror
     shader: SoftReflectorShader,
     multisample: 0,
   });
