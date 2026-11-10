@@ -7,6 +7,7 @@ import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
 import { LOGO, LogoDoorCanvas, type LogoDoorHandle } from "@/components/LogoDoor";
 import type { GalleryScene, Layout, Pose, Stop } from "@/components/gallery3d/GalleryScene";
+import type { PrismTunnel } from "@/components/gallery3d/PrismTunnel";
 
 /*
   The home page.
@@ -37,7 +38,22 @@ const FLOOD: [number, number] = [0.34, 0.82]; // prism light floods the view
 const INTRO_FADE: [number, number] = [0.74, 0.9]; // ...and fades into the room
 const GLIDE: [number, number] = [0.66, 1]; // the camera settles in the middle of the room
 const AUTO_FROM = 0; // any forward scroll plays the way in by itself...
-const AUTO_SPEED = 2.2; // ...in under half a second
+const AUTO_SPEED = 2.2; // ...in under half a second (when the tunnel isn't available)
+
+/*
+  The prism journey, played by one scroll in about a second (progress 0 to 1):
+  the logo wakes (its panels part, light breaks out, the page darkens), you fly
+  into its opening and out of the white light into the prism tunnel, travel
+  down it until the gallery appears through its far end, and the tunnel
+  dissolves around you into the gallery.
+*/
+const JOURNEY_SPEED = 0.95; // progress per second: the whole way in is ~1.05 s
+const WAKE: [number, number] = [0, 0.14]; // the logo responds
+const THRESHOLD: [number, number] = [0.06, 0.33]; // flying into its opening, into white light
+const LOGO_OUT: [number, number] = [0.33, 0.36]; // the logo layer goes once the tunnel covers it
+const TUNNEL_IN: [number, number] = [0.27, 0.34]; // the tunnel comes up out of the light
+const TUNNEL: [number, number] = [0.3, 0.93]; // travelling through it
+const TUNNEL_OUT: [number, number] = [0.86, 0.985]; // it dissolves into the gallery
 
 const STEP_LOCK_MS = 300; // one scroll gesture = one stop
 const FOLLOW = 6; // catching up after a resize (steps themselves are timed glides)
@@ -80,6 +96,8 @@ export function Gallery() {
   const scene = useRef<Record<string, HTMLElement | null>>({});
   const logoGl = useRef<LogoDoorHandle | null>(null);
   const gs = useRef<GalleryScene | null>(null);
+  const tunnelCanvas = useRef<HTMLCanvasElement>(null);
+  const tunnel = useRef<PrismTunnel | null>(null);
   const failed = useRef(false);
   const viewRef = useRef({ w: 1440, h: 900 });
 
@@ -96,6 +114,7 @@ export function Gallery() {
     at: 0, // the stop you're at
     playing: -2,
     insideFlag: false,
+    journeyFlag: false, // the header steps aside while this is true
     pose: { x: 0, z: -0.5, yaw: 0, y: EYE },
     lockUntil: 0,
     wheelAcc: 0,
@@ -122,6 +141,7 @@ export function Gallery() {
     let alive = true;
     const fit = () => {
       viewRef.current = { w: window.innerWidth, h: window.innerHeight };
+      tunnel.current?.setSize(window.innerWidth, window.innerHeight);
       const g = gs.current;
       if (!g) return;
       g.setSize(window.innerWidth, window.innerHeight);
@@ -155,6 +175,23 @@ export function Gallery() {
         s.setSize(window.innerWidth, window.innerHeight);
         gs.current = s;
 
+        // The prism tunnel, for the way in (not with reduced motion; if it
+        // can't start, the way in falls back to the light flood)
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          try {
+            const tm = await import("@/components/gallery3d/PrismTunnel");
+            if (alive && tunnelCanvas.current) {
+              const t = new tm.PrismTunnel(tunnelCanvas.current, {
+                light: coarse || window.innerWidth < 700,
+              });
+              t.setSize(window.innerWidth, window.innerHeight);
+              tunnel.current = t;
+            }
+          } catch (err) {
+            console.warn("The prism tunnel couldn't start:", err);
+          }
+        }
+
         // Coming back from a page: put you back where you were.
         const saved = readSaved();
         if (saved !== null) {
@@ -181,6 +218,9 @@ export function Gallery() {
       window.removeEventListener("resize", fit);
       gs.current?.dispose();
       gs.current = null;
+      tunnel.current?.dispose();
+      tunnel.current = null;
+      document.documentElement.classList.remove("journey");
       setStageTone(null);
     };
   }, []);
@@ -197,6 +237,7 @@ export function Gallery() {
       const c = cam.current;
       const s = gs.current;
       const L = s?.layout;
+      const T = tunnel.current;
       let pose = { ...c.pose };
       let exposure = 1;
 
@@ -204,7 +245,7 @@ export function Gallery() {
         if (c.auto) {
           // Playing by itself: a steady pace, not a slow crawl
           const dir = Math.sign(c.pGoal - c.p);
-          c.p += dir * AUTO_SPEED * dt;
+          c.p += dir * (T ? JOURNEY_SPEED : AUTO_SPEED) * dt;
           if ((dir > 0 && c.p >= c.pGoal) || (dir <= 0 && c.p <= c.pGoal)) {
             c.p = c.pGoal;
             c.auto = false;
@@ -227,8 +268,9 @@ export function Gallery() {
         const first: Pose = L?.stops[0] ?? { x: 0, z: 4, yaw: 0 };
         const g = smooth(band(c.p, GLIDE));
         pose = { x: first.x, z: first.z + 1.5 * (1 - g), yaw: first.yaw, y: EYE };
-        exposure = 1 + 2.6 * (1 - band(c.p, [0.7, 1])); // bright, then settling
-        const isIn = c.p > 0.72;
+        // bright, then settling (gentler when seen through the tunnel's far end)
+        exposure = T ? 1 + 0.7 * (1 - band(c.p, [0.75, 1])) : 1 + 2.6 * (1 - band(c.p, [0.7, 1]));
+        const isIn = c.p > (T ? 0.97 : 0.72); // the gallery's controls return once you've arrived
         if (isIn !== c.insideFlag) {
           c.insideFlag = isIn;
           setInside(isIn);
@@ -289,19 +331,37 @@ export function Gallery() {
           s.setDoor(i, c.doorAng[i], smooth(c.doorLit[i]));
         }
         // Only the films near you play.
-        const playAt = c.mode === "intro" ? (c.p > 0.6 ? 0 : -1) : c.at;
+        const roomFrom = T ? TUNNEL[0] : 0.6; // seen through the tunnel's far end from early on
+        const playAt = c.mode === "intro" ? (c.p > roomFrom ? 0 : -1) : c.at;
         if (playAt !== c.playing) {
           c.playing = playAt;
           s.playNear(playAt);
         }
         // Draw the room whenever it can be seen.
-        if ((c.mode !== "intro" || c.p > 0.6) && !covered.current) {
+        if ((c.mode !== "intro" || c.p > roomFrom) && !covered.current) {
           s.setPose(pose.x, pose.y, pose.z, pose.yaw);
           s.setExposure(exposure);
           s.render((now - t0) / 1000);
         }
       }
       c.pose = pose;
+
+      // The prism tunnel, over everything while you travel through it
+      const tc = tunnelCanvas.current;
+      if (tc) {
+        const op = T && c.mode === "intro" ? band(c.p, TUNNEL_IN) * (1 - band(c.p, TUNNEL_OUT)) : 0;
+        tc.style.opacity = String(op);
+        tc.style.visibility = op > 0.001 ? "visible" : "hidden";
+        if (T && op > 0.001) {
+          T.render(clamp((c.p - TUNNEL[0]) / (TUNNEL[1] - TUNNEL[0]), 0, 1), (now - t0) / 1000);
+        }
+      }
+      // The header steps aside for the journey, and returns in the gallery
+      const journey = c.mode === "intro" && c.p > 0.002 && c.p < 0.999;
+      if (journey !== c.journeyFlag) {
+        c.journeyFlag = journey;
+        document.documentElement.classList.toggle("journey", journey);
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -314,7 +374,8 @@ export function Gallery() {
   function drawIntro(p: number) {
     const { w: W, h: H } = viewRef.current;
     const s = scene.current;
-    const e = band(p, [0, ZOOM_END]);
+    const T = !!tunnel.current;
+    const e = T ? band(p, THRESHOLD) : band(p, [0, ZOOM_END]);
     const s0 = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
     const zoom = Math.exp(Math.log(120) * Math.pow(e, 1.7));
     const scale = s0 * zoom;
@@ -324,10 +385,10 @@ export function Gallery() {
     const k = smooth(e);
     const fx = restX + (W / 2 - restX) * k;
     const fy = restY + (H / 2 - restY) * k;
-    const fade = 1 - band(p, INTRO_FADE);
+    const fade = 1 - band(p, T ? LOGO_OUT : INTRO_FADE);
     if (fade > 0) {
       if (logoGl.current?.ok) {
-        logoGl.current.draw(scale, { x: fx, y: fy }, band(p, FLOOD));
+        logoGl.current.draw(scale, { x: fx, y: fy }, T ? 0 : band(p, FLOOD), T ? band(p, WAKE) : 0);
       } else if (s.fallback) {
         // No WebGL: the logo image, never enlarged more than a touch.
         const fs = s0 * Math.min(zoom, 1.5);
@@ -721,6 +782,14 @@ export function Gallery() {
           onClick={() => {
             if (cam.current.drag.dist <= 6) goIn();
           }}
+        />
+
+        {/* The prism tunnel: shown only during the way in */}
+        <canvas
+          ref={tunnelCanvas}
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          style={{ opacity: 0, visibility: "hidden" }}
         />
 
         {/* For keyboards and screen readers: every film and both doors */}

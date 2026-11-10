@@ -118,3 +118,16 @@
     background: var(--prism);
   }
 }
+
+/* The prism journey: the header steps aside while you travel, and returns in the gallery */
+[data-site-nav] {
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
+}
+html.journey [data-site-nav] {
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition-duration: 0.12s;
+}

@@ -42,6 +42,7 @@ uniform vec2 uFocus;    // logo point that sits at uScreen
 uniform vec2 uScreen;   // CSS px
 uniform float uScale;   // CSS px per logo px
 uniform float uFlood;   // 0..1: passing through the light into another dimension
+uniform float uWake;    // 0..1: the logo responds: its panels part, light breaks out, the room darkens
 
 const vec2 L0 = vec2(530.,258.); const vec2 L1 = vec2(620.,301.); const vec2 L2 = vec2(620.,640.); const vec2 L3 = vec2(530.,686.);
 const vec2 G0 = vec2(620.,301.); const vec2 G1 = vec2(668.,324.); const vec2 G2 = vec2(668.,640.); const vec2 G3 = vec2(620.,640.);
@@ -91,9 +92,14 @@ void main() {
   col = mix(col, vec3(1.0), fan * 0.85);                          // the path of light on the floor
 
   // The slabs and the gap
-  float dL = quad(p, L0, L1, L2, L3);
-  float dG = quad(p, G0, G1, G2, G3);
-  float dR = quad(p, R0, R1, R2, R3);
+  // Waking, the two panels part from the gap and the opening widens
+  float open = uWake * 16.0;
+  vec2 pL = p + vec2(open, 0.0);
+  vec2 pR = p - vec2(open, 0.0);
+  vec2 pG = vec2(644.0 + (p.x - 644.0) * 24.0 / (24.0 + open), p.y);
+  float dL = quad(pL, L0, L1, L2, L3);
+  float dG = quad(pG, G0, G1, G2, G3);
+  float dR = quad(pR, R0, R1, R2, R3);
   float inL = 1.0 - smoothstep(-aa, aa, dL);
   float inR = 1.0 - smoothstep(-aa, aa, dR);
   float inG = 1.0 - smoothstep(-aa, aa, dG);
@@ -127,6 +133,29 @@ void main() {
 
   // The faintest vignette
   col *= 1.0 - 0.035 * pow(length(scr - 0.5) * 1.35, 2.2);
+
+  // Waking: the page darkens to a deep violet night, and light breaks out of
+  // the opening: a white core, the spectrum spreading either side
+  if (uWake > 0.0) {
+    float w = clamp(uWake, 0.0, 1.0);
+    float panels = clamp(inL + inR, 0.0, 1.0);
+    float around = 1.0 - clamp(panels + inG, 0.0, 1.0);
+    vec2 q = (p - vec2(644.0, 470.0)) / vec2(90.0, 240.0);
+    float dq = length(q);
+    vec3 night = mix(vec3(0.05, 0.035, 0.08), vec3(0.012, 0.01, 0.022), smoothstep(0.0, 1.6, length(scr - 0.5)));
+    float halo = exp(-dq * dq * 1.6);
+    float tsp = clamp((p.x - 644.0) / 380.0 + 0.5, 0.0, 1.0);
+    vec3 light = night + spectrum(tsp) * halo * 0.9 * w + vec3(1.0) * exp(-dq * dq * 9.0) * 0.8 * w;
+    // rays fanning out of the opening, soft, no hard lines
+    float ang = atan(q.y, q.x);
+    float rays = pow(0.5 + 0.5 * sin(ang * 9.0 + uTime * 0.6), 6.0) * exp(-dq * 0.9) * 0.35 * w;
+    light += spectrum(fract(ang / 6.28318 + 0.5)) * rays;
+    col = mix(col, light, around * smoothstep(0.0, 1.0, w));
+    // the panels pick up the coloured light on their inner edges
+    col += spec * panels * exp(-abs(p.x - 644.0) / 40.0) * 0.6 * w;
+    // the opening itself burns brighter
+    col = mix(col, vec3(1.0), inG * w);
+  }
 
   // Passing through: the whole view floods with soft prism light. Blooms of
   // colour swirl out from the centre over a slowly turning colour wash, around
@@ -171,8 +200,13 @@ void main() {
 `;
 
 export type LogoDoorHandle = {
-  /** Draw a frame. focusScreen = where LOGO.focus sits on screen (CSS px); flood 0..1. */
-  draw: (scale: number, focusScreen: { x: number; y: number }, flood?: number) => void;
+  /** Draw a frame. focusScreen = where LOGO.focus sits on screen (CSS px); flood and wake 0..1. */
+  draw: (
+    scale: number,
+    focusScreen: { x: number; y: number },
+    flood?: number,
+    wake?: number,
+  ) => void;
   ok: boolean;
 };
 
@@ -233,10 +267,11 @@ export function LogoDoorCanvas({
       const uScreen = u("uScreen");
       const uScale = u("uScale");
       const uFlood = u("uFlood");
+      const uWake = u("uWake");
 
       handle.current = {
         ok: true,
-        draw: (scale, focusScreen, flood = 0) => {
+        draw: (scale, focusScreen, flood = 0, wake = 0) => {
           if (gl.isContextLost()) return;
           // The screen's full resolution (up to 3x), so the logo is never soft.
           const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -254,6 +289,7 @@ export function LogoDoorCanvas({
           gl.uniform2f(uScreen, focusScreen.x, focusScreen.y);
           gl.uniform1f(uScale, scale);
           gl.uniform1f(uFlood, flood);
+          gl.uniform1f(uWake, wake);
           gl.drawArrays(gl.TRIANGLES, 0, 3);
         },
       };

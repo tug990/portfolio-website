@@ -16,7 +16,7 @@ export function SiteNav() {
   const onDark = isHome && tone === "dark"; // the home page is light now unless it says otherwise
 
   return (
-    <header className="fixed inset-x-0 top-4 z-30 px-4">
+    <header data-site-nav className="fixed inset-x-0 top-4 z-30 px-4">
       <nav
         className={cn(
           "mx-auto flex h-14 max-w-5xl items-center justify-between rounded-xl border px-4 transition-colors",
