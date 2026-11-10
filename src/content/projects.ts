@@ -10,6 +10,7 @@ export type Project = {
   client?: string; // who it was made for
   trailer?: string; // a short silent clip (15–30 s, 720p MP4) that plays in the gallery frame
   video?: string; // a video file, e.g. "/work/my-film.mp4", shown on the project page
+  youtube?: string; // a YouTube link: plays on its gallery screen (muted, looped; a `trailer` wins) and, with sound, atop the case study
   link?: string; // watch / live link
   repo?: string; // secondary link
   body: string[]; // the opening paragraphs of the case study
@@ -60,16 +61,18 @@ const SAMPLE_CASE = {
 };
 
 export const PROJECTS: Project[] = [
+  // The first screen (left wall, nearest the entrance), playing from YouTube.
   {
-    slug: "sample-documentary",
-    title: "Sample Documentary",
-    summary: "A short one-line description of the film and why it matters.",
-    year: 2026,
-    tags: ["Documentary", "Feature"],
-    format: "Feature documentary, 92 min",
+    slug: "murga-fight",
+    title: "Murga Fight",
+    summary: "A non-fiction impact film based on the cockfight culture of Bastar.",
+    year: 2020,
+    tags: ["Non-fiction", "Impact film"],
     client: "Famecast",
     featured: true,
-    link: "https://example.com",
+    image: "https://i.ytimg.com/vi/P_hKXgQoj0k/maxresdefault.jpg",
+    youtube: "https://youtu.be/P_hKXgQoj0k",
+    link: "https://youtu.be/P_hKXgQoj0k",
     ...SAMPLE_CASE,
     body: [
       "Describe the story and the question it set out to answer.",
@@ -87,13 +90,18 @@ export const PROJECTS: Project[] = [
     ...SAMPLE_CASE,
     body: ["Write the story of this project here."],
   },
+  // On the far wall (left screen), playing from YouTube on the wall and in its case study.
   {
-    slug: "sample-short",
-    title: "Sample Short",
-    summary: "Another placeholder entry to show the list layout.",
-    year: 2024,
-    tags: ["Short"],
+    slug: "showreel",
+    title: "Showreel",
+    summary: "A reel of Famecast's work.",
+    year: 2026,
+    tags: ["Showreel"],
     featured: true,
+    client: "Famecast",
+    image: "https://i.ytimg.com/vi/n1VZJdnV594/maxresdefault.jpg",
+    youtube: "https://youtu.be/n1VZJdnV594",
+    link: "https://youtu.be/n1VZJdnV594",
     ...SAMPLE_CASE,
     body: ["Write the story of this project here."],
   },

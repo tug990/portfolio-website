@@ -1,5 +1,14 @@
 import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import {
+  YT_HOST,
+  keepLooping,
+  loadYouTubeApi,
+  youtubeCover,
+  youtubeId,
+  ytPlayerVars,
+  type YTPlayer,
+} from "@/lib/youtube";
 
 /*
   The film at the top of a case study, playing on a loop, with its controls
@@ -11,7 +20,9 @@ import { cn } from "@/lib/utils";
 
   A red playhead runs along the strip; press or drag on it to scrub.
 
-  The film is the project's trailer (or video). Until there is one, a stand-in
+  The film is the project's YouTube video if it has one (played through
+  YouTube's IFrame API, behind these same controls, from youtube-nocookie.com),
+  else its trailer (or video). Until there is one, a stand-in
   film plays instead: the gallery's prism light drifting over the title, drawn
   live, 20 seconds long, so the strip and the scrubbing still work.
 */
@@ -264,17 +275,109 @@ function useStandInFilm(
   };
 }
 
+/* ---------- a YouTube video, driven through the IFrame API ---------- */
+
+function useYouTubeFilm(
+  host: React.RefObject<HTMLDivElement | null>,
+  frame: React.RefObject<HTMLDivElement | null>,
+  id: string,
+): Media & { ready: boolean } {
+  const player = useRef<YTPlayer | null>(null);
+  const [ready, setReady] = useState(false);
+  const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    let cancelled = false;
+    let poll = 0;
+    // YouTube replaces the element it's given, so give it one React doesn't own
+    const mount = document.createElement("div");
+    mount.className = "h-full w-full";
+    el.appendChild(mount);
+    loadYouTubeApi()
+      .then((YT) => {
+        if (cancelled) return;
+        player.current = new YT.Player(mount, {
+          videoId: id,
+          host: YT_HOST,
+          // muted (the sound button turns it on), no controls of its own (the ones below drive it)
+          playerVars: ytPlayerVars(),
+          events: {
+            onReady: () => {
+              if (cancelled) return;
+              setReady(true);
+              poll = window.setInterval(() => {
+                const p = player.current;
+                if (!p) return;
+                keepLooping(p);
+                setTime(p.getCurrentTime());
+                setDuration(p.getDuration());
+              }, 250);
+            },
+          },
+        });
+      })
+      .catch(() => {
+        /* no YouTube (offline, blocked): the cover stays up */
+      });
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+      player.current?.destroy();
+      player.current = null;
+      mount.remove();
+      setReady(false);
+    };
+  }, [host, id]);
+
+  // The strip: YouTube's three automatic frames (about a quarter, half and three
+  // quarters of the way in), spread across the eight places
+  const frames = Array.from(
+    { length: FRAMES },
+    (_, k) => `https://i.ytimg.com/vi/${id}/hq${Math.min(3, Math.floor((k * 3) / FRAMES) + 1)}.jpg`,
+  );
+
+  return {
+    ready,
+    time,
+    duration,
+    frames,
+    hasSound: true,
+    toggle: () => {
+      const p = player.current;
+      if (!p) return;
+      if (p.getPlayerState() === 1) p.pauseVideo();
+      else p.playVideo();
+    },
+    seek: (s) => {
+      player.current?.seekTo(s, true);
+      setTime(s);
+    },
+    setRate: (r) => player.current?.setPlaybackRate(r),
+    setMuted: (m) => (m ? player.current?.mute() : player.current?.unMute()),
+    fullscreen: () => {
+      frame.current?.requestFullscreen?.().catch(() => {});
+    },
+  };
+}
+
 /* ---------- the player ---------- */
 
 type Props = {
   title: string;
   src?: string;
+  /* a YouTube link or id: plays that instead of src */
+  youtube?: string;
   poster?: string;
   /* false for the copies of the film in the endless reel: a still frame, no controls */
   live?: boolean;
 };
 
 export const FilmPlayer = forwardRef<HTMLDivElement, Props>(function FilmPlayer(props, frameRef) {
+  const yt = props.youtube ? youtubeId(props.youtube) : undefined;
+  if (yt) return <YouTubePlayer {...props} id={yt} frameRef={frameRef} />;
   return props.src ? (
     <VideoPlayer {...props} src={props.src} frameRef={frameRef} />
   ) : (
@@ -302,6 +405,66 @@ function VideoPlayer({ title, src, poster, live = true, frameRef }: Inner & { sr
         onClick={media.toggle}
         className="block h-full w-full cursor-pointer object-cover"
       />
+    </PlayerChrome>
+  );
+}
+
+function YouTubePlayer({ id, live = true, ...rest }: Inner & { id: string }) {
+  const cover = rest.poster ?? youtubeCover(id);
+  // The reel's copies are still frames: the cover, no YouTube
+  if (!live) return <YouTubeStill {...rest} cover={cover} />;
+  return <YouTubeLive {...rest} id={id} cover={cover} />;
+}
+
+function YouTubeStill({ title, frameRef, cover }: Inner & { cover: string }) {
+  const media: Media = {
+    time: 0,
+    duration: 0,
+    frames: [],
+    hasSound: false,
+    toggle: () => {},
+    seek: () => {},
+    setRate: () => {},
+    setMuted: () => {},
+    fullscreen: () => {},
+  };
+  return (
+    <PlayerChrome media={media} live={false} frameRef={frameRef}>
+      <img src={cover} alt={`${title}, the film`} className="block h-full w-full object-cover" />
+    </PlayerChrome>
+  );
+}
+
+function YouTubeLive({ title, frameRef, id, cover }: Inner & { id: string; cover: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const host = useRef<HTMLDivElement>(null);
+  const media = useYouTubeFilm(host, box, id);
+  return (
+    <PlayerChrome media={media} live frameRef={frameRef}>
+      <div ref={box} className="relative h-full w-full bg-black">
+        {/* YouTube's player, a little larger than the frame so its own title bar sits outside */}
+        <div
+          ref={host}
+          aria-label={`${title}, the film`}
+          className="pointer-events-none absolute inset-x-0 -inset-y-[12%] [&_iframe]:h-full [&_iframe]:w-full"
+        />
+        {/* The cover until it's playing; a click anywhere plays or pauses */}
+        <button
+          type="button"
+          aria-label={`Play or pause ${title}`}
+          onClick={media.toggle}
+          className="absolute inset-0 h-full w-full cursor-pointer"
+        >
+          <img
+            src={cover}
+            alt=""
+            className={cn(
+              "h-full w-full object-cover transition-opacity duration-700",
+              media.ready && media.time > 0.2 && "opacity-0",
+            )}
+          />
+        </button>
+      </div>
     </PlayerChrome>
   );
 }
