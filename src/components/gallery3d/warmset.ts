@@ -594,31 +594,40 @@ export function addBench(ctx: SetCtx, at: THREE.Vector3) {
 
 export function addWallTitle(ctx: SetCtx, at: THREE.Vector3, normal: THREE.Vector3, aniso: number) {
   const { scene, keep } = ctx;
-  const W = 1024;
-  const Hh = 1360;
+  // A centred lockup, hung above the far wall's two films:
+  // INSIGHT LAB, a short rule, A NON-FICTION VISUAL STORYTELLING STUDIO
+  const W = 2048;
+  const Hh = 512;
   const tex = canvasTexture(W, Hh, (c) => {
     c.clearRect(0, 0, W, Hh);
     c.fillStyle = "#140c07";
-    const spaced = (t: string, x: number, y: number, gap: number) => {
-      let cx = x;
-      for (const ch of t) {
+    // letter-spaced text, centred on x
+    const spaced = (t: string, y: number, gap: number) => {
+      const widths = [...t].map((ch) => c.measureText(ch).width);
+      const total = widths.reduce((a, b) => a + b, 0) + gap * (t.length - 1);
+      let cx = (W - total) / 2;
+      [...t].forEach((ch, i) => {
         c.fillText(ch, cx, y);
-        cx += c.measureText(ch).width + gap;
-      }
+        cx += widths[i] + gap;
+      });
     };
-    c.font = "600 220px Jost, ui-sans-serif, system-ui";
-    spaced("INSIGHT", 20, 250, 10);
-    spaced("LAB", 20, 490, 10);
-    c.fillRect(26, 590, 230, 9);
-    c.font = "500 82px Jost, ui-sans-serif, system-ui";
-    spaced("VISUAL", 26, 770, 12);
-    spaced("STORYTELLING", 26, 890, 12);
-    spaced("EXHIBITION", 26, 1010, 12);
-    c.fillRect(26, 1110, 120, 8);
+    c.font = "600 200px Jost, ui-sans-serif, system-ui";
+    spaced("INSIGHT LAB", 210, 24);
+    c.fillRect(W / 2 - 120, 282, 240, 9);
+    // the subtext: as large as fits within the plate (with a margin)
+    const sub = "A NON-FICTION VISUAL STORYTELLING STUDIO";
+    let px = 80;
+    const widthAt = (size: number) => {
+      c.font = `500 ${size}px Jost, ui-sans-serif, system-ui`;
+      return c.measureText(sub).width + size * 0.16 * (sub.length - 1);
+    };
+    while (px > 40 && widthAt(px) > W * 0.92) px -= 2;
+    widthAt(px);
+    spaced(sub, 430, px * 0.16);
   });
   tex.anisotropy = aniso;
   const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.6 });
-  const geo = new THREE.PlaneGeometry(0.9, 1.2);
+  const geo = new THREE.PlaneGeometry(3.9, 0.975);
   keep(tex, mat, geo);
   const m = new THREE.Mesh(geo, mat);
   m.renderOrder = 5; // after the lamp's glow, so the vinyl reads dark on the lit wall
