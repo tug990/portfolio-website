@@ -487,36 +487,17 @@ export class GalleryScene {
         wash: { at: v(at.x, 0, at.z), normal: n.clone() },
       });
 
-    // Pictures along the side walls, around the films
     const sides = [
-      { x: -W / 2, n: v(1, 0, 0), right: v(0, 0, -1) },
-      { x: W / 2, n: v(-1, 0, 0), right: v(0, 0, 1) },
+      { x: -W / 2, n: v(1, 0, 0) },
+      { x: W / 2, n: v(-1, 0, 0) },
     ];
-    const hung: number[] = [];
-    sides.forEach((side, k) => {
-      const pics = [
-        { z: 0.7, w: 0.6, h: 0.82 },
-        { z: -1.9, w: 1.1, h: 0.74 },
-        { z: -9.75, w: 0.62, h: 0.84 },
-      ];
-      pics.forEach((p, i) => {
-        const at = v(side.x + side.n.x * 0.004, 1.62, p.z);
-        addFramedPicture(set, at, side.n, p, k * 3 + i + 1, side.right);
-        lit(at, side.n);
-        if (k === 0) hung.push(p.z);
-      });
-    });
-    // The far wall: the title on the left, a picture on the right
+    // The far wall: the exhibition title, left of the films (nothing else hangs between them)
     const farN = v(0, 0, 1);
-    const titleAt = v(-3.25, 1.72, -D);
-    addWallTitle(set, titleAt, farN, aniso);
+    addWallTitle(set, v(-3.25, 1.72, -D), farN, aniso);
     lit(v(-3.25, 1.6, -D), farN);
-    const farPic = v(3.15, 1.62, -D + 0.004);
-    addFramedPicture(set, farPic, farN, { w: 0.6, h: 0.82 }, 9, v(1, 0, 0));
-    lit(farPic, farN);
 
     // More lamps washing the walls wherever nothing hangs
-    const taken = [...hung, ...this.layout.works.filter((w) => w.nx !== 0).map((w) => w.z)];
+    const taken = this.layout.works.filter((w) => w.nx !== 0).map((w) => w.z);
     for (let z = this.front - 1.4; z > -D + 0.8; z -= 1.5) {
       if (taken.some((t) => Math.abs(t - z) < 1.1)) continue;
       for (const side of sides) {
@@ -556,7 +537,8 @@ export class GalleryScene {
 
     // The bench, in front of where you arrive
     const arrive = this.layout.stops[0];
-    addBench(set, v(0, 0, arrive.z - 4.1));
+    // Far enough ahead that it sits whole in the lower part of the view, legs and all
+    addBench(set, v(0, 0, arrive.z - 4.7));
   }
 
   /*
