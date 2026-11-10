@@ -196,7 +196,8 @@ class HalfResAO extends GTAOPass {
         (o as THREE.Sprite).isSprite ||
         (o as THREE.Points).isPoints ||
         (o as THREE.Line).isLine ||
-        (!!m && !Array.isArray(m) && m.blending === THREE.AdditiveBlending);
+        (!!m && !Array.isArray(m) && m.blending === THREE.AdditiveBlending) ||
+        o.layers.mask === 2; // seen-only things (glows, the journey's corridor)
       if (glow && o.visible) {
         o.visible = false;
         cache.push(o);
@@ -211,14 +212,24 @@ const FilmShader = {
     tDiffuse: { value: null as THREE.Texture | null },
     uTime: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
+    uCA: { value: 0 }, // radial colour fringe (the journey only)
+    uFlash: { value: 0 }, // white light out of the logo (the journey only)
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uCA; uniform float uFlash; varying vec2 vUv;
     void main(){
       vec2 d = vUv - 0.5;
-      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      vec3 c;
+      if (uCA > 0.0) {
+        // a lens's lateral colour: red and blue pulled apart radially, none at the centre
+        vec2 o = d * uCA * (0.3 + dot(d, d) * 4.0);
+        c = vec3(texture2D(tDiffuse, vUv + o).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - o).b);
+      } else {
+        c = texture2D(tDiffuse, vUv).rgb;
+      }
       c *= 1.0 - 0.3 * smoothstep(0.15, 0.75, dot(d, d) * 1.7);
+      c = mix(c, vec3(2.0), uFlash);
       gl_FragColor = vec4(c, 1.0);
     }`,
 };
@@ -295,6 +306,9 @@ export class GalleryScene {
   private count: number;
   readonly front: number; // z of the wall with the doors, behind where you arrive
   private reflector?: Reflector;
+  private ao?: HalfResAO;
+  private entranceParts: THREE.Object3D[] = []; // the wall behind you as you arrive
+  private entranceShown = true;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -383,6 +397,7 @@ export class GalleryScene {
     const galleryBack = plane(W, H, wallMat);
     galleryBack.position.set(0, H / 2, -D - BACK);
     this.scene.add(left, right, entrance, galleryBack);
+    this.entranceParts.push(entrance);
     // The far wall: solid in the middle, openings at both ends with a lintel over each
     const block = (bw: number, bh: number, x: number, y: number) => {
       const g = new THREE.BoxGeometry(bw, bh, 0.2);
@@ -444,14 +459,15 @@ export class GalleryScene {
       this.scene.add(deep);
     }
 
-    this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK);
+    this.entranceParts.push(this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK));
     // Concealed cove light along the top of the room's walls: the architecture lights itself
-    addCoveLighting(set, H, [
+    const coves = addCoveLighting(set, H, [
       { len, x: -W / 2, z: mid, ry: Math.PI / 2 },
       { len, x: W / 2, z: mid, ry: -Math.PI / 2 },
       { len: W - 2 * OPEN, x: 0, z: -D, ry: 0 },
       { len: W, x: 0, z: FRONT, ry: Math.PI },
     ]);
+    this.entranceParts.push(coves[3]);
     this.addSkylight(H, len, mid);
 
     /* ---------- the screens ---------- */
@@ -467,6 +483,7 @@ export class GalleryScene {
     doorWall.position.set(0, 0, this.front);
     doorWall.rotation.y = Math.PI;
     this.scene.add(doorWall);
+    this.entranceParts.push(doorWall);
     [
       { label: "All work", x: -DOOR.x },
       { label: "About us", x: DOOR.x },
@@ -500,6 +517,7 @@ export class GalleryScene {
         samples: 16,
       });
       this.composer.addPass(ao);
+      this.ao = ao;
     }
     // Glow only on what truly emits light: the skylight, the light lines, the doors.
     // Glow on what emits light, and a little on the brightest light falling on things, as a lens sees it
@@ -613,8 +631,10 @@ export class GalleryScene {
       { len: W, x: 0, z: -D - back, ry: 0 }, // the side gallery's back wall
       { len: W, x: 0, z: front, ry: Math.PI },
     ];
-    walls.forEach((w) => {
+    let entrance!: THREE.Group;
+    walls.forEach((w, i) => {
       const g = new THREE.Group();
+      if (i === walls.length - 1) entrance = g;
       g.position.set(w.x, 0, w.z);
       g.rotation.y = w.ry;
       const lineGeo = new THREE.BoxGeometry(w.len, 0.012, 0.012);
@@ -627,6 +647,7 @@ export class GalleryScene {
       g.add(line, wash);
       this.scene.add(g);
     });
+    return entrance;
   }
 
   /*
@@ -1035,6 +1056,49 @@ export class GalleryScene {
   setPose(x: number, y: number, z: number, yaw: number, pitch = 0) {
     this.camera.position.set(x, y, z);
     this.camera.rotation.set(pitch, yaw, 0);
+  }
+
+  /* ---------- the journey in (see PrismTunnel.ts) ---------- */
+
+  /* The corridor is built in this room's own scene: one renderer, one camera, one exposure. */
+  addJourney(o: THREE.Object3D) {
+    this.scene.add(o);
+  }
+
+  get environment() {
+    return this.scene.environment;
+  }
+
+  /* The gallery's own lens for this window's shape: where the journey's lens ends. */
+  galleryFov() {
+    return fovFor(this.camera.aspect);
+  }
+
+  /* The entrance wall (and its doors) stands aside while you come through it. */
+  showEntrance(on: boolean) {
+    if (on === this.entranceShown) return;
+    this.entranceShown = on;
+    this.entranceParts.forEach((o) => (o.visible = on));
+  }
+
+  /*
+    Post-processing during the journey, blended back to the gallery's own as
+    you arrive (null: the gallery's own). bloom 1 = the corridor's selective
+    bloom (only light sources: a higher threshold, more strength); ao 0..1
+    fades the room's contact shadows in for the arrival.
+  */
+  setJourneyPost(p: { flash: number; ca: number; bloom: number; ao: number } | null) {
+    const b = p?.bloom ?? 0;
+    this.bloom.strength = 0.55 + 0.4 * b;
+    this.bloom.threshold = 0.86 + 0.24 * b;
+    this.bloom.radius = 0.6 + 0.15 * b;
+    this.film.uniforms.uCA.value = p?.ca ?? 0;
+    this.film.uniforms.uFlash.value = p?.flash ?? 0;
+    if (this.ao) {
+      const a = p ? p.ao : 1;
+      this.ao.enabled = a > 0.01;
+      this.ao.blendIntensity = 0.7 * a;
+    }
   }
 
   setExposure(e: number) {

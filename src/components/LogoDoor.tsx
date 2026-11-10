@@ -134,22 +134,22 @@ void main() {
   // The faintest vignette
   col *= 1.0 - 0.035 * pow(length(scr - 0.5) * 1.35, 2.2);
 
-  // Waking: the page darkens to a deep violet night, and light breaks out of
-  // the opening: a white core, the spectrum spreading either side
+  // Waking: the page dims to a warm mauve grey, and light bursts out of the
+  // opening: a white core, prism rays fanning out all round
   if (uWake > 0.0) {
     float w = clamp(uWake, 0.0, 1.0);
     float panels = clamp(inL + inR, 0.0, 1.0);
     float around = 1.0 - clamp(panels + inG, 0.0, 1.0);
-    vec2 q = (p - vec2(644.0, 470.0)) / vec2(90.0, 240.0);
+    vec2 q = (p - vec2(644.0, 460.0)) / vec2(110.0, 230.0);
     float dq = length(q);
-    vec3 night = mix(vec3(0.05, 0.035, 0.08), vec3(0.012, 0.01, 0.022), smoothstep(0.0, 1.6, length(scr - 0.5)));
-    float halo = exp(-dq * dq * 1.6);
-    float tsp = clamp((p.x - 644.0) / 380.0 + 0.5, 0.0, 1.0);
-    vec3 light = night + spectrum(tsp) * halo * 0.9 * w + vec3(1.0) * exp(-dq * dq * 9.0) * 0.8 * w;
-    // rays fanning out of the opening, soft, no hard lines
+    vec3 night = mix(vec3(0.52, 0.47, 0.49), vec3(0.25, 0.22, 0.25), smoothstep(0.0, 1.3, length(scr - 0.5)));
+    float halo = exp(-dq * dq * 1.2);
+    vec3 light = night + vec3(1.0, 0.95, 0.9) * halo * 0.55 * w + vec3(1.0) * exp(-dq * dq * 7.0) * 0.9 * w;
+    // prism rays: long, soft, each its own colour of the spectrum
     float ang = atan(q.y, q.x);
-    float rays = pow(0.5 + 0.5 * sin(ang * 9.0 + uTime * 0.6), 6.0) * exp(-dq * 0.9) * 0.35 * w;
-    light += spectrum(fract(ang / 6.28318 + 0.5)) * rays;
+    float rays = pow(0.5 + 0.5 * sin(ang * 7.0 + 0.4), 10.0) + 0.6 * pow(0.5 + 0.5 * sin(ang * 11.0 + 1.3), 14.0);
+    vec3 rayC = mix(spectrum(fract(ang / 6.28318 * 2.0 + 0.15)), vec3(1.0), 0.08);
+    light += rayC * rays * exp(-dq * 0.32) * 1.05 * w;
     col = mix(col, light, around * smoothstep(0.0, 1.0, w));
     // the panels pick up the coloured light on their inner edges
     col += spec * panels * exp(-abs(p.x - 644.0) / 40.0) * 0.6 * w;

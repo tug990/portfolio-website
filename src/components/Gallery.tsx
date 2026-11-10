@@ -38,24 +38,25 @@ const FLOOD: [number, number] = [0.34, 0.82]; // prism light floods the view
 const INTRO_FADE: [number, number] = [0.74, 0.9]; // ...and fades into the room
 const GLIDE: [number, number] = [0.66, 1]; // the camera settles in the middle of the room
 const AUTO_FROM = 0; // any forward scroll plays the way in by itself...
-const AUTO_SPEED = 2.2; // ...in under half a second (when the tunnel isn't available)
+const AUTO_SPEED = 24 / 9; // ...the logo's light bursts out, then the gallery: ~0.375 s
 
 /*
   The prism journey, played by one scroll in under a second (progress 0 to 1),
   after the storyboard: the logo wakes (its panels part, light breaks out, the
-  page darkens); its panels become doors that swing open onto a glass
-  corridor of light; you travel down it until the gallery appears in a round
-  opening inside a vortex; the glass slides away and you arrive in the room.
+  page darkens); its panels become the doors of a glass corridor, built in
+  front of the gallery's entrance in the gallery's own 3D scene; they swing
+  open, you travel down the corridor, the room appears at its far end, and
+  you walk out of it into the room (see gallery3d/PrismTunnel.ts).
 */
-const JOURNEY_SPEED = 1.15; // progress per second: into the room in ~0.9 s
+const JOURNEY_SPEED = 24 / 9; // the storyboard's 9 frames at 24 fps: into the room in ~0.375 s
 const WAKE: [number, number] = [0, 0.12]; // 02: the logo responds
 const THRESHOLD: [number, number] = [0.03, 0.15]; // the logo grows towards you...
 const HANDOVER = 0.135; // ...and its panels become the 3D doors here
-const DOOR_ZOOM = 2.4; // how much the logo has grown by then
+const DOOR_ZOOM = 3.4; // how much the logo has grown by then: the doors fill the frame
 const LOGO_OUT: [number, number] = [0.13, 0.16];
-const TUNNEL_IN: [number, number] = [0.12, 0.15];
-const TUNNEL: [number, number] = [0.13, 0.96]; // 03-07: doors, corridor, vortex, arrival
-const TUNNEL_OUT: [number, number] = [0.95, 0.995]; // the last of it fades into the room itself
+const USE_TUNNEL = false; // the corridor is parked: logo -> its light bursts -> gallery
+const TUNNEL_FROM = 0.12; // the room's renderer draws the corridor from here (under the fading logo)
+const TUNNEL: [number, number] = [0.13, 1]; // 03-07: doors, corridor, arrival
 
 const STEP_LOCK_MS = 300; // one scroll gesture = one stop
 const FOLLOW = 6; // catching up after a resize (steps themselves are timed glides)
@@ -65,6 +66,19 @@ const VISIT_MS = 720; // walking up to a film, before it lifts off the wall
 const RETURN_MS = 650; // stepping back from it when its page closes
 const DOOR_MS = 1400; // walking through a door
 const EYE = 1.6; // camera height, metres
+
+/*
+  Arriving out of the logo's light (without the corridor): one continuous
+  camera move and one light curve, both easing out, from the moment the room
+  appears until it comes to rest. Arrival happens part-way through, so the
+  move carries on gently for a moment after you're in, rather than stopping dead.
+*/
+const ROOM_IN = 0.4; // progress where the room starts to show through the light
+const SETTLE_S = 1.0; // seconds from the room appearing to the camera at rest
+const DOLLY = 2.4; // metres the camera drifts forward over that time
+const RISE = 0.14; // and how much it settles down to eye height
+const GLOW = 1.3; // how much brighter the room starts, lit by the logo's light
+const settleK = (tau: number) => 1 - Math.pow(1 - clamp(tau / SETTLE_S, 0, 1), 3); // ease-out
 const SAVE_KEY = "insight-gallery-stop";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -98,7 +112,6 @@ export function Gallery() {
   const scene = useRef<Record<string, HTMLElement | null>>({});
   const logoGl = useRef<LogoDoorHandle | null>(null);
   const gs = useRef<GalleryScene | null>(null);
-  const tunnelCanvas = useRef<HTMLCanvasElement>(null);
   const tunnel = useRef<PrismTunnel | null>(null);
   const failed = useRef(false);
   const viewRef = useRef({ w: 1440, h: 900 });
@@ -117,6 +130,7 @@ export function Gallery() {
     playing: -2,
     insideFlag: false,
     journeyFlag: false, // the header steps aside while this is true
+    settleFrom: 0, // when the room appeared (ms), while the arrival move is still easing out
     pose: { x: 0, z: -0.5, yaw: 0, y: EYE },
     lockUntil: 0,
     wheelAcc: 0,
@@ -143,7 +157,6 @@ export function Gallery() {
     let alive = true;
     const fit = () => {
       viewRef.current = { w: window.innerWidth, h: window.innerHeight };
-      tunnel.current?.setSize(window.innerWidth, window.innerHeight);
       const g = gs.current;
       if (!g) return;
       g.setSize(window.innerWidth, window.innerHeight);
@@ -176,17 +189,24 @@ export function Gallery() {
         });
         s.setSize(window.innerWidth, window.innerHeight);
         gs.current = s;
+        // Draw the room once now, hidden under the logo, so every shader is
+        // ready and the way in never stalls when the room first appears
+        const st = s.layout.stops[0];
+        s.setPose(st.x, EYE, st.z, st.yaw);
+        s.render(0);
 
-        // The prism tunnel, for the way in (not with reduced motion; if it
+        // The prism corridor, for the way in (not with reduced motion; if it
         // can't start, the way in falls back to the light flood)
-        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        if (USE_TUNNEL && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
           try {
             const tm = await import("@/components/gallery3d/PrismTunnel");
-            if (alive && tunnelCanvas.current) {
-              const t = new tm.PrismTunnel(tunnelCanvas.current, {
-                light: coarse || window.innerWidth < 700,
+            if (alive) {
+              const small = window.innerWidth < 700;
+              const t = new tm.PrismTunnel(s, {
+                quality: small ? "low" : coarse ? "medium" : "high",
               });
-              t.setSize(window.innerWidth, window.innerHeight);
+              // Compile every shader now, under the logo, so the journey never stalls
+              t.warm(s.layout.stops[0]);
               tunnel.current = t;
             }
           } catch (err) {
@@ -268,11 +288,23 @@ export function Gallery() {
         // Behind the light you're already in the room, gliding the last stretch
         // to the spot that shows the whole gallery.
         const first: Pose = L?.stops[0] ?? { x: 0, z: 4, yaw: 0 };
-        const g = smooth(band(c.p, GLIDE));
-        pose = { x: first.x, z: first.z + 1.5 * (1 - g), yaw: first.yaw, y: EYE };
-        // bright, then settling (gentler when seen through the tunnel's far end)
-        exposure = T ? 1 + 0.7 * (1 - band(c.p, [0.75, 1])) : 1 + 2.6 * (1 - band(c.p, [0.7, 1]));
-        const isIn = c.p > (T ? 0.97 : 0.72); // the gallery's controls return once you've arrived
+        if (T) {
+          const g = smooth(band(c.p, GLIDE));
+          pose = { x: first.x, z: first.z + 1.5 * (1 - g), yaw: first.yaw, y: EYE };
+        } else {
+          const k = settleK(Math.max(0, (c.p - ROOM_IN) / AUTO_SPEED));
+          pose = {
+            x: first.x + Math.sin(first.yaw) * DOLLY * (1 - k),
+            z: first.z + Math.cos(first.yaw) * DOLLY * (1 - k),
+            yaw: first.yaw,
+            y: EYE + RISE * (1 - k),
+          };
+        }
+        // bright in the corridor, settling to the room's own as you arrive
+        exposure = T
+          ? 1 + 0.15 * (1 - smooth(band(c.p, [0.8, 1])))
+          : 1 + GLOW * Math.pow(1 - settleK(Math.max(0, (c.p - ROOM_IN) / AUTO_SPEED)), 2); // bright out of the light, settling
+        const isIn = c.p > (T ? 0.97 : 0.85); // the gallery's controls return once you've arrived
         if (isIn !== c.insideFlag) {
           c.insideFlag = isIn;
           setInside(isIn);
@@ -285,6 +317,8 @@ export function Gallery() {
           c.auto = false;
           // The scroll that brought you in may still be coasting: don't let it carry you on.
           c.lockUntil = now + 450;
+          // ...and the arrival move eases out from where it is
+          if (!T) c.settleFrom = now - ((1 - ROOM_IN) / AUTO_SPEED) * 1000;
           c.wheelAcc = 0;
         }
       } else if (c.mode === "free" && L) {
@@ -300,6 +334,15 @@ export function Gallery() {
         const near = here.kind === "work" && Math.abs(c.q - here.s) < L.span * 0.3 && !c.glide;
         c.lean += ((near ? 1 : 0) - c.lean) * damp(near ? LEAN_IN : LEAN_OUT, dt);
         pose = { ...leaned(L, poseAt(L.stops, c.q), c.lean), y: EYE };
+        if (c.settleFrom > 0) {
+          // the last of the arrival move, easing to rest
+          const k = settleK((now - c.settleFrom) / 1000);
+          pose.x += Math.sin(pose.yaw) * DOLLY * (1 - k);
+          pose.z += Math.cos(pose.yaw) * DOLLY * (1 - k);
+          pose.y += RISE * (1 - k);
+          exposure = 1 + GLOW * Math.pow(1 - k, 2);
+          if (k >= 1) c.settleFrom = 0;
+        }
       } else if (c.mode === "visit" && c.visit) {
         const v = c.visit;
         const t = clamp((now - v.t0) / v.dur, 0, 1);
@@ -333,33 +376,28 @@ export function Gallery() {
           s.setDoor(i, c.doorAng[i], smooth(c.doorLit[i]));
         }
         // Only the films near you play.
-        const roomFrom = T ? 0.42 : 0.6; // drawn from when it shows in the tunnel's far end
+        const roomFrom = T ? 0.42 : ROOM_IN; // films play once they show at the corridor's far end
         const playAt = c.mode === "intro" ? (c.p > roomFrom ? 0 : -1) : c.at;
         if (playAt !== c.playing) {
           c.playing = playAt;
           s.playNear(playAt);
         }
-        // Draw the room whenever it can be seen.
-        if ((c.mode !== "intro" || c.p > roomFrom) && !covered.current) {
-          s.setPose(pose.x, pose.y, pose.z, pose.yaw);
+        // Draw the room whenever it can be seen (with the corridor, from the start of the journey).
+        const journeyOn = !!T && c.mode === "intro" && c.p >= TUNNEL_FROM;
+        if (T && !journeyOn) T.end();
+        if ((c.mode !== "intro" || c.p > (T ? TUNNEL_FROM : roomFrom)) && !covered.current) {
+          if (journeyOn) {
+            const t = clamp((c.p - TUNNEL[0]) / (TUNNEL[1] - TUNNEL[0]), 0, 1);
+            T.update(t, (now - t0) / 1000, L.stops[0]);
+          } else s.setPose(pose.x, pose.y, pose.z, pose.yaw);
           s.setExposure(exposure);
           s.render((now - t0) / 1000);
         }
       }
       c.pose = pose;
 
-      // The prism tunnel, over everything while you travel through it
-      const tc = tunnelCanvas.current;
-      if (tc) {
-        const op = T && c.mode === "intro" ? band(c.p, TUNNEL_IN) * (1 - band(c.p, TUNNEL_OUT)) : 0;
-        tc.style.opacity = String(op);
-        tc.style.visibility = op > 0.001 ? "visible" : "hidden";
-        if (T && op > 0.001) {
-          T.render(clamp((c.p - TUNNEL[0]) / (TUNNEL[1] - TUNNEL[0]), 0, 1), (now - t0) / 1000);
-        }
-      }
       // The header steps aside for the journey, and returns in the gallery
-      const journey = c.mode === "intro" && c.p > 0.002 && c.p < 0.999;
+      const journey = !!T && c.mode === "intro" && c.p > 0.15 && c.p < 0.85; // header stays for frames 01-02, back for 07-09
       if (journey !== c.journeyFlag) {
         c.journeyFlag = journey;
         document.documentElement.classList.toggle("journey", journey);
@@ -377,7 +415,7 @@ export function Gallery() {
     const { w: W, h: H } = viewRef.current;
     const s = scene.current;
     const T = !!tunnel.current;
-    const e = T ? band(p, THRESHOLD) : band(p, [0, ZOOM_END]);
+    const e = T ? band(p, THRESHOLD) : 0; // without the corridor the logo stays put
     const s0 = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
     const zoomOf = (x: number) => Math.exp(Math.log(T ? DOOR_ZOOM : 120) * Math.pow(x, 1.7));
     const zoom = zoomOf(e);
@@ -391,10 +429,10 @@ export function Gallery() {
     const k = smooth(e);
     const fx = restX + (W / 2 - restX) * k;
     const fy = restY + (H / 2 - restY) * k;
-    const fade = 1 - band(p, T ? LOGO_OUT : INTRO_FADE);
+    const fade = 1 - band(p, T ? LOGO_OUT : [0.38, 0.92]);
     if (fade > 0) {
       if (logoGl.current?.ok) {
-        logoGl.current.draw(scale, { x: fx, y: fy }, T ? 0 : band(p, FLOOD), T ? band(p, WAKE) : 0);
+        logoGl.current.draw(scale, { x: fx, y: fy }, 0, band(p, T ? WAKE : [0, 0.35]));
       } else if (s.fallback) {
         // No WebGL: the logo image, never enlarged more than a touch.
         const fs = s0 * Math.min(zoom, 1.5);
@@ -406,7 +444,7 @@ export function Gallery() {
     }
     if (s.text) {
       const bottom = markY + (686 - LOGO.center.y) * s0;
-      const out = band(p, [0.01, 0.12]);
+      const out = band(p, T ? [0.1, 0.16] : [0.5, 0.85]);
       s.text.style.top = `${bottom + 34}px`;
       s.text.style.opacity = String(1 - out);
       s.text.style.transform = `translateY(${out * 40}px)`;
@@ -415,7 +453,8 @@ export function Gallery() {
       introRef.current.style.opacity = String(fade);
       introRef.current.style.visibility = fade <= 0 ? "hidden" : "visible";
     }
-    if (s.hint) s.hint.style.opacity = String(1 - band(p, [0, 0.05]));
+    if (s.hint)
+      s.hint.style.opacity = String(1 - band(p, tunnel.current ? [0, 0.05] : [0.45, 0.85]));
   }
 
   /* ---------- moving ---------- */
@@ -788,14 +827,6 @@ export function Gallery() {
           onClick={() => {
             if (cam.current.drag.dist <= 6) goIn();
           }}
-        />
-
-        {/* The prism tunnel: shown only during the way in */}
-        <canvas
-          ref={tunnelCanvas}
-          aria-hidden
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          style={{ opacity: 0, visibility: "hidden" }}
         />
 
         {/* For keyboards and screen readers: every film and both doors */}

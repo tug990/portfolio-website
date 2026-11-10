@@ -313,7 +313,7 @@ export function addCoveLighting(
     toneMapped: false,
   });
   keep(washTex, ceilTex, washMat, ceilMat, lineMat);
-  walls.forEach((w) => {
+  return walls.map((w) => {
     const g = new THREE.Group();
     g.position.set(w.x, 0, w.z);
     g.rotation.y = w.ry;
@@ -332,6 +332,7 @@ export function addCoveLighting(
     ceil.renderOrder = 2;
     g.add(line, wash, ceil);
     scene.add(g);
+    return g;
   });
 }
 
