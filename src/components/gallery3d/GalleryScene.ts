@@ -22,11 +22,10 @@ import {
   addFloorReflection,
   addFramedPicture,
   addPrismPlinth,
-  addWallLight,
-  addDownlights,
+  addCoveLighting,
+  microcement,
   addWallTitle,
   sizeFloorReflection,
-  type Fixture,
   type SetCtx,
 } from "./warmset";
 import type { Reflector } from "three/examples/jsm/objects/Reflector.js";
@@ -295,7 +294,6 @@ export class GalleryScene {
   private labels: THREE.Mesh[] = [];
   private count: number;
   readonly front: number; // z of the wall with the doors, behind where you arrive
-  private fixtures: Fixture[] = []; // the hidden spotlights, gathered as the room is built
   private reflector?: Reflector;
 
   constructor(
@@ -370,8 +368,9 @@ export class GalleryScene {
     const mid = (FRONT - D) / 2;
     const allLen = len + BACK; // with the side gallery
     const allMid = (FRONT - D - BACK) / 2;
-    const wallMat = matte(0xdcc0a0, 0.92); // warm taupe plaster
-    wallMat.emissive.set(0x110a05); // a little warm glow between the spots; the spots do the rest
+    const wallMat = matte(0xddc6a8, 0.9); // warm beige microcement
+    microcement(wallMat);
+    wallMat.emissive.set(0x1e130a); // the warm light the cove and skylight leave on the walls
     const left = plane(allLen, H, wallMat);
     left.position.set(-W / 2, H / 2, allMid);
     left.rotation.y = Math.PI / 2;
@@ -399,7 +398,7 @@ export class GalleryScene {
 
     // Ceiling: darker, warm grey
     const ceilMat = matte(0x8a7766, 0.95);
-    ceilMat.emissive.set(0x2b1f16); // warm light bouncing up off the walls
+    ceilMat.emissive.set(0x3d2b1e); // warm light bouncing up off the lit walls
     const ceiling = plane(W, allLen, ceilMat);
     ceiling.position.set(0, H, allMid);
     ceiling.rotation.x = Math.PI / 2;
@@ -437,10 +436,6 @@ export class GalleryScene {
       panel.rotation.x = Math.PI / 2;
       panel.position.set(sx * (W / 2 - 0.55), H - 0.005, -D - 1.1);
       this.scene.add(panel);
-      const cool = new THREE.RectAreaLight(0xf0f4ff, 4, 0.5, 1.6);
-      cool.position.set(sx * (W / 2 - 0.55), H - 0.01, -D - 1.1);
-      cool.lookAt(sx * (W / 2 - 0.55), 0, -D - 1.1);
-      this.scene.add(cool);
       const l = new THREE.PointLight(0xffb36b, 10, 7, 2);
       l.position.set(sx * (W / 2 - 1.2), 2.9, -D - 2.4);
       this.scene.add(l);
@@ -450,6 +445,13 @@ export class GalleryScene {
     }
 
     this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK);
+    // Concealed cove light along the top of the room's walls: the architecture lights itself
+    addCoveLighting(set, H, [
+      { len, x: -W / 2, z: mid, ry: Math.PI / 2 },
+      { len, x: W / 2, z: mid, ry: -Math.PI / 2 },
+      { len: W - 2 * OPEN, x: 0, z: -D, ry: 0 },
+      { len: W, x: 0, z: FRONT, ry: Math.PI },
+    ]);
     this.addSkylight(H, len, mid);
 
     /* ---------- the screens ---------- */
@@ -517,21 +519,9 @@ export class GalleryScene {
   */
   private addExhibition(set: SetCtx, W: number, D: number, H: number, aniso: number) {
     const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-    const lit = (at: THREE.Vector3, n: THREE.Vector3) =>
-      this.fixtures.push({
-        at: v(at.x + n.x * 1.55, H - 0.32, at.z + n.z * 1.55),
-        aim: at.clone(),
-        wash: { at: v(at.x, 0, at.z), normal: n.clone() },
-      });
-
-    const sides = [
-      { x: -W / 2, n: v(1, 0, 0) },
-      { x: W / 2, n: v(-1, 0, 0) },
-    ];
     // The far wall: the exhibition title, left of the films (nothing else hangs between them)
     const farN = v(0, 0, 1);
     addWallTitle(set, v(-3.5, 1.72, -D), farN, aniso);
-    lit(v(-3.5, 1.6, -D), farN);
 
     // In each passage, a film on the outer wall, seen through the opening:
     // a glimpse of more work (not one of the stops)
@@ -539,19 +529,10 @@ export class GalleryScene {
       const n = v(-sx, 0, 0);
       const at = v(sx * (W / 2 - 0.004), SCREEN.y, -D - 1.95);
       this.addGlimpseFilm(at, n, sx > 0 ? 7 : 8, aniso);
-      lit(v(sx * (W / 2), SCREEN.y, -D - 1.95), n);
     }
 
-    // The light on the walls, and where it comes from: a recessed spotlight
-    // over each work, the title and the passage films
-    addWallLight(set, H, this.fixtures);
     const prismAt = v(0, 0, -D + 3.6);
     const benchAt = v(0, 0, this.layout.stops[0].z - 4.4);
-    addDownlights(set, H, [
-      ...this.fixtures.map((f) => f.at),
-      v(prismAt.x, H, prismAt.z + 0.9),
-      v(benchAt.x, H, benchAt.z + 1.2),
-    ]);
 
     // The prism on its plinth, out from the far wall between the films
     addPrismPlinth(set, prismAt, "/brand/mark-transparent.webp");
@@ -654,7 +635,7 @@ export class GalleryScene {
   */
   private addSkylight(H: number, len: number, mid: number) {
     RectAreaLightUniformsLib.init();
-    const w = 2.6;
+    const w = 3.2; // a large recessed luminous panel
     const l = len - 2.4;
     const tex = skylightTexture();
     const panelMat = new THREE.MeshBasicMaterial({
@@ -817,30 +798,6 @@ export class GalleryScene {
     [bezel, screen, glass, lab].forEach((m) => {
       m.userData.pick = { kind: "work", index: i };
       this.pickables.push(m);
-    });
-
-    // The spotlight on it, from a hidden lamp in the ceiling
-    const H = ROOM.H;
-    const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.32, spot.z + spot.nz * 1.55);
-    const sl = new THREE.SpotLight(0xffc88e, this.hq ? 34 : 26, 0, 0.36, 0.7, 2);
-    sl.position.copy(head);
-    sl.target.position.set(spot.x, SCREEN.y + 0.05, spot.z);
-    if (this.hq) {
-      sl.castShadow = true;
-      sl.shadow.mapSize.set(1024, 1024);
-      sl.shadow.bias = -0.0004;
-      sl.shadow.normalBias = 0.02;
-      sl.shadow.camera.near = 0.3;
-      sl.shadow.camera.far = 6;
-    }
-    this.scene.add(sl, sl.target);
-    this.fixtures.push({
-      at: head,
-      aim: new THREE.Vector3(spot.x, SCREEN.y + 0.05, spot.z),
-      wash: {
-        at: new THREE.Vector3(spot.x, 0, spot.z),
-        normal: new THREE.Vector3(spot.nx, 0, spot.nz),
-      },
     });
 
     this.works.push(w);
