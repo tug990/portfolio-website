@@ -5,8 +5,8 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 /*
   The warm exhibition set, after the art direction (a gallery at night):
 
-  - Black track rails along the ceiling, hung with spotlights; each one aimed
-    at a wall throws a scallop of warm light up it.
+  - Warm scallops of light up the walls above each work, from lamps hidden
+    in the ceiling (no fittings shown).
   - The centrepiece: a crystal pyramid on a pale stone plinth with the logo
     inlaid, a warm glow under it, and two rainbows fanning across the floor
     from it.
@@ -249,147 +249,21 @@ export function landscapeTexture(seed: number, w: number, h: number) {
   return tex;
 }
 
-/* ---------- track lighting ---------- */
+/* ---------- the light on the walls ---------- */
 
 export type Fixture = {
-  at: THREE.Vector3; // the lamp
+  at: THREE.Vector3; // the (hidden) lamp
   aim: THREE.Vector3; // where it points
   /* the wall it washes, if any: the point on the wall under the lamp, and the wall's normal */
   wash?: { at: THREE.Vector3; normal: THREE.Vector3; strength?: number };
 };
 
-export function addTrackLighting(
-  ctx: SetCtx,
-  H: number,
-  rails: { from: THREE.Vector3; to: THREE.Vector3 }[],
-  fixtures: Fixture[],
-) {
+/*
+  The light from the hidden lamps: a warm scallop on the wall above each
+  work. The lamps themselves aren't shown; only their light is.
+*/
+export function addWallLight(ctx: SetCtx, H: number, fixtures: Fixture[]) {
   const { scene, keep } = ctx;
-  const black = new THREE.MeshStandardMaterial({
-    color: 0x0d0c0b,
-    roughness: 0.42,
-    metalness: 0.6,
-  });
-  keep(black);
-
-  // Rails
-  rails.forEach(({ from, to }) => {
-    const len = from.distanceTo(to);
-    const g = new THREE.BoxGeometry(0.04, 0.035, len);
-    keep(g);
-    const m = new THREE.Mesh(g, black);
-    m.position.copy(from).add(to).multiplyScalar(0.5);
-    m.position.y = H - 0.02;
-    m.lookAt(to.x, m.position.y, to.z);
-    scene.add(m);
-  });
-
-  // Lamps: a short stem down from the rail, a housing pointed at its aim, a glowing lens
-  const n = fixtures.length;
-  const housingGeo = new THREE.CylinderGeometry(0.048, 0.04, 0.19, 18, 1);
-  housingGeo.rotateX(Math.PI / 2); // along +z, so lookAt aims it
-  const lensGeo = new THREE.CircleGeometry(0.04, 20);
-  lensGeo.translate(0, 0, 0.0955);
-  const stemGeo = new THREE.CylinderGeometry(0.008, 0.008, 1, 8);
-  const lensMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(1, 0.86, 0.62).multiplyScalar(9),
-    toneMapped: false,
-  });
-  keep(housingGeo, lensGeo, stemGeo, lensMat);
-  const housings = new THREE.InstancedMesh(housingGeo, black, n);
-  const lenses = new THREE.InstancedMesh(lensGeo, lensMat, n);
-  const stems = new THREE.InstancedMesh(stemGeo, black, n);
-  const d = new THREE.Object3D();
-  fixtures.forEach((f, i) => {
-    d.position.copy(f.at);
-    d.scale.set(1, 1, 1);
-    d.lookAt(f.aim);
-    d.updateMatrix();
-    housings.setMatrixAt(i, d.matrix);
-    lenses.setMatrixAt(i, d.matrix);
-    const stemLen = H - 0.035 - f.at.y;
-    d.rotation.set(0, 0, 0);
-    d.position.set(f.at.x, f.at.y + stemLen / 2, f.at.z);
-    d.scale.set(1, stemLen, 1);
-    d.updateMatrix();
-    stems.setMatrixAt(i, d.matrix);
-  });
-  lenses.layers.set(1); // bright points of light: not mirrored in the floor
-  scene.add(housings, lenses, stems);
-  keep(housings, lenses, stems);
-
-  /*
-    Each lamp is on: a warm halo round its lens, seen from any side, and a
-    faint cone of light in the air from the lamp to where it lands.
-  */
-  const glowPos = new Float32Array(n * 3);
-  const dir = new THREE.Vector3();
-  fixtures.forEach((f, i) => {
-    dir.subVectors(f.aim, f.at).normalize();
-    glowPos[i * 3] = f.at.x + dir.x * 0.1;
-    glowPos[i * 3 + 1] = f.at.y + dir.y * 0.1;
-    glowPos[i * 3 + 2] = f.at.z + dir.z * 0.1;
-  });
-  const glowGeo = new THREE.BufferGeometry();
-  glowGeo.setAttribute("position", new THREE.BufferAttribute(glowPos, 3));
-  const haloTex = poolTexture("255,214,160");
-  const glowMat = new THREE.PointsMaterial({
-    map: haloTex,
-    size: 0.26,
-    sizeAttenuation: true,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    color: new THREE.Color(1, 0.8, 0.55).multiplyScalar(1.6),
-    toneMapped: false,
-  });
-  keep(glowGeo, haloTex, glowMat);
-  const halos = new THREE.Points(glowGeo, glowMat);
-  halos.layers.set(1); // the camera sees layer 1; the floor's reflection doesn't
-  scene.add(halos);
-
-  const beams = fixtures.filter((f) => f.wash);
-  if (beams.length) {
-    // A cone 1 long with its tip at +0.5 (the lamp), opening downwards; scaled per lamp
-    const coneGeo = new THREE.CylinderGeometry(0.06, 1, 1, 28, 1, true);
-    const fadeTex = canvasTexture(4, 256, (c) => {
-      const g = c.createLinearGradient(0, 0, 0, 256);
-      g.addColorStop(0, "#fff"); // at the lamp (the top of the texture is the cone's tip)
-      g.addColorStop(0.35, "#777");
-      g.addColorStop(1, "#000");
-      c.fillStyle = g;
-      c.fillRect(0, 0, 4, 256);
-    });
-    fadeTex.colorSpace = THREE.NoColorSpace;
-    const coneMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(1, 0.78, 0.5),
-      alphaMap: fadeTex,
-      transparent: true,
-      opacity: 0.028, // only just there: the lamps glow, the air barely shows it
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-    });
-    keep(coneGeo, fadeTex, coneMat);
-    const cones = new THREE.InstancedMesh(coneGeo, coneMat, beams.length);
-    const up = new THREE.Vector3(0, 1, 0);
-    const o = new THREE.Object3D();
-    beams.forEach((f, i) => {
-      dir.subVectors(f.at, f.aim); // from where it lands back up to the lamp
-      const len = dir.length() * 0.92; // stop just short of the wall
-      dir.normalize();
-      const r = len * 0.36; // the beam's spread
-      o.quaternion.setFromUnitVectors(up, dir);
-      o.position.copy(f.at).addScaledVector(dir, -len / 2 - 0.08);
-      o.scale.set(r, len, r);
-      o.updateMatrix();
-      cones.setMatrixAt(i, o.matrix);
-    });
-    cones.renderOrder = 4;
-    cones.layers.set(1);
-    scene.add(cones);
-    keep(cones);
-  }
 
   // The scallops they throw on the walls
   const tex = scallopTexture();

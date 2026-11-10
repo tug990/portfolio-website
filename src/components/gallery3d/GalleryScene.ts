@@ -22,7 +22,7 @@ import {
   addFloorReflection,
   addFramedPicture,
   addPrismPlinth,
-  addTrackLighting,
+  addWallLight,
   addWallTitle,
   sizeFloorReflection,
   type Fixture,
@@ -294,7 +294,7 @@ export class GalleryScene {
   private labels: THREE.Mesh[] = [];
   private count: number;
   readonly front: number; // z of the wall with the doors, behind where you arrive
-  private fixtures: Fixture[] = []; // the track spotlights, gathered as the room is built
+  private fixtures: Fixture[] = []; // the hidden spotlights, gathered as the room is built
   private reflector?: Reflector;
 
   constructor(
@@ -508,7 +508,7 @@ export class GalleryScene {
 
   /*
     The evening exhibition around the films: framed landscapes and the title
-    on the walls, the prism on its plinth, the bench, and the track lighting
+    on the walls, the prism on its plinth, the bench, and the light on the walls
     that lights it all.
   */
   private addExhibition(set: SetCtx, W: number, D: number, H: number, aniso: number) {
@@ -529,41 +529,8 @@ export class GalleryScene {
     addWallTitle(set, v(-3.5, 1.72, -D), farN, aniso);
     lit(v(-3.5, 1.6, -D), farN);
 
-    // More lamps along the outer rails, between the films: they light the
-    // floor, so nothing glows on the bare wall between the works
-    const taken = this.layout.works.filter((w) => w.nx !== 0).map((w) => w.z);
-    for (let z = this.front - 1.4; z > -D + 0.8; z -= 1.1) {
-      if (taken.some((t) => Math.abs(t - z) < 1.0)) continue;
-      for (const side of sides) {
-        this.fixtures.push({
-          at: v(side.x + side.n.x * 1.55, H - 0.32, z),
-          aim: v(side.x + side.n.x * 2.4, 0, z),
-        });
-      }
-    }
-    // The inner rails: lamps angled down towards the floor by the walls
-    for (let z = this.front - 2; z > -D + 1; z -= 1.2) {
-      for (const sx of [-1, 1]) {
-        this.fixtures.push({
-          at: v(sx * (W / 2 - 2.7), H - 0.3, z),
-          aim: v(sx * (W / 2 - 1.2), 0, z - 0.6),
-        });
-      }
-    }
-    const rails = [
-      ...[-1, 1].flatMap((sx) => [
-        {
-          from: v(sx * (W / 2 - 1.55), 0, this.front - 0.6),
-          to: v(sx * (W / 2 - 1.55), 0, -D + 0.5),
-        },
-        {
-          from: v(sx * (W / 2 - 2.7), 0, this.front - 0.6),
-          to: v(sx * (W / 2 - 2.7), 0, -D + 0.5),
-        },
-      ]),
-      { from: v(-(W / 2 - 1.55), 0, -D + 1.55), to: v(W / 2 - 1.55, 0, -D + 1.55) },
-    ];
-    addTrackLighting(set, H, rails, this.fixtures);
+    // Only the light shows: no rails or lamp heads on the ceiling
+    addWallLight(set, H, this.fixtures);
 
     // The prism on its plinth, out from the far wall between the films
     addPrismPlinth(set, v(0, 0, -D + 3.6), "/brand/mark-transparent.webp");
@@ -793,7 +760,7 @@ export class GalleryScene {
       this.pickables.push(m);
     });
 
-    // The spotlight on it, from a head on the ceiling track
+    // The spotlight on it, from a hidden lamp in the ceiling
     const H = ROOM.H;
     const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.32, spot.z + spot.nz * 1.55);
     const sl = new THREE.SpotLight(0xffc88e, this.hq ? 34 : 26, 0, 0.36, 0.7, 2);
