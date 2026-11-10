@@ -23,6 +23,7 @@ import {
   addFramedPicture,
   addPrismPlinth,
   addWallLight,
+  addDownlights,
   addWallTitle,
   sizeFloorReflection,
   type Fixture,
@@ -362,7 +363,7 @@ export class GalleryScene {
       behind the far wall (BACK deep), so the space carries on.
     */
     const FRONT = this.front;
-    const BACK = 3.2;
+    const BACK = 7; // the passages behind the far wall run well back: open ways, not alcoves
     const OPEN = 1.0; // width of each opening
     const OPEN_H = 3.0;
     const len = D + FRONT; // the main room
@@ -418,12 +419,12 @@ export class GalleryScene {
     if (this.hq) {
       this.reflector = addFloorReflection(set, W, allLen, allMid);
       floorMat.transparent = true;
-      floorMat.opacity = 0.72;
+      floorMat.opacity = 0.84; // mostly stone, with a soft sheen of the room in it
       floor.renderOrder = -1; // before the glows that lie on it
     }
     this.scene.add(floor);
 
-    // The side gallery beyond the openings: warm light, and a picture visible through each
+    // The passages beyond the openings: lit, and running back out of sight
     const panelMat = new THREE.MeshBasicMaterial({
       color: new THREE.Color(0.95, 0.97, 1).multiplyScalar(2.4),
       toneMapped: false,
@@ -440,9 +441,12 @@ export class GalleryScene {
       cool.position.set(sx * (W / 2 - 0.55), H - 0.01, -D - 1.1);
       cool.lookAt(sx * (W / 2 - 0.55), 0, -D - 1.1);
       this.scene.add(cool);
-      const l = new THREE.PointLight(0xffb36b, 14, 6, 2);
-      l.position.set(sx * (W / 2 - 0.7), 2.9, -D - BACK / 2);
+      const l = new THREE.PointLight(0xffb36b, 10, 7, 2);
+      l.position.set(sx * (W / 2 - 1.2), 2.9, -D - 2.4);
       this.scene.add(l);
+      const deep = new THREE.PointLight(0xffb36b, 6, 6, 2);
+      deep.position.set(sx * (W / 2 - 1.2), 2.9, -D - 5.2);
+      this.scene.add(deep);
     }
 
     this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK);
@@ -529,16 +533,71 @@ export class GalleryScene {
     addWallTitle(set, v(-3.5, 1.72, -D), farN, aniso);
     lit(v(-3.5, 1.6, -D), farN);
 
-    // Only the light shows: no rails or lamp heads on the ceiling
+    // In each passage, a film on the outer wall, seen through the opening:
+    // a glimpse of more work (not one of the stops)
+    for (const sx of [-1, 1]) {
+      const n = v(-sx, 0, 0);
+      const at = v(sx * (W / 2 - 0.004), SCREEN.y, -D - 1.95);
+      this.addGlimpseFilm(at, n, sx > 0 ? 7 : 8, aniso);
+      lit(v(sx * (W / 2), SCREEN.y, -D - 1.95), n);
+    }
+
+    // The light on the walls, and where it comes from: a recessed spotlight
+    // over each work, the title and the passage films
     addWallLight(set, H, this.fixtures);
+    const prismAt = v(0, 0, -D + 3.6);
+    const benchAt = v(0, 0, this.layout.stops[0].z - 4.4);
+    addDownlights(set, H, [
+      ...this.fixtures.map((f) => f.at),
+      v(prismAt.x, H, prismAt.z + 0.9),
+      v(benchAt.x, H, benchAt.z + 1.2),
+    ]);
 
     // The prism on its plinth, out from the far wall between the films
-    addPrismPlinth(set, v(0, 0, -D + 3.6), "/brand/mark-transparent.webp");
+    addPrismPlinth(set, prismAt, "/brand/mark-transparent.webp");
 
     // The bench, in front of where you arrive
-    const arrive = this.layout.stops[0];
     // Far enough ahead that it sits whole in the lower part of the view, legs and all
-    addBench(set, v(0, 0, arrive.z - 4.4));
+    addBench(set, benchAt);
+  }
+
+  /* A film playing in a passage: a glimpse of more work, seen from the room. */
+  private glimpses: THREE.ShaderMaterial[] = [];
+  private addGlimpseFilm(at: THREE.Vector3, normal: THREE.Vector3, seed: number, aniso: number) {
+    const g = new THREE.Group();
+    g.position.copy(at);
+    g.lookAt(at.clone().add(normal));
+    const bezelMat = new THREE.MeshStandardMaterial({
+      color: 0x0b0b0c,
+      roughness: 0.38,
+      metalness: 0.25,
+    });
+    const bezelGeo = new THREE.BoxGeometry(SCREEN.w + 0.07, SCREEN.h + 0.07, 0.045);
+    const scrGeo = new THREE.PlaneGeometry(SCREEN.w, SCREEN.h);
+    const title = textTexture(
+      (ctx, cw, ch) => {
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.fillStyle = "#fff";
+        ctx.font = "500 30px Jost, ui-sans-serif, system-ui";
+        let x = 54;
+        for (const chr of "SAMPLE FILM") {
+          ctx.fillText(chr, x, ch - 52);
+          x += ctx.measureText(chr).width + 9;
+        }
+      },
+      1600,
+      900,
+      aniso,
+    );
+    const mat = placeholderMaterial(title, seed);
+    this.disposables.push(bezelMat, bezelGeo, scrGeo, title, mat);
+    const bezel = new THREE.Mesh(bezelGeo, bezelMat);
+    bezel.position.z = 0.0225;
+    const screen = new THREE.Mesh(scrGeo, mat);
+    screen.position.z = 0.0455;
+    g.add(bezel, screen);
+    this.scene.add(g);
+    this.glimpses.push(mat);
   }
 
   /*
@@ -1113,6 +1172,7 @@ export class GalleryScene {
     this.works.forEach((w) => {
       if (w.shader) w.shader.uniforms.uTime.value = time;
     });
+    this.glimpses.forEach((m) => (m.uniforms.uTime.value = time));
     this.film.uniforms.uTime.value = time;
     this.composer.render();
   }

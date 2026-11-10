@@ -294,6 +294,81 @@ export function addWallLight(ctx: SetCtx, H: number, fixtures: Fixture[]) {
   });
 }
 
+/*
+  Where the light comes from: an adjustable spotlight recessed in the ceiling.
+  A dark trim ring flush with the ceiling, a gold reflector inside, and the
+  warm lamp glowing at the back of it. One over each thing that's lit.
+*/
+export function addDownlights(ctx: SetCtx, H: number, at: THREE.Vector3[]) {
+  const { scene, keep } = ctx;
+  const n = at.length;
+  if (!n) return;
+  const trimGeo = new THREE.RingGeometry(0.052, 0.085, 40);
+  trimGeo.rotateX(Math.PI / 2); // facing down
+  const cupGeo = new THREE.CylinderGeometry(0.052, 0.04, 0.07, 32, 1, true);
+  cupGeo.translate(0, 0.035, 0); // up into the ceiling
+  const lampGeo = new THREE.CircleGeometry(0.038, 32);
+  lampGeo.rotateX(Math.PI / 2);
+  lampGeo.translate(0, 0.012, 0); // set just inside the trim, so it shows from across the room
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0x1c1917,
+    roughness: 0.45,
+    metalness: 0.4,
+  });
+  const cupMat = new THREE.MeshStandardMaterial({
+    color: 0xc9a46a,
+    roughness: 0.25,
+    metalness: 1,
+    side: THREE.BackSide,
+    emissive: new THREE.Color(0.35, 0.22, 0.1), // lit by its own lamp
+  });
+  const lampMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(1, 0.84, 0.6).multiplyScalar(6),
+    toneMapped: false,
+    side: THREE.DoubleSide,
+  });
+  keep(trimGeo, cupGeo, lampGeo, trimMat, cupMat, lampMat);
+  const trims = new THREE.InstancedMesh(trimGeo, trimMat, n);
+  const cups = new THREE.InstancedMesh(cupGeo, cupMat, n);
+  const lamps = new THREE.InstancedMesh(lampGeo, lampMat, n);
+  const o = new THREE.Object3D();
+  at.forEach((p, i) => {
+    o.position.set(p.x, H - 0.002, p.z);
+    o.updateMatrix();
+    trims.setMatrixAt(i, o.matrix);
+    cups.setMatrixAt(i, o.matrix);
+    lamps.setMatrixAt(i, o.matrix);
+  });
+  lamps.layers.set(1); // a bright point: not mirrored in the floor
+  scene.add(trims, cups, lamps);
+  keep(trims, cups, lamps);
+
+  // A small soft glow just below each, as a lit lamp has from across a room
+  const pos = new Float32Array(n * 3);
+  at.forEach((p, i) => {
+    pos[i * 3] = p.x;
+    pos[i * 3 + 1] = H - 0.03;
+    pos[i * 3 + 2] = p.z;
+  });
+  const glowGeo = new THREE.BufferGeometry();
+  glowGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const glowTex = poolTexture("255,214,160");
+  const glowMat = new THREE.PointsMaterial({
+    map: glowTex,
+    size: 0.2,
+    sizeAttenuation: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    color: new THREE.Color(1, 0.82, 0.58).multiplyScalar(1.4),
+    toneMapped: false,
+  });
+  keep(glowGeo, glowTex, glowMat);
+  const glows = new THREE.Points(glowGeo, glowMat);
+  glows.layers.set(1);
+  scene.add(glows);
+}
+
 /* ---------- the centrepiece ---------- */
 
 export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) {
@@ -462,7 +537,7 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   key.position.set(0, 4.05, 0.9);
   key.target.position.set(0, 0.9, 0);
   if (hq) {
-    key.castShadow = true;
+    key.castShadow = false; // no hard shadow pooled on the floor
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.02;
@@ -557,7 +632,7 @@ export function addBench(ctx: SetCtx, at: THREE.Vector3) {
   key.position.set(0, 4.0, 1.2);
   key.target.position.set(0, 0.3, 0);
   if (hq) {
-    key.castShadow = true;
+    key.castShadow = false; // no hard shadow pooled on the floor
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.02;
@@ -694,7 +769,7 @@ const SoftReflectorShader = {
         for (int y = -3; y <= 3; y++) {
           vec2 o = vec2(float(x), float(y));
           float w = exp(-dot(o, o) / 5.0);
-          sum += texture2D(tDiffuse, uv + o * uTexel * vec2(0.8, 1.7)).rgb * w;
+          sum += texture2D(tDiffuse, uv + o * uTexel * vec2(1.3, 2.6)).rgb * w;
           total += w;
         }
       }
@@ -711,7 +786,7 @@ export function addFloorReflection(ctx: SetCtx, w: number, len: number, mid: num
   const r = new Reflector(geo, {
     textureWidth: 1024,
     textureHeight: 1024,
-    color: new THREE.Color(0.85, 0.82, 0.78),
+    color: new THREE.Color(0.62, 0.6, 0.57), // a soft sheen of the room, not a mirror
     shader: SoftReflectorShader,
     multisample: 0,
   });
