@@ -537,9 +537,10 @@ export class GalleryScene {
   */
   private addExhibition(set: SetCtx, W: number, D: number, H: number, aniso: number) {
     const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-    // The far wall: the exhibition title, left of the films (nothing else hangs between them)
+    // The far wall: the exhibition title, centred above its two films
+    // (their tops are at ~2.3 m; the cove light begins ~3.4 m)
     const farN = v(0, 0, 1);
-    addWallTitle(set, v(-3.5, 1.72, -D), farN, aniso);
+    addWallTitle(set, v(0, 2.93, -D), farN, aniso);
 
     // In each passage, a film on the outer wall, seen through the opening:
     // a glimpse of more work (not one of the stops)

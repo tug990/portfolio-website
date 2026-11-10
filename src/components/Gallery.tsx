@@ -59,6 +59,7 @@ const TUNNEL_FROM = 0.12; // the room's renderer draws the corridor from here (u
 const TUNNEL: [number, number] = [0.13, 1]; // 03-07: doors, corridor, arrival
 
 const STEP_LOCK_MS = 300; // one scroll gesture = one stop
+const MIN_STEP_GAP = 280; // ms: never two steps closer than this, however the wheel behaves
 const FOLLOW = 6; // catching up after a resize (steps themselves are timed glides)
 const LEAN_IN = 3.4; // stepping in towards a film once you arrive
 const LEAN_OUT = 6;
@@ -89,6 +90,23 @@ const smooth = (t: number) => {
 const band = (t: number, [a, b]: [number, number]) => smooth((t - a) / (b - a));
 const damp = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+/*
+  A glide from `from` to `to`, starting at velocity m0 (in path units over the
+  whole glide) and arriving at rest: a cubic Hermite curve. With m0 = 0 it eases
+  in and out; when a new step arrives mid-glide, m0 carries the current speed
+  over, so the camera never stops and restarts.
+*/
+type Glide = { from: number; to: number; t0: number; dur: number; m0: number };
+const glideAt = (g: Glide, t: number) => {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * g.from + (t3 - 2 * t2 + t) * g.m0 + (-2 * t3 + 3 * t2) * g.to;
+};
+/* Speed of a glide at t, in path units per second. */
+const glideSpeed = (g: Glide, t: number) =>
+  ((6 * t * t - 6 * t) * g.from + (3 * t * t - 4 * t + 1) * g.m0 + (-6 * t * t + 6 * t) * g.to) /
+  (g.dur / 1000);
 
 export function Gallery() {
   const navigate = useNavigate();
@@ -124,7 +142,7 @@ export function Gallery() {
     auto: false,
     q: 0, // where the camera is along the path in the room
     goal: 0,
-    glide: null as null | { from: number; to: number; t0: number; dur: number },
+    glide: null as null | Glide,
     lean: 0,
     at: 0, // the stop you're at
     playing: -2,
@@ -134,6 +152,12 @@ export function Gallery() {
     pose: { x: 0, z: -0.5, yaw: 0, y: EYE },
     lockUntil: 0,
     wheelAcc: 0,
+    // telling one scroll gesture from the next (see the wheel handler)
+    wheelLast: 0, // time of the last wheel event
+    wheelRecent: [] as number[], // sizes of the last few events
+    wheelDir: 0, // and its direction
+    wheelUsed: false, // this gesture has already moved you a stop
+    lastStep: 0, // when the last step started
     drag: { on: false, x0: 0, y0: 0, x: 0, y: 0, dist: 0, pointer: "mouse" },
     hover: -1, // door under the mouse
     parkedAt: -1,
@@ -324,7 +348,7 @@ export function Gallery() {
       } else if (c.mode === "free" && L) {
         if (c.glide) {
           const t = clamp((now - c.glide.t0) / c.glide.dur, 0, 1);
-          c.q = c.glide.from + (c.glide.to - c.glide.from) * easeInOut(t);
+          c.q = glideAt(c.glide, t);
           if (t >= 1) c.glide = null;
         } else {
           c.q += (c.goal - c.q) * damp(FOLLOW, dt);
@@ -466,9 +490,24 @@ export function Gallery() {
     c.at = i;
     c.goal = L.stops[i].s;
     const d = Math.abs(c.goal - c.q);
+    const now = performance.now();
     // Quick and smooth: about 0.4 s to a neighbour; the longer first move from the
     // overview to the left wall gets a little more, so it never lurches.
-    c.glide = { from: c.q, to: c.goal, t0: performance.now(), dur: clamp(300 + d * 40, 380, 850) };
+    const dur = clamp(300 + d * 40, 380, 850);
+    // Already gliding? Carry its speed into the new glide (no stop and restart).
+    let m0 = 0;
+    if (c.glide) {
+      const v = glideSpeed(c.glide, clamp((now - c.glide.t0) / c.glide.dur, 0, 1));
+      m0 = v * (dur / 1000);
+      const span = c.goal - c.q;
+      // never so fast it would overshoot the new stop
+      m0 =
+        Math.sign(m0) === Math.sign(span)
+          ? Math.min(Math.abs(m0), Math.abs(span) * 1.5) * Math.sign(span)
+          : 0;
+    }
+    c.glide = { from: c.q, to: c.goal, t0: now, dur, m0 };
+    c.lastStep = now;
     setHint(false);
   };
 
@@ -700,17 +739,40 @@ export function Gallery() {
         return;
       }
       if (c.mode !== "free") return;
-      // A trackpad keeps sending events after a flick: stay locked until they stop.
-      if (now < c.lockUntil) {
-        c.lockUntil = Math.max(c.lockUntil, now + 140);
-        return;
-      }
-      if (Math.sign(d) !== Math.sign(c.wheelAcc)) c.wheelAcc = 0;
-      c.wheelAcc += d;
-      if (Math.abs(c.wheelAcc) >= 30) {
-        handlers.current.step(c.wheelAcc > 0 ? 1 : -1);
+      /*
+        One scroll gesture = one stop. A trackpad keeps sending events after a
+        flick (momentum), fading steadily; those must not move you again, but a
+        new flick or wheel notch must move you at once, even mid-momentum. A new
+        gesture is: a pause in the events, a change of direction, the scroll
+        getting much stronger than it has just been (a new flick, never the
+        small wobbles in momentum). Steps are never closer than MIN_STEP_GAP.
+      */
+      const a = Math.abs(d);
+      // when the event happened (not when we got to it: a busy frame mustn't look like a pause)
+      const at = e.timeStamp || now;
+      const gap = at - c.wheelLast;
+      const sinceStep = now - c.lastStep;
+      const recent = c.wheelRecent;
+      const avg = recent.length ? recent.reduce((x, y) => x + y, 0) / recent.length : 0;
+      const fresh =
+        gap > 120 ||
+        Math.sign(d) !== c.wheelDir ||
+        (recent.length >= 3 && a >= 20 && a > avg * 2.2 && sinceStep > 350);
+      recent.push(a);
+      if (recent.length > 5) recent.shift();
+      c.wheelLast = at;
+      c.wheelDir = Math.sign(d);
+      if (fresh) {
         c.wheelAcc = 0;
-        c.lockUntil = now + STEP_LOCK_MS;
+        c.wheelUsed = false;
+        if (gap > 120) c.wheelRecent = [a];
+      }
+      // arriving, this gesture already stepped, or too soon after the last step
+      if (now < c.lockUntil || c.wheelUsed || sinceStep < MIN_STEP_GAP) return;
+      c.wheelAcc += d;
+      if (Math.abs(c.wheelAcc) >= 24) {
+        handlers.current.step(c.wheelAcc > 0 ? 1 : -1);
+        c.wheelUsed = true;
       }
     };
     el.addEventListener("wheel", wheel, { passive: false });
