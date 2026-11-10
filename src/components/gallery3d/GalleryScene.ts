@@ -50,6 +50,7 @@ export const SCREEN = { w: 1.76, h: 0.99, y: 1.62 };
 const WORK_START = 4.2; // first side-wall screen, metres in from z = 0
 const WORK_GAP = 3.2; // between screens along a side wall
 const CENTRE_GAP = 3.4; // between the screens on the far wall
+const FAR_SCALE = 1.35; // the far wall's two films hang larger, as the room's main pieces
 const DOOR = { w: 1.15, h: 2.45, x: 1.35 };
 const LABEL = { w: 0.34, h: 0.21 };
 
@@ -59,6 +60,7 @@ export type Stop = Pose & { s: number; kind: StopKind; index: number };
 export type Pick = { kind: "work" | "door"; index: number } | null;
 
 type WorkSpot = {
+  scale: number; // the far wall's films hang larger
   x: number;
   z: number;
   yaw: number;
@@ -70,7 +72,8 @@ type WorkSpot = {
 };
 
 /* Vertical field of view for a window shape: taller windows see a little wider. */
-export const fovFor = (aspect: number) => (aspect < 0.8 ? 62 : 50);
+// Tall screens get a wide lens, as in the art direction: the room wraps round you.
+export const fovFor = (aspect: number) => (aspect < 0.6 ? 80 : aspect < 0.8 ? 72 : 50);
 
 /*
   How far back from z = 0 you stand to see the whole room: far enough that
@@ -120,25 +123,46 @@ export function buildLayout(count: number, aspect: number, front: number) {
   for (let i = 0; i < nLeft; i++) {
     // Left wall, facing into the room (+x). Looking at it, your right is -z.
     const z = -(WORK_START + i * WORK_GAP);
-    works.push({ x: -W / 2, z, yaw: Math.PI / 2, face: Math.PI / 2, nx: 1, nz: 0, tx: 0, tz: -1 });
+    works.push({
+      scale: 1,
+      x: -W / 2,
+      z,
+      yaw: Math.PI / 2,
+      face: Math.PI / 2,
+      nx: 1,
+      nz: 0,
+      tx: 0,
+      tz: -1,
+    });
   }
   for (let i = 0; i < nCentre; i++) {
     // Far wall, facing you (+z), left to right.
     const x = (i - (nCentre - 1) / 2) * CENTRE_GAP;
-    works.push({ x, z: -D, yaw: 0, face: 0, nx: 0, nz: 1, tx: 1, tz: 0 });
+    works.push({ scale: FAR_SCALE, x, z: -D, yaw: 0, face: 0, nx: 0, nz: 1, tx: 1, tz: 0 });
   }
   for (let i = nRight - 1; i >= 0; i--) {
     // Right wall, back to front, facing into the room (-x). Your right is +z.
     const z = -(WORK_START + i * WORK_GAP);
-    works.push({ x: W / 2, z, yaw: -Math.PI / 2, face: -Math.PI / 2, nx: -1, nz: 0, tx: 0, tz: 1 });
+    works.push({
+      scale: 1,
+      x: W / 2,
+      z,
+      yaw: -Math.PI / 2,
+      face: -Math.PI / 2,
+      nx: -1,
+      nz: 0,
+      tx: 0,
+      tz: 1,
+    });
   }
   // With the label beside the film, stand centred on both.
   const along = stacked ? 0 : (LABEL.w + 0.14) / 2;
   const stops: Stop[] = [
     { x: 0, z: Math.min(front - 1, overviewZ(aspect)), yaw: 0, s: 0, kind: "centre", index: 0 },
     ...works.map((w, i) => ({
-      x: w.x + w.nx * far + w.tx * along,
-      z: w.z + w.nz * far + w.tz * along,
+      // a larger film is viewed from further back, in proportion
+      x: w.x + (w.nx * far + w.tx * along) * w.scale,
+      z: w.z + (w.nz * far + w.tz * along) * w.scale,
       yaw: w.yaw,
       s: 0,
       kind: "work" as const,
@@ -302,6 +326,7 @@ export class GalleryScene {
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
     this.camera.rotation.order = "YXZ";
+    this.camera.layers.enable(1); // lamp halos and beams: seen, but not reflected in the floor
 
     // Soft ambient light and reflections from a neutral studio environment
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -338,7 +363,7 @@ export class GalleryScene {
     */
     const FRONT = this.front;
     const BACK = 3.2;
-    const OPEN = 1.2; // width of each opening
+    const OPEN = 1.0; // width of each opening
     const OPEN_H = 3.0;
     const len = D + FRONT; // the main room
     const mid = (FRONT - D) / 2;
@@ -399,8 +424,32 @@ export class GalleryScene {
     this.scene.add(floor);
 
     // The side gallery beyond the openings: warm light, and a picture visible through each
+    const panelMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0.95, 0.97, 1).multiplyScalar(2.4),
+      toneMapped: false,
+    });
+    const panelGeo = new THREE.PlaneGeometry(0.5, 1.6);
+    this.disposables.push(panelMat, panelGeo);
     for (const sx of [-1, 1]) {
-      const l = new THREE.PointLight(0xffb36b, 7, 6, 2);
+      // a cool ceiling light, seen through the opening
+      const panel = new THREE.Mesh(panelGeo, panelMat);
+      panel.rotation.x = Math.PI / 2;
+      panel.position.set(sx * (W / 2 - 0.55), H - 0.005, -D - 1.1);
+      this.scene.add(panel);
+      const cool = new THREE.RectAreaLight(0xf0f4ff, 4, 0.5, 1.6);
+      cool.position.set(sx * (W / 2 - 0.55), H - 0.01, -D - 1.1);
+      cool.lookAt(sx * (W / 2 - 0.55), 0, -D - 1.1);
+      this.scene.add(cool);
+      // and pictures on the side gallery's walls
+      addFramedPicture(
+        set,
+        new THREE.Vector3(sx * (W / 2 - 0.004), 1.62, -D - 1.75),
+        new THREE.Vector3(-sx, 0, 0),
+        { w: 0.62, h: 0.84 },
+        sx > 0 ? 3 : 5,
+        new THREE.Vector3(0, 0, sx),
+      );
+      const l = new THREE.PointLight(0xffb36b, 14, 6, 2);
       l.position.set(sx * (W / 2 - 0.7), 2.9, -D - BACK / 2);
       this.scene.add(l);
       addFramedPicture(
@@ -493,13 +542,13 @@ export class GalleryScene {
     ];
     // The far wall: the exhibition title, left of the films (nothing else hangs between them)
     const farN = v(0, 0, 1);
-    addWallTitle(set, v(-3.25, 1.72, -D), farN, aniso);
-    lit(v(-3.25, 1.6, -D), farN);
+    addWallTitle(set, v(-3.5, 1.72, -D), farN, aniso);
+    lit(v(-3.5, 1.6, -D), farN);
 
     // More lamps washing the walls wherever nothing hangs
     const taken = this.layout.works.filter((w) => w.nx !== 0).map((w) => w.z);
-    for (let z = this.front - 1.4; z > -D + 0.8; z -= 1.5) {
-      if (taken.some((t) => Math.abs(t - z) < 1.1)) continue;
+    for (let z = this.front - 1.4; z > -D + 0.8; z -= 1.1) {
+      if (taken.some((t) => Math.abs(t - z) < 1.0)) continue;
       for (const side of sides) {
         this.fixtures.push({
           at: v(side.x + side.n.x * 1.55, H - 0.32, z),
@@ -509,7 +558,7 @@ export class GalleryScene {
       }
     }
     // The inner rails: lamps angled down towards the floor by the walls
-    for (let z = this.front - 2; z > -D + 1; z -= 2.4) {
+    for (let z = this.front - 2; z > -D + 1; z -= 1.2) {
       for (const sx of [-1, 1]) {
         this.fixtures.push({
           at: v(sx * (W / 2 - 2.7), H - 0.3, z),
@@ -595,12 +644,12 @@ export class GalleryScene {
   */
   private addSkylight(H: number, len: number, mid: number) {
     RectAreaLightUniformsLib.init();
-    const w = 1.7;
+    const w = 2.6;
     const l = len - 2.4;
     const tex = skylightTexture();
     const panelMat = new THREE.MeshBasicMaterial({
       map: tex,
-      color: new THREE.Color(1, 0.985, 0.96).multiplyScalar(1.05),
+      color: new THREE.Color(1, 0.95, 0.88).multiplyScalar(0.82), // warm white, never glaring
     });
     const geo = new THREE.PlaneGeometry(w, l);
     this.disposables.push(tex, panelMat, geo);
@@ -633,6 +682,7 @@ export class GalleryScene {
     const group = new THREE.Group();
     group.position.set(spot.x + spot.nx * 0.004, SCREEN.y, spot.z + spot.nz * 0.004);
     group.rotation.y = spot.face;
+    group.scale.setScalar(spot.scale);
     this.scene.add(group);
 
     // Bezel
@@ -1093,7 +1143,14 @@ export class GalleryScene {
   /* Where a work's screen centre is, to walk up to it. */
   workCentre(i: number) {
     const s = this.layout.works[i];
-    return { x: s.x + s.nx * 0.05, z: s.z + s.nz * 0.05, yaw: s.yaw, nx: s.nx, nz: s.nz };
+    return {
+      x: s.x + s.nx * 0.05,
+      z: s.z + s.nz * 0.05,
+      yaw: s.yaw,
+      nx: s.nx,
+      nz: s.nz,
+      scale: s.scale,
+    };
   }
 
   /* Where door i is in the room (the door wall is turned round, so x flips). */

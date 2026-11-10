@@ -313,6 +313,7 @@ export function addTrackLighting(
     d.updateMatrix();
     stems.setMatrixAt(i, d.matrix);
   });
+  lenses.layers.set(1); // bright points of light: not mirrored in the floor
   scene.add(housings, lenses, stems);
   keep(housings, lenses, stems);
 
@@ -333,7 +334,7 @@ export function addTrackLighting(
   const haloTex = poolTexture("255,214,160");
   const glowMat = new THREE.PointsMaterial({
     map: haloTex,
-    size: 0.42,
+    size: 0.26,
     sizeAttenuation: true,
     transparent: true,
     depthWrite: false,
@@ -342,7 +343,9 @@ export function addTrackLighting(
     toneMapped: false,
   });
   keep(glowGeo, haloTex, glowMat);
-  scene.add(new THREE.Points(glowGeo, glowMat));
+  const halos = new THREE.Points(glowGeo, glowMat);
+  halos.layers.set(1); // the camera sees layer 1; the floor's reflection doesn't
+  scene.add(halos);
 
   const beams = fixtures.filter((f) => f.wash);
   if (beams.length) {
@@ -361,7 +364,7 @@ export function addTrackLighting(
       color: new THREE.Color(1, 0.78, 0.5),
       alphaMap: fadeTex,
       transparent: true,
-      opacity: 0.055,
+      opacity: 0.028, // only just there: the lamps glow, the air barely shows it
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
@@ -382,6 +385,7 @@ export function addTrackLighting(
       cones.setMatrixAt(i, o.matrix);
     });
     cones.renderOrder = 4;
+    cones.layers.set(1);
     scene.add(cones);
     keep(cones);
   }
@@ -444,8 +448,8 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
     transparent: true,
     toneMapped: false,
   });
-  logoMat.color.setScalar(1.15);
-  const logoGeo = new THREE.PlaneGeometry(0.24, 0.443); // the mark is 365 x 674
+  logoMat.color.setScalar(1.7); // bright enough to glow in its blue, white and orange
+  const logoGeo = new THREE.PlaneGeometry(0.29, 0.535); // the mark is 365 x 674
   keep(logoTex, logoMat, logoGeo);
   const logo = new THREE.Mesh(logoGeo, logoMat);
   logo.position.set(0, 0.03 + PH * 0.5, PD / 2 + 0.002);
@@ -478,8 +482,8 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   g.add(pool);
 
   // The crystal pyramid
-  const pyrH = 0.95;
-  const pyrGeo = new THREE.ConeGeometry(0.6, pyrH, 4, 1);
+  const pyrH = 1.15;
+  const pyrGeo = new THREE.ConeGeometry(0.74, pyrH, 4, 1);
   pyrGeo.rotateY(Math.PI / 4);
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
@@ -522,6 +526,27 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   core.scale.set(0.7, 0.7, 1);
   core.position.y = 0.03 + PH + pyrH * 0.32;
   g.add(core);
+
+  // The spectrum inside the glass: a fan of colour from its heart, crossing both ways
+  const fanTex = beamTexture();
+  const fanMat = new THREE.MeshBasicMaterial({
+    map: fanTex,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    opacity: 0.85,
+    side: THREE.DoubleSide,
+  });
+  const fanGeo = new THREE.PlaneGeometry(0.62, 0.42);
+  fanGeo.translate(0.31, 0, 0);
+  keep(fanTex, fanMat, fanGeo);
+  for (const side of [-1, 1]) {
+    const f = new THREE.Mesh(fanGeo, fanMat);
+    f.position.set(0, 0.03 + PH + pyrH * 0.3, 0.02);
+    f.rotation.set(0, side > 0 ? 0 : Math.PI, -0.32);
+    f.renderOrder = 3;
+    g.add(f);
+  }
 
   // The rainbows across the floor, left and right
   const bTex = beamTexture();
@@ -591,7 +616,7 @@ export function addBench(ctx: SetCtx, at: THREE.Vector3) {
   const D = 0.5;
   const seatY = 0.44;
   const leather = new THREE.MeshPhysicalMaterial({
-    color: 0x7c4325,
+    color: 0xa86a38, // caramel tan
     roughness: 0.5,
     clearcoat: 0.35,
     clearcoatRoughness: 0.45,
@@ -644,34 +669,34 @@ export function addBench(ctx: SetCtx, at: THREE.Vector3) {
 export function addWallTitle(ctx: SetCtx, at: THREE.Vector3, normal: THREE.Vector3, aniso: number) {
   const { scene, keep } = ctx;
   const W = 1024;
-  const Hh = 1280;
+  const Hh = 1360;
   const tex = canvasTexture(W, Hh, (c) => {
     c.clearRect(0, 0, W, Hh);
-    c.fillStyle = "#231a14";
-    c.font = "600 150px Jost, ui-sans-serif, system-ui";
+    c.fillStyle = "#140c07";
     const spaced = (t: string, x: number, y: number, gap: number) => {
       let cx = x;
       for (const ch of t) {
         c.fillText(ch, cx, y);
         cx += c.measureText(ch).width + gap;
       }
-      return cx;
     };
-    spaced("INSIGHT", 40, 260, 12);
-    spaced("LAB", 40, 430, 12);
-    c.fillRect(44, 520, 170, 6);
-    c.font = "500 58px Jost, ui-sans-serif, system-ui";
-    spaced("VISUAL", 44, 660, 10);
-    spaced("STORYTELLING", 44, 750, 10);
-    spaced("EXHIBITION", 44, 840, 10);
-    c.fillRect(44, 930, 90, 5);
+    c.font = "600 220px Jost, ui-sans-serif, system-ui";
+    spaced("INSIGHT", 20, 250, 10);
+    spaced("LAB", 20, 490, 10);
+    c.fillRect(26, 590, 230, 9);
+    c.font = "500 82px Jost, ui-sans-serif, system-ui";
+    spaced("VISUAL", 26, 770, 12);
+    spaced("STORYTELLING", 26, 890, 12);
+    spaced("EXHIBITION", 26, 1010, 12);
+    c.fillRect(26, 1110, 120, 8);
   });
   tex.anisotropy = aniso;
-  const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.7 });
-  const geo = new THREE.PlaneGeometry(0.88, 1.1);
+  const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.6 });
+  const geo = new THREE.PlaneGeometry(0.9, 1.2);
   keep(tex, mat, geo);
   const m = new THREE.Mesh(geo, mat);
-  m.position.copy(at).addScaledVector(normal, 0.003);
+  m.renderOrder = 5; // after the lamp's glow, so the vinyl reads dark on the lit wall
+  m.position.copy(at).addScaledVector(normal, 0.014);
   m.lookAt(m.position.clone().add(normal));
   scene.add(m);
 }
