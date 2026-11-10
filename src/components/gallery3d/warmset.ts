@@ -1,11 +1,12 @@
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 
 /*
   The warm exhibition set, after the art direction (a gallery at night):
 
-  - Black track rails along the ceiling, hung with spotlights; each one aimed
-    at a wall throws a scallop of warm light up it.
+  - Warm scallops of light up the walls above each work, from lamps hidden
+    in the ceiling (no fittings shown).
   - The centrepiece: a crystal pyramid on a pale stone plinth with the logo
     inlaid, a warm glow under it, and two rainbows fanning across the floor
     from it.
@@ -248,143 +249,21 @@ export function landscapeTexture(seed: number, w: number, h: number) {
   return tex;
 }
 
-/* ---------- track lighting ---------- */
+/* ---------- the light on the walls ---------- */
 
 export type Fixture = {
-  at: THREE.Vector3; // the lamp
+  at: THREE.Vector3; // the (hidden) lamp
   aim: THREE.Vector3; // where it points
   /* the wall it washes, if any: the point on the wall under the lamp, and the wall's normal */
   wash?: { at: THREE.Vector3; normal: THREE.Vector3; strength?: number };
 };
 
-export function addTrackLighting(
-  ctx: SetCtx,
-  H: number,
-  rails: { from: THREE.Vector3; to: THREE.Vector3 }[],
-  fixtures: Fixture[],
-) {
+/*
+  The light from the hidden lamps: a warm scallop on the wall above each
+  work. The lamps themselves aren't shown; only their light is.
+*/
+export function addWallLight(ctx: SetCtx, H: number, fixtures: Fixture[]) {
   const { scene, keep } = ctx;
-  const black = new THREE.MeshStandardMaterial({
-    color: 0x0d0c0b,
-    roughness: 0.42,
-    metalness: 0.6,
-  });
-  keep(black);
-
-  // Rails
-  rails.forEach(({ from, to }) => {
-    const len = from.distanceTo(to);
-    const g = new THREE.BoxGeometry(0.04, 0.035, len);
-    keep(g);
-    const m = new THREE.Mesh(g, black);
-    m.position.copy(from).add(to).multiplyScalar(0.5);
-    m.position.y = H - 0.02;
-    m.lookAt(to.x, m.position.y, to.z);
-    scene.add(m);
-  });
-
-  // Lamps: a short stem down from the rail, a housing pointed at its aim, a glowing lens
-  const n = fixtures.length;
-  const housingGeo = new THREE.CylinderGeometry(0.048, 0.04, 0.19, 18, 1);
-  housingGeo.rotateX(Math.PI / 2); // along +z, so lookAt aims it
-  const lensGeo = new THREE.CircleGeometry(0.04, 20);
-  lensGeo.translate(0, 0, 0.0955);
-  const stemGeo = new THREE.CylinderGeometry(0.008, 0.008, 1, 8);
-  const lensMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(1, 0.86, 0.62).multiplyScalar(9),
-    toneMapped: false,
-  });
-  keep(housingGeo, lensGeo, stemGeo, lensMat);
-  const housings = new THREE.InstancedMesh(housingGeo, black, n);
-  const lenses = new THREE.InstancedMesh(lensGeo, lensMat, n);
-  const stems = new THREE.InstancedMesh(stemGeo, black, n);
-  const d = new THREE.Object3D();
-  fixtures.forEach((f, i) => {
-    d.position.copy(f.at);
-    d.scale.set(1, 1, 1);
-    d.lookAt(f.aim);
-    d.updateMatrix();
-    housings.setMatrixAt(i, d.matrix);
-    lenses.setMatrixAt(i, d.matrix);
-    const stemLen = H - 0.035 - f.at.y;
-    d.rotation.set(0, 0, 0);
-    d.position.set(f.at.x, f.at.y + stemLen / 2, f.at.z);
-    d.scale.set(1, stemLen, 1);
-    d.updateMatrix();
-    stems.setMatrixAt(i, d.matrix);
-  });
-  scene.add(housings, lenses, stems);
-  keep(housings, lenses, stems);
-
-  /*
-    Each lamp is on: a warm halo round its lens, seen from any side, and a
-    faint cone of light in the air from the lamp to where it lands.
-  */
-  const glowPos = new Float32Array(n * 3);
-  const dir = new THREE.Vector3();
-  fixtures.forEach((f, i) => {
-    dir.subVectors(f.aim, f.at).normalize();
-    glowPos[i * 3] = f.at.x + dir.x * 0.1;
-    glowPos[i * 3 + 1] = f.at.y + dir.y * 0.1;
-    glowPos[i * 3 + 2] = f.at.z + dir.z * 0.1;
-  });
-  const glowGeo = new THREE.BufferGeometry();
-  glowGeo.setAttribute("position", new THREE.BufferAttribute(glowPos, 3));
-  const haloTex = poolTexture("255,214,160");
-  const glowMat = new THREE.PointsMaterial({
-    map: haloTex,
-    size: 0.42,
-    sizeAttenuation: true,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    color: new THREE.Color(1, 0.8, 0.55).multiplyScalar(1.6),
-    toneMapped: false,
-  });
-  keep(glowGeo, haloTex, glowMat);
-  scene.add(new THREE.Points(glowGeo, glowMat));
-
-  const beams = fixtures.filter((f) => f.wash);
-  if (beams.length) {
-    // A cone 1 long with its tip at +0.5 (the lamp), opening downwards; scaled per lamp
-    const coneGeo = new THREE.CylinderGeometry(0.06, 1, 1, 28, 1, true);
-    const fadeTex = canvasTexture(4, 256, (c) => {
-      const g = c.createLinearGradient(0, 0, 0, 256);
-      g.addColorStop(0, "#fff"); // at the lamp (the top of the texture is the cone's tip)
-      g.addColorStop(0.35, "#777");
-      g.addColorStop(1, "#000");
-      c.fillStyle = g;
-      c.fillRect(0, 0, 4, 256);
-    });
-    fadeTex.colorSpace = THREE.NoColorSpace;
-    const coneMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(1, 0.78, 0.5),
-      alphaMap: fadeTex,
-      transparent: true,
-      opacity: 0.055,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-    });
-    keep(coneGeo, fadeTex, coneMat);
-    const cones = new THREE.InstancedMesh(coneGeo, coneMat, beams.length);
-    const up = new THREE.Vector3(0, 1, 0);
-    const o = new THREE.Object3D();
-    beams.forEach((f, i) => {
-      dir.subVectors(f.at, f.aim); // from where it lands back up to the lamp
-      const len = dir.length() * 0.92; // stop just short of the wall
-      dir.normalize();
-      const r = len * 0.36; // the beam's spread
-      o.quaternion.setFromUnitVectors(up, dir);
-      o.position.copy(f.at).addScaledVector(dir, -len / 2 - 0.08);
-      o.scale.set(r, len, r);
-      o.updateMatrix();
-      cones.setMatrixAt(i, o.matrix);
-    });
-    cones.renderOrder = 4;
-    scene.add(cones);
-    keep(cones);
-  }
 
   // The scallops they throw on the walls
   const tex = scallopTexture();
@@ -413,6 +292,81 @@ export function addTrackLighting(
     m.renderOrder = 2;
     scene.add(m);
   });
+}
+
+/*
+  Where the light comes from: an adjustable spotlight recessed in the ceiling.
+  A dark trim ring flush with the ceiling, a gold reflector inside, and the
+  warm lamp glowing at the back of it. One over each thing that's lit.
+*/
+export function addDownlights(ctx: SetCtx, H: number, at: THREE.Vector3[]) {
+  const { scene, keep } = ctx;
+  const n = at.length;
+  if (!n) return;
+  const trimGeo = new THREE.RingGeometry(0.052, 0.085, 40);
+  trimGeo.rotateX(Math.PI / 2); // facing down
+  const cupGeo = new THREE.CylinderGeometry(0.052, 0.04, 0.07, 32, 1, true);
+  cupGeo.translate(0, 0.035, 0); // up into the ceiling
+  const lampGeo = new THREE.CircleGeometry(0.038, 32);
+  lampGeo.rotateX(Math.PI / 2);
+  lampGeo.translate(0, 0.012, 0); // set just inside the trim, so it shows from across the room
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: 0x1c1917,
+    roughness: 0.45,
+    metalness: 0.4,
+  });
+  const cupMat = new THREE.MeshStandardMaterial({
+    color: 0xc9a46a,
+    roughness: 0.25,
+    metalness: 1,
+    side: THREE.BackSide,
+    emissive: new THREE.Color(0.35, 0.22, 0.1), // lit by its own lamp
+  });
+  const lampMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(1, 0.84, 0.6).multiplyScalar(6),
+    toneMapped: false,
+    side: THREE.DoubleSide,
+  });
+  keep(trimGeo, cupGeo, lampGeo, trimMat, cupMat, lampMat);
+  const trims = new THREE.InstancedMesh(trimGeo, trimMat, n);
+  const cups = new THREE.InstancedMesh(cupGeo, cupMat, n);
+  const lamps = new THREE.InstancedMesh(lampGeo, lampMat, n);
+  const o = new THREE.Object3D();
+  at.forEach((p, i) => {
+    o.position.set(p.x, H - 0.002, p.z);
+    o.updateMatrix();
+    trims.setMatrixAt(i, o.matrix);
+    cups.setMatrixAt(i, o.matrix);
+    lamps.setMatrixAt(i, o.matrix);
+  });
+  lamps.layers.set(1); // a bright point: not mirrored in the floor
+  scene.add(trims, cups, lamps);
+  keep(trims, cups, lamps);
+
+  // A small soft glow just below each, as a lit lamp has from across a room
+  const pos = new Float32Array(n * 3);
+  at.forEach((p, i) => {
+    pos[i * 3] = p.x;
+    pos[i * 3 + 1] = H - 0.03;
+    pos[i * 3 + 2] = p.z;
+  });
+  const glowGeo = new THREE.BufferGeometry();
+  glowGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const glowTex = poolTexture("255,214,160");
+  const glowMat = new THREE.PointsMaterial({
+    map: glowTex,
+    size: 0.2,
+    sizeAttenuation: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    color: new THREE.Color(1, 0.82, 0.58).multiplyScalar(1.4),
+    toneMapped: false,
+  });
+  keep(glowGeo, glowTex, glowMat);
+  const glows = new THREE.Points(glowGeo, glowMat);
+  glows.layers.set(1);
+  scene.add(glows);
 }
 
 /* ---------- the centrepiece ---------- */
@@ -444,8 +398,8 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
     transparent: true,
     toneMapped: false,
   });
-  logoMat.color.setScalar(1.15);
-  const logoGeo = new THREE.PlaneGeometry(0.24, 0.443); // the mark is 365 x 674
+  logoMat.color.setScalar(1.7); // bright enough to glow in its blue, white and orange
+  const logoGeo = new THREE.PlaneGeometry(0.29, 0.535); // the mark is 365 x 674
   keep(logoTex, logoMat, logoGeo);
   const logo = new THREE.Mesh(logoGeo, logoMat);
   logo.position.set(0, 0.03 + PH * 0.5, PD / 2 + 0.002);
@@ -478,8 +432,8 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   g.add(pool);
 
   // The crystal pyramid
-  const pyrH = 0.95;
-  const pyrGeo = new THREE.ConeGeometry(0.6, pyrH, 4, 1);
+  const pyrH = 1.15;
+  const pyrGeo = new THREE.ConeGeometry(0.74, pyrH, 4, 1);
   pyrGeo.rotateY(Math.PI / 4);
   const glass = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
@@ -523,6 +477,27 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   core.position.y = 0.03 + PH + pyrH * 0.32;
   g.add(core);
 
+  // The spectrum inside the glass: a fan of colour from its heart, crossing both ways
+  const fanTex = beamTexture();
+  const fanMat = new THREE.MeshBasicMaterial({
+    map: fanTex,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    opacity: 0.85,
+    side: THREE.DoubleSide,
+  });
+  const fanGeo = new THREE.PlaneGeometry(0.62, 0.42);
+  fanGeo.translate(0.31, 0, 0);
+  keep(fanTex, fanMat, fanGeo);
+  for (const side of [-1, 1]) {
+    const f = new THREE.Mesh(fanGeo, fanMat);
+    f.position.set(0, 0.03 + PH + pyrH * 0.3, 0.02);
+    f.rotation.set(0, side > 0 ? 0 : Math.PI, -0.32);
+    f.renderOrder = 3;
+    g.add(f);
+  }
+
   // The rainbows across the floor, left and right
   const bTex = beamTexture();
   const bMat = new THREE.MeshBasicMaterial({
@@ -562,7 +537,7 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   key.position.set(0, 4.05, 0.9);
   key.target.position.set(0, 0.9, 0);
   if (hq) {
-    key.castShadow = true;
+    key.castShadow = false; // no hard shadow pooled on the floor
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.02;
@@ -583,59 +558,88 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
 
 /* ---------- the bench ---------- */
 
+/*
+  A gallery bench, as in the art direction: four plump caramel leather
+  cushions with soft rounded edges and a seam between each, on a slim brass
+  frame with sled legs at both ends. A lamp above lights its top.
+*/
 export function addBench(ctx: SetCtx, at: THREE.Vector3) {
   const { scene, keep, hq } = ctx;
   const g = new THREE.Group();
   g.position.copy(at);
   const L = 2.3;
-  const D = 0.5;
-  const seatY = 0.44;
+  const D = 0.56;
+  const seatTop = 0.47;
+  const cushT = 0.13; // cushion thickness
   const leather = new THREE.MeshPhysicalMaterial({
-    color: 0x7c4325,
-    roughness: 0.5,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.45,
-    sheen: 0.4,
-    sheenColor: new THREE.Color(0xffc9a0),
+    color: 0x9c5a26, // caramel
+    roughness: 0.42,
+    clearcoat: 0.55,
+    clearcoatRoughness: 0.32,
+    sheen: 0.6,
+    sheenRoughness: 0.5,
+    sheenColor: new THREE.Color(0xffc285),
   });
-  const brass = new THREE.MeshStandardMaterial({ color: 0xc19a5b, metalness: 1, roughness: 0.28 });
-  keep(leather, brass);
-  // Four cushions, slightly rounded
+  const brass = new THREE.MeshStandardMaterial({ color: 0xd2a861, metalness: 1, roughness: 0.22 });
+  const base = new THREE.MeshStandardMaterial({ color: 0x3a2516, roughness: 0.6 });
+  keep(leather, brass, base);
+
+  // Cushions
   const n = 4;
-  const cw = (L - 0.03 * (n - 1)) / n;
-  const cushGeo = new THREE.BoxGeometry(cw, 0.1, D, 6, 2, 6);
-  // round the top edges a touch
-  const pos = cushGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i) / (cw / 2);
-    const z = pos.getZ(i) / (D / 2);
-    if (pos.getY(i) > 0) pos.setY(i, pos.getY(i) - 0.012 * (x * x * x * x + z * z * z * z));
-  }
-  cushGeo.computeVertexNormals();
+  const gap = 0.012;
+  const cw = (L - gap * (n - 1)) / n;
+  const cushGeo = new RoundedBoxGeometry(cw, cushT, D, 5, 0.045);
   keep(cushGeo);
   for (let i = 0; i < n; i++) {
     const c = new THREE.Mesh(cushGeo, leather);
-    c.position.set(-L / 2 + cw / 2 + i * (cw + 0.03), seatY, 0);
+    c.position.set(-L / 2 + cw / 2 + i * (cw + gap), seatTop - cushT / 2, 0);
     c.castShadow = hq;
     c.receiveShadow = hq;
     g.add(c);
   }
-  // Brass frame: a rail under the seat and four legs
-  const bar = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-    const geo = new THREE.BoxGeometry(w, h, d);
+  // A dark platform under them, set in a little
+  const platGeo = new THREE.BoxGeometry(L - 0.04, 0.035, D - 0.04);
+  keep(platGeo);
+  const plat = new THREE.Mesh(platGeo, base);
+  plat.position.y = seatTop - cushT - 0.0175;
+  plat.castShadow = hq;
+  g.add(plat);
+
+  // Brass frame: a long rail each side under the seat, sled legs at both ends
+  const rod = (len: number, x: number, y: number, z: number, axis: "x" | "y" | "z") => {
+    const geo = new THREE.BoxGeometry(
+      axis === "x" ? len : 0.026,
+      axis === "y" ? len : 0.026,
+      axis === "z" ? len : 0.026,
+    );
     keep(geo);
     const m = new THREE.Mesh(geo, brass);
     m.position.set(x, y, z);
     m.castShadow = hq;
     g.add(m);
   };
-  bar(L, 0.03, 0.03, 0, seatY - 0.065, D / 2 - 0.02);
-  bar(L, 0.03, 0.03, 0, seatY - 0.065, -D / 2 + 0.02);
+  const frameTop = seatTop - cushT - 0.05;
+  for (const sz of [-1, 1]) rod(L - 0.2, 0, frameTop, sz * (D / 2 - 0.05), "x");
   for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1])
-      bar(0.03, seatY - 0.05, 0.03, sx * (L / 2 - 0.06), (seatY - 0.05) / 2, sz * (D / 2 - 0.02));
-    bar(0.03, 0.03, D, sx * (L / 2 - 0.06), 0.06, 0); // foot bar
+    const x = sx * (L / 2 - 0.1);
+    for (const sz of [-1, 1]) rod(frameTop, x, frameTop / 2, sz * (D / 2 - 0.05), "y"); // posts
+    rod(D - 0.07, x, 0.013, 0, "z"); // the runner on the floor
+    rod(D - 0.07, x, frameTop, 0, "z"); // and under the seat
   }
+
+  // A lamp above, lighting its top warmly and casting its shadow on the floor
+  const key = new THREE.SpotLight(0xffd2a0, hq ? 9 : 7, 0, 0.5, 0.85, 2);
+  key.position.set(0, 4.0, 1.2);
+  key.target.position.set(0, 0.3, 0);
+  if (hq) {
+    key.castShadow = false; // no hard shadow pooled on the floor
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 6;
+  }
+  g.add(key, key.target);
   scene.add(g);
 }
 
@@ -644,34 +648,34 @@ export function addBench(ctx: SetCtx, at: THREE.Vector3) {
 export function addWallTitle(ctx: SetCtx, at: THREE.Vector3, normal: THREE.Vector3, aniso: number) {
   const { scene, keep } = ctx;
   const W = 1024;
-  const Hh = 1280;
+  const Hh = 1360;
   const tex = canvasTexture(W, Hh, (c) => {
     c.clearRect(0, 0, W, Hh);
-    c.fillStyle = "#231a14";
-    c.font = "600 150px Jost, ui-sans-serif, system-ui";
+    c.fillStyle = "#140c07";
     const spaced = (t: string, x: number, y: number, gap: number) => {
       let cx = x;
       for (const ch of t) {
         c.fillText(ch, cx, y);
         cx += c.measureText(ch).width + gap;
       }
-      return cx;
     };
-    spaced("INSIGHT", 40, 260, 12);
-    spaced("LAB", 40, 430, 12);
-    c.fillRect(44, 520, 170, 6);
-    c.font = "500 58px Jost, ui-sans-serif, system-ui";
-    spaced("VISUAL", 44, 660, 10);
-    spaced("STORYTELLING", 44, 750, 10);
-    spaced("EXHIBITION", 44, 840, 10);
-    c.fillRect(44, 930, 90, 5);
+    c.font = "600 220px Jost, ui-sans-serif, system-ui";
+    spaced("INSIGHT", 20, 250, 10);
+    spaced("LAB", 20, 490, 10);
+    c.fillRect(26, 590, 230, 9);
+    c.font = "500 82px Jost, ui-sans-serif, system-ui";
+    spaced("VISUAL", 26, 770, 12);
+    spaced("STORYTELLING", 26, 890, 12);
+    spaced("EXHIBITION", 26, 1010, 12);
+    c.fillRect(26, 1110, 120, 8);
   });
   tex.anisotropy = aniso;
-  const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.7 });
-  const geo = new THREE.PlaneGeometry(0.88, 1.1);
+  const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.6 });
+  const geo = new THREE.PlaneGeometry(0.9, 1.2);
   keep(tex, mat, geo);
   const m = new THREE.Mesh(geo, mat);
-  m.position.copy(at).addScaledVector(normal, 0.003);
+  m.renderOrder = 5; // after the lamp's glow, so the vinyl reads dark on the lit wall
+  m.position.copy(at).addScaledVector(normal, 0.014);
   m.lookAt(m.position.clone().add(normal));
   scene.add(m);
 }
@@ -765,7 +769,7 @@ const SoftReflectorShader = {
         for (int y = -3; y <= 3; y++) {
           vec2 o = vec2(float(x), float(y));
           float w = exp(-dot(o, o) / 5.0);
-          sum += texture2D(tDiffuse, uv + o * uTexel * vec2(1.2, 2.4)).rgb * w;
+          sum += texture2D(tDiffuse, uv + o * uTexel * vec2(1.3, 2.6)).rgb * w;
           total += w;
         }
       }
@@ -782,7 +786,7 @@ export function addFloorReflection(ctx: SetCtx, w: number, len: number, mid: num
   const r = new Reflector(geo, {
     textureWidth: 1024,
     textureHeight: 1024,
-    color: new THREE.Color(0.75, 0.72, 0.68),
+    color: new THREE.Color(0.62, 0.6, 0.57), // a soft sheen of the room, not a mirror
     shader: SoftReflectorShader,
     multisample: 0,
   });

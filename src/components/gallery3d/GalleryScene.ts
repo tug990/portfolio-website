@@ -22,7 +22,8 @@ import {
   addFloorReflection,
   addFramedPicture,
   addPrismPlinth,
-  addTrackLighting,
+  addWallLight,
+  addDownlights,
   addWallTitle,
   sizeFloorReflection,
   type Fixture,
@@ -50,6 +51,7 @@ export const SCREEN = { w: 1.76, h: 0.99, y: 1.62 };
 const WORK_START = 4.2; // first side-wall screen, metres in from z = 0
 const WORK_GAP = 3.2; // between screens along a side wall
 const CENTRE_GAP = 3.4; // between the screens on the far wall
+const FAR_SCALE = 1.35; // the far wall's two films hang larger, as the room's main pieces
 const DOOR = { w: 1.15, h: 2.45, x: 1.35 };
 const LABEL = { w: 0.34, h: 0.21 };
 
@@ -59,6 +61,7 @@ export type Stop = Pose & { s: number; kind: StopKind; index: number };
 export type Pick = { kind: "work" | "door"; index: number } | null;
 
 type WorkSpot = {
+  scale: number; // the far wall's films hang larger
   x: number;
   z: number;
   yaw: number;
@@ -70,7 +73,8 @@ type WorkSpot = {
 };
 
 /* Vertical field of view for a window shape: taller windows see a little wider. */
-export const fovFor = (aspect: number) => (aspect < 0.8 ? 62 : 50);
+// Tall screens get a wide lens, as in the art direction: the room wraps round you.
+export const fovFor = (aspect: number) => (aspect < 0.6 ? 80 : aspect < 0.8 ? 72 : 50);
 
 /*
   How far back from z = 0 you stand to see the whole room: far enough that
@@ -120,25 +124,46 @@ export function buildLayout(count: number, aspect: number, front: number) {
   for (let i = 0; i < nLeft; i++) {
     // Left wall, facing into the room (+x). Looking at it, your right is -z.
     const z = -(WORK_START + i * WORK_GAP);
-    works.push({ x: -W / 2, z, yaw: Math.PI / 2, face: Math.PI / 2, nx: 1, nz: 0, tx: 0, tz: -1 });
+    works.push({
+      scale: 1,
+      x: -W / 2,
+      z,
+      yaw: Math.PI / 2,
+      face: Math.PI / 2,
+      nx: 1,
+      nz: 0,
+      tx: 0,
+      tz: -1,
+    });
   }
   for (let i = 0; i < nCentre; i++) {
     // Far wall, facing you (+z), left to right.
     const x = (i - (nCentre - 1) / 2) * CENTRE_GAP;
-    works.push({ x, z: -D, yaw: 0, face: 0, nx: 0, nz: 1, tx: 1, tz: 0 });
+    works.push({ scale: FAR_SCALE, x, z: -D, yaw: 0, face: 0, nx: 0, nz: 1, tx: 1, tz: 0 });
   }
   for (let i = nRight - 1; i >= 0; i--) {
     // Right wall, back to front, facing into the room (-x). Your right is +z.
     const z = -(WORK_START + i * WORK_GAP);
-    works.push({ x: W / 2, z, yaw: -Math.PI / 2, face: -Math.PI / 2, nx: -1, nz: 0, tx: 0, tz: 1 });
+    works.push({
+      scale: 1,
+      x: W / 2,
+      z,
+      yaw: -Math.PI / 2,
+      face: -Math.PI / 2,
+      nx: -1,
+      nz: 0,
+      tx: 0,
+      tz: 1,
+    });
   }
   // With the label beside the film, stand centred on both.
   const along = stacked ? 0 : (LABEL.w + 0.14) / 2;
   const stops: Stop[] = [
     { x: 0, z: Math.min(front - 1, overviewZ(aspect)), yaw: 0, s: 0, kind: "centre", index: 0 },
     ...works.map((w, i) => ({
-      x: w.x + w.nx * far + w.tx * along,
-      z: w.z + w.nz * far + w.tz * along,
+      // a larger film is viewed from further back, in proportion
+      x: w.x + (w.nx * far + w.tx * along) * w.scale,
+      z: w.z + (w.nz * far + w.tz * along) * w.scale,
       yaw: w.yaw,
       s: 0,
       kind: "work" as const,
@@ -194,7 +219,7 @@ const FilmShader = {
     void main(){
       vec2 d = vUv - 0.5;
       vec3 c = texture2D(tDiffuse, vUv).rgb;
-      c *= 1.0 - 0.2 * smoothstep(0.18, 0.75, dot(d, d) * 1.7);
+      c *= 1.0 - 0.3 * smoothstep(0.15, 0.75, dot(d, d) * 1.7);
       gl_FragColor = vec4(c, 1.0);
     }`,
 };
@@ -270,7 +295,7 @@ export class GalleryScene {
   private labels: THREE.Mesh[] = [];
   private count: number;
   readonly front: number; // z of the wall with the doors, behind where you arrive
-  private fixtures: Fixture[] = []; // the track spotlights, gathered as the room is built
+  private fixtures: Fixture[] = []; // the hidden spotlights, gathered as the room is built
   private reflector?: Reflector;
 
   constructor(
@@ -302,6 +327,7 @@ export class GalleryScene {
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
     this.camera.rotation.order = "YXZ";
+    this.camera.layers.enable(1); // lamp halos and beams: seen, but not reflected in the floor
 
     // Soft ambient light and reflections from a neutral studio environment
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -337,15 +363,15 @@ export class GalleryScene {
       behind the far wall (BACK deep), so the space carries on.
     */
     const FRONT = this.front;
-    const BACK = 3.2;
-    const OPEN = 1.2; // width of each opening
+    const BACK = 7; // the passages behind the far wall run well back: open ways, not alcoves
+    const OPEN = 1.0; // width of each opening
     const OPEN_H = 3.0;
     const len = D + FRONT; // the main room
     const mid = (FRONT - D) / 2;
     const allLen = len + BACK; // with the side gallery
     const allMid = (FRONT - D - BACK) / 2;
     const wallMat = matte(0xdcc0a0, 0.92); // warm taupe plaster
-    wallMat.emissive.set(0x1c120a); // the room's warm glow, between the spots
+    wallMat.emissive.set(0x110a05); // a little warm glow between the spots; the spots do the rest
     const left = plane(allLen, H, wallMat);
     left.position.set(-W / 2, H / 2, allMid);
     left.rotation.y = Math.PI / 2;
@@ -393,24 +419,34 @@ export class GalleryScene {
     if (this.hq) {
       this.reflector = addFloorReflection(set, W, allLen, allMid);
       floorMat.transparent = true;
-      floorMat.opacity = 0.72;
+      floorMat.opacity = 0.84; // mostly stone, with a soft sheen of the room in it
       floor.renderOrder = -1; // before the glows that lie on it
     }
     this.scene.add(floor);
 
-    // The side gallery beyond the openings: warm light, and a picture visible through each
+    // The passages beyond the openings: lit, and running back out of sight
+    const panelMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0.95, 0.97, 1).multiplyScalar(2.4),
+      toneMapped: false,
+    });
+    const panelGeo = new THREE.PlaneGeometry(0.5, 1.6);
+    this.disposables.push(panelMat, panelGeo);
     for (const sx of [-1, 1]) {
-      const l = new THREE.PointLight(0xffb36b, 7, 6, 2);
-      l.position.set(sx * (W / 2 - 0.7), 2.9, -D - BACK / 2);
+      // a cool ceiling light, seen through the opening
+      const panel = new THREE.Mesh(panelGeo, panelMat);
+      panel.rotation.x = Math.PI / 2;
+      panel.position.set(sx * (W / 2 - 0.55), H - 0.005, -D - 1.1);
+      this.scene.add(panel);
+      const cool = new THREE.RectAreaLight(0xf0f4ff, 4, 0.5, 1.6);
+      cool.position.set(sx * (W / 2 - 0.55), H - 0.01, -D - 1.1);
+      cool.lookAt(sx * (W / 2 - 0.55), 0, -D - 1.1);
+      this.scene.add(cool);
+      const l = new THREE.PointLight(0xffb36b, 10, 7, 2);
+      l.position.set(sx * (W / 2 - 1.2), 2.9, -D - 2.4);
       this.scene.add(l);
-      addFramedPicture(
-        set,
-        new THREE.Vector3(sx * (W / 2 - 0.62), 1.62, -D - BACK + 0.004),
-        new THREE.Vector3(0, 0, 1),
-        { w: 0.74, h: 0.52 },
-        sx > 0 ? 7 : 11,
-        new THREE.Vector3(1, 0, 0),
-      );
+      const deep = new THREE.PointLight(0xffb36b, 6, 6, 2);
+      deep.position.set(sx * (W / 2 - 1.2), 2.9, -D - 5.2);
+      this.scene.add(deep);
     }
 
     this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK);
@@ -464,7 +500,8 @@ export class GalleryScene {
       this.composer.addPass(ao);
     }
     // Glow only on what truly emits light: the skylight, the light lines, the doors.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.38, 0.55, 0.93);
+    // Glow on what emits light, and a little on the brightest light falling on things, as a lens sees it
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.6, 0.86);
     this.composer.addPass(this.bloom);
     this.film = new ShaderPass(FilmShader);
     this.composer.addPass(this.film);
@@ -475,7 +512,7 @@ export class GalleryScene {
 
   /*
     The evening exhibition around the films: framed landscapes and the title
-    on the walls, the prism on its plinth, the bench, and the track lighting
+    on the walls, the prism on its plinth, the bench, and the light on the walls
     that lights it all.
   */
   private addExhibition(set: SetCtx, W: number, D: number, H: number, aniso: number) {
@@ -493,52 +530,74 @@ export class GalleryScene {
     ];
     // The far wall: the exhibition title, left of the films (nothing else hangs between them)
     const farN = v(0, 0, 1);
-    addWallTitle(set, v(-3.25, 1.72, -D), farN, aniso);
-    lit(v(-3.25, 1.6, -D), farN);
+    addWallTitle(set, v(-3.5, 1.72, -D), farN, aniso);
+    lit(v(-3.5, 1.6, -D), farN);
 
-    // More lamps washing the walls wherever nothing hangs
-    const taken = this.layout.works.filter((w) => w.nx !== 0).map((w) => w.z);
-    for (let z = this.front - 1.4; z > -D + 0.8; z -= 1.5) {
-      if (taken.some((t) => Math.abs(t - z) < 1.1)) continue;
-      for (const side of sides) {
-        this.fixtures.push({
-          at: v(side.x + side.n.x * 1.55, H - 0.32, z),
-          aim: v(side.x, 2.0, z),
-          wash: { at: v(side.x, 0, z), normal: side.n, strength: 0.75 },
-        });
-      }
+    // In each passage, a film on the outer wall, seen through the opening:
+    // a glimpse of more work (not one of the stops)
+    for (const sx of [-1, 1]) {
+      const n = v(-sx, 0, 0);
+      const at = v(sx * (W / 2 - 0.004), SCREEN.y, -D - 1.95);
+      this.addGlimpseFilm(at, n, sx > 0 ? 7 : 8, aniso);
+      lit(v(sx * (W / 2), SCREEN.y, -D - 1.95), n);
     }
-    // The inner rails: lamps angled down towards the floor by the walls
-    for (let z = this.front - 2; z > -D + 1; z -= 2.4) {
-      for (const sx of [-1, 1]) {
-        this.fixtures.push({
-          at: v(sx * (W / 2 - 2.7), H - 0.3, z),
-          aim: v(sx * (W / 2 - 1.2), 0, z - 0.6),
-        });
-      }
-    }
-    const rails = [
-      ...[-1, 1].flatMap((sx) => [
-        {
-          from: v(sx * (W / 2 - 1.55), 0, this.front - 0.6),
-          to: v(sx * (W / 2 - 1.55), 0, -D + 0.5),
-        },
-        {
-          from: v(sx * (W / 2 - 2.7), 0, this.front - 0.6),
-          to: v(sx * (W / 2 - 2.7), 0, -D + 0.5),
-        },
-      ]),
-      { from: v(-(W / 2 - 1.55), 0, -D + 1.55), to: v(W / 2 - 1.55, 0, -D + 1.55) },
-    ];
-    addTrackLighting(set, H, rails, this.fixtures);
+
+    // The light on the walls, and where it comes from: a recessed spotlight
+    // over each work, the title and the passage films
+    addWallLight(set, H, this.fixtures);
+    const prismAt = v(0, 0, -D + 3.6);
+    const benchAt = v(0, 0, this.layout.stops[0].z - 4.4);
+    addDownlights(set, H, [
+      ...this.fixtures.map((f) => f.at),
+      v(prismAt.x, H, prismAt.z + 0.9),
+      v(benchAt.x, H, benchAt.z + 1.2),
+    ]);
 
     // The prism on its plinth, out from the far wall between the films
-    addPrismPlinth(set, v(0, 0, -D + 3.6), "/brand/mark-transparent.webp");
+    addPrismPlinth(set, prismAt, "/brand/mark-transparent.webp");
 
     // The bench, in front of where you arrive
-    const arrive = this.layout.stops[0];
     // Far enough ahead that it sits whole in the lower part of the view, legs and all
-    addBench(set, v(0, 0, arrive.z - 4.7));
+    addBench(set, benchAt);
+  }
+
+  /* A film playing in a passage: a glimpse of more work, seen from the room. */
+  private glimpses: THREE.ShaderMaterial[] = [];
+  private addGlimpseFilm(at: THREE.Vector3, normal: THREE.Vector3, seed: number, aniso: number) {
+    const g = new THREE.Group();
+    g.position.copy(at);
+    g.lookAt(at.clone().add(normal));
+    const bezelMat = new THREE.MeshStandardMaterial({
+      color: 0x0b0b0c,
+      roughness: 0.38,
+      metalness: 0.25,
+    });
+    const bezelGeo = new THREE.BoxGeometry(SCREEN.w + 0.07, SCREEN.h + 0.07, 0.045);
+    const scrGeo = new THREE.PlaneGeometry(SCREEN.w, SCREEN.h);
+    const title = textTexture(
+      (ctx, cw, ch) => {
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.fillStyle = "#fff";
+        ctx.font = "500 30px Jost, ui-sans-serif, system-ui";
+        let x = 54;
+        for (const chr of "SAMPLE FILM") {
+          ctx.fillText(chr, x, ch - 52);
+          x += ctx.measureText(chr).width + 9;
+        }
+      },
+      1600,
+      900,
+      aniso,
+    );
+    const mat = placeholderMaterial(title, seed);
+    this.disposables.push(bezelMat, bezelGeo, scrGeo, title, mat);
+    const bezel = new THREE.Mesh(bezelGeo, bezelMat);
+    bezel.position.z = 0.0225;
+    const screen = new THREE.Mesh(scrGeo, mat);
+    screen.position.z = 0.0455;
+    g.add(bezel, screen);
+    this.scene.add(g);
+    this.glimpses.push(mat);
   }
 
   /*
@@ -595,12 +654,12 @@ export class GalleryScene {
   */
   private addSkylight(H: number, len: number, mid: number) {
     RectAreaLightUniformsLib.init();
-    const w = 1.7;
+    const w = 2.6;
     const l = len - 2.4;
     const tex = skylightTexture();
     const panelMat = new THREE.MeshBasicMaterial({
       map: tex,
-      color: new THREE.Color(1, 0.985, 0.96).multiplyScalar(1.05),
+      color: new THREE.Color(1, 0.95, 0.88).multiplyScalar(0.82), // warm white, never glaring
     });
     const geo = new THREE.PlaneGeometry(w, l);
     this.disposables.push(tex, panelMat, geo);
@@ -633,6 +692,7 @@ export class GalleryScene {
     const group = new THREE.Group();
     group.position.set(spot.x + spot.nx * 0.004, SCREEN.y, spot.z + spot.nz * 0.004);
     group.rotation.y = spot.face;
+    group.scale.setScalar(spot.scale);
     this.scene.add(group);
 
     // Bezel
@@ -759,10 +819,10 @@ export class GalleryScene {
       this.pickables.push(m);
     });
 
-    // The spotlight on it, from a head on the ceiling track
+    // The spotlight on it, from a hidden lamp in the ceiling
     const H = ROOM.H;
     const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.32, spot.z + spot.nz * 1.55);
-    const sl = new THREE.SpotLight(0xffc88e, this.hq ? 26 : 20, 0, 0.36, 0.7, 2);
+    const sl = new THREE.SpotLight(0xffc88e, this.hq ? 34 : 26, 0, 0.36, 0.7, 2);
     sl.position.copy(head);
     sl.target.position.set(spot.x, SCREEN.y + 0.05, spot.z);
     if (this.hq) {
@@ -1093,7 +1153,14 @@ export class GalleryScene {
   /* Where a work's screen centre is, to walk up to it. */
   workCentre(i: number) {
     const s = this.layout.works[i];
-    return { x: s.x + s.nx * 0.05, z: s.z + s.nz * 0.05, yaw: s.yaw, nx: s.nx, nz: s.nz };
+    return {
+      x: s.x + s.nx * 0.05,
+      z: s.z + s.nz * 0.05,
+      yaw: s.yaw,
+      nx: s.nx,
+      nz: s.nz,
+      scale: s.scale,
+    };
   }
 
   /* Where door i is in the room (the door wall is turned round, so x flips). */
@@ -1105,6 +1172,7 @@ export class GalleryScene {
     this.works.forEach((w) => {
       if (w.shader) w.shader.uniforms.uTime.value = time;
     });
+    this.glimpses.forEach((m) => (m.uniforms.uTime.value = time));
     this.film.uniforms.uTime.value = time;
     this.composer.render();
   }

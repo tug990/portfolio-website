@@ -425,7 +425,7 @@ export function Gallery() {
     const w = s.workCentre(i);
     const cam3 = s.camera;
     const hfov = 2 * Math.atan(Math.tan((cam3.fov * Math.PI) / 360) * cam3.aspect);
-    const d = 0.88 / Math.tan(hfov / 2) / 0.8;
+    const d = (0.88 * w.scale) / Math.tan(hfov / 2) / 0.8;
     return { x: w.x + w.nx * d, z: w.z + w.nz * d, yaw: w.yaw, y: 1.62 };
   };
 
