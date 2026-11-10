@@ -7,7 +7,17 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { CSS3DObject, CSS3DRenderer } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 import type { Project } from "@/content/projects";
+import {
+  YT_HOST,
+  keepLooping,
+  loadYouTubeApi,
+  youtubeCover,
+  youtubeId,
+  ytPlayerVars,
+  type YTPlayer,
+} from "@/lib/youtube";
 import {
   doorLightTexture,
   leafTextures,
@@ -273,7 +283,27 @@ type WorkMesh = {
   video?: HTMLVideoElement;
   shader?: THREE.ShaderMaterial;
   screen: THREE.Mesh;
+  yt?: WallYouTube;
 };
+
+/*
+  A YouTube video on a wall screen. WebGL can't draw another site's player, so
+  a real YouTube player (an iframe) is laid over the screen in 3D by the CSS3D
+  renderer, lined up with it from any angle. Under it, the WebGL screen shows
+  the video's cover. It loads the first time you're near and keeps playing
+  (muted, looped); it's hidden when you're away or behind it.
+*/
+type WallYouTube = {
+  id: string;
+  obj: CSS3DObject;
+  box: HTMLDivElement;
+  started: boolean;
+  player?: YTPlayer;
+  poll?: number;
+  placed: boolean;
+  near: boolean;
+};
+const YT_PX = 1280; // the overlay's width in CSS pixels, scaled down to the screen's size
 
 type DoorMesh = {
   left: THREE.Group;
@@ -309,6 +339,11 @@ export class GalleryScene {
   private ao?: HalfResAO;
   private entranceParts: THREE.Object3D[] = []; // the wall behind you as you arrive
   private entranceShown = true;
+  // YouTube players laid over wall screens (see WallYouTube); made only if a film needs one
+  private css?: CSS3DRenderer;
+  private cssScene = new THREE.Scene();
+  private canvas: HTMLCanvasElement;
+  private disposed = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -335,6 +370,7 @@ export class GalleryScene {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = false; // the room doesn't move: draw shadows once
     this.renderer = renderer;
+    this.canvas = canvas;
     const aniso = renderer.capabilities.getMaxAnisotropy();
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
@@ -716,6 +752,8 @@ export class GalleryScene {
     this.disposables.push(scrGeo);
     let mat: THREE.Material;
     const w: WorkMesh = { group, screen: undefined as unknown as THREE.Mesh };
+    // A YouTube film plays over the screen (a trailer file, if there is one, wins)
+    const ytId = !p.trailer && p.youtube ? youtubeId(p.youtube) : undefined;
     if (p.trailer) {
       const v = document.createElement("video");
       v.src = p.trailer;
@@ -730,8 +768,8 @@ export class GalleryScene {
       mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
       w.video = v;
       this.disposables.push(tex);
-    } else if (p.image) {
-      const tex = new THREE.TextureLoader().load(p.image);
+    } else if (p.image || ytId) {
+      const tex = new THREE.TextureLoader().load(p.image ?? youtubeCover(ytId!));
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = aniso;
       mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
@@ -763,6 +801,7 @@ export class GalleryScene {
     screen.position.z = 0.0455;
     group.add(screen);
     w.screen = screen;
+    if (ytId) w.yt = this.addWallYouTube(ytId, p.image ?? youtubeCover(ytId));
 
     // Glass: adds only reflections on top of the picture
     // A soft, broad sheen rather than mirror-sharp reflections, which read as
@@ -823,6 +862,106 @@ export class GalleryScene {
     });
 
     this.works.push(w);
+  }
+
+  /* A YouTube player over a wall screen (see WallYouTube). The iframe itself loads in playNear. */
+  private addWallYouTube(id: string, cover: string): WallYouTube {
+    if (!this.css) {
+      this.css = new CSS3DRenderer();
+      const el = this.css.domElement;
+      el.setAttribute("aria-hidden", "true");
+      // Over the room, under everything else; clicks and scrolling go through to the room
+      Object.assign(el.style, { position: "absolute", inset: "0", pointerEvents: "none" });
+      this.canvas.after(el);
+      const r = this.canvas.getBoundingClientRect();
+      this.css.setSize(Math.max(1, r.width), Math.max(1, r.height));
+    }
+    const box = document.createElement("div");
+    Object.assign(box.style, {
+      width: `${YT_PX}px`,
+      height: `${Math.round((YT_PX * SCREEN.h) / SCREEN.w)}px`,
+      overflow: "hidden",
+      position: "relative",
+      pointerEvents: "none",
+      // the cover until the video shows (the WebGL screen has it too, but this layer is above)
+      background: `#000 center / cover url("${cover}")`,
+    });
+    const obj = new CSS3DObject(box);
+    obj.element.style.pointerEvents = "none";
+    obj.visible = false;
+    this.cssScene.add(obj);
+    return { id, obj, box, started: false, placed: false, near: false };
+  }
+
+  /* Load a wall's YouTube player the first time it's needed; it then stays, looping. */
+  private loadWallYouTube(yt: WallYouTube) {
+    if (yt.started) return;
+    yt.started = true;
+    // A little taller than the screen, so YouTube's own title bar and logo sit
+    // outside it (the video itself is letterboxed to the full width)
+    const wrap = document.createElement("div");
+    Object.assign(wrap.style, {
+      position: "absolute",
+      left: "0",
+      top: "-12%",
+      width: "100%",
+      height: "124%",
+      pointerEvents: "none",
+      opacity: "0", // until it's playing, so there's no black flash
+      transition: "opacity 700ms ease",
+    });
+    const mount = document.createElement("div"); // YouTube replaces this with its iframe
+    wrap.appendChild(mount);
+    yt.box.appendChild(wrap);
+    loadYouTubeApi()
+      .then((YT) => {
+        if (this.disposed) return;
+        yt.player = new YT.Player(mount, {
+          videoId: yt.id,
+          host: YT_HOST,
+          width: "100%",
+          height: "100%",
+          playerVars: ytPlayerVars(),
+          events: {
+            onReady: () => {
+              const f = yt.player?.getIframe();
+              if (f) {
+                f.tabIndex = -1;
+                f.style.pointerEvents = "none";
+              }
+              yt.poll = window.setInterval(() => yt.player && keepLooping(yt.player), 200);
+            },
+            onStateChange: (e) => {
+              if (e.data === 1) wrap.style.opacity = "1"; // playing
+            },
+          },
+        });
+      })
+      .catch(() => {
+        /* no YouTube (offline, blocked): the screen keeps the cover */
+      });
+  }
+
+  /* Line the YouTube players up with their screens, and show only the ones you can see. */
+  private updateWallYouTube() {
+    if (!this.css) return;
+    const toCam = new THREE.Vector3();
+    const normal = new THREE.Vector3();
+    this.works.forEach((w) => {
+      const yt = w.yt;
+      if (!yt) return;
+      if (!yt.placed) {
+        w.screen.updateWorldMatrix(true, false);
+        w.screen.matrixWorld.decompose(yt.obj.position, yt.obj.quaternion, yt.obj.scale);
+        yt.obj.scale.multiplyScalar(SCREEN.w / YT_PX);
+        yt.placed = true;
+      }
+      // in front of the screen, not behind it
+      normal.set(0, 0, 1).applyQuaternion(yt.obj.quaternion);
+      toCam.copy(this.camera.position).sub(yt.obj.position);
+      yt.obj.visible = yt.near && toCam.dot(normal) > 0.05;
+    });
+    this.css.render(this.cssScene, this.camera);
   }
 
   private addDoor(text: string, x: number, parent: THREE.Object3D, i: number, aniso: number) {
@@ -1043,6 +1182,7 @@ export class GalleryScene {
     const dpr = Math.min(window.devicePixelRatio || 1, this.hq ? 2 : 1.75);
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
+    this.css?.setSize(w, h);
     this.composer.setPixelRatio(dpr);
     this.composer.setSize(w, h);
     this.bloom.resolution.set((w * dpr) / 2, (h * dpr) / 2);
@@ -1127,11 +1267,17 @@ export class GalleryScene {
   playNear(stopIndex: number) {
     const stops = this.layout.stops;
     this.works.forEach((w, i) => {
-      if (!w.video) return;
+      if (!w.video && !w.yt) return;
       const k = stops.findIndex((s) => s.kind === "work" && s.index === i);
       // From the overview every film is in view, so they all play.
       const atCentre = stops[stopIndex]?.kind === "centre";
       const near = stopIndex >= 0 && (Math.abs(k - stopIndex) <= 1 || atCentre);
+      if (w.yt) {
+        w.yt.near = near;
+        if (near) this.loadWallYouTube(w.yt);
+        return;
+      }
+      if (!w.video) return;
       if (near && w.video.paused) w.video.play().catch(() => {});
       else if (!near && !w.video.paused) w.video.pause();
     });
@@ -1197,6 +1343,7 @@ export class GalleryScene {
     this.glimpses.forEach((m) => (m.uniforms.uTime.value = time));
     this.film.uniforms.uTime.value = time;
     this.composer.render();
+    this.updateWallYouTube();
   }
 
   dispose() {
@@ -1207,6 +1354,13 @@ export class GalleryScene {
         w.video.load();
       }
     });
+    this.disposed = true;
+    this.works.forEach((w) => {
+      if (!w.yt) return;
+      window.clearInterval(w.yt.poll);
+      w.yt.player?.destroy();
+    });
+    this.css?.domElement.remove(); // and the YouTube players in it
     this.disposables.forEach((d) => d.dispose());
     this.composer.dispose();
     this.renderer.dispose();

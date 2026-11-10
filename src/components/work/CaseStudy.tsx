@@ -163,6 +163,7 @@ function ReelCopy({
           ref={live ? heroRef : undefined}
           title={project.title}
           src={project.trailer ?? project.video}
+          youtube={project.youtube}
           poster={project.image}
           live={live}
         />
@@ -187,6 +188,7 @@ function NarrowLayout({ project, heroRef, onNext }: LayoutProps) {
           ref={heroRef}
           title={project.title}
           src={project.trailer ?? project.video}
+          youtube={project.youtube}
           poster={project.image}
         />
       </div>

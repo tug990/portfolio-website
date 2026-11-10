@@ -116,13 +116,14 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | File | What it holds |
 | --- | --- |
 | `site.ts` | Site name, tagline, description, socials, contact, About page copy (headline, intro, expertise, numbers…). |
-| `projects.ts` | The `Project` type and the `PROJECTS` list: title, slug, year, format, tags, video/poster, story, stills, quote, credits. `getProject`, `nextProject`. Add a project here and it appears in the gallery, on `/projects` and at `/projects/<slug>`. |
+| `projects.ts` | The `Project` type and the `PROJECTS` list: title, slug, year, format, tags, video/poster, `youtube` (a YouTube link: plays on the film's wall screen and in its case study), story, stills, quote, credits. `getProject`, `nextProject`. Add a project here and it appears in the gallery, on `/projects` and at `/projects/<slug>`. |
 
 ### `src/lib/`: small helpers
 
 | File | What it does |
 | --- | --- |
 | `seo.ts` | `seo(title, description)`: page meta tags. |
+| `youtube.ts` | YouTube helpers shared by the case-study player and the wall screens: `youtubeId` (id from a link), `youtubeCover`, `YT_HOST` (youtube-nocookie.com), `ytPlayerVars` (muted, no controls), `keepLooping` (restarts just before the end, so YouTube's own loop icons never show), `loadYouTubeApi` and the `YTPlayer` type. |
 | `stage.ts` | `setStageTone` / `useStageTone`: tells the nav and footer whether the page behind them is light or dark. |
 | `utils.ts` | `cn()`: Tailwind class merging. |
 
@@ -146,13 +147,13 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | --- | --- |
 | `ProjectSheet.tsx` | The sheet that opens over the gallery: the film flies from its wall position into place (FLIP), paper fades up, close / Escape / Back fade it away. |
 | `CaseStudy.tsx` | Case-study layout (after the reference site minimaze-light): title, meta, story with "Read the whole story", stills reel, quote, credits, "Next film" poster. Wide (two columns) and narrow layouts. |
-| `FilmPlayer.tsx` | The film at the top of a case study: video, or a stand-in animated film, with an 8-frame filmstrip and playhead. |
+| `FilmPlayer.tsx` | The film at the top of a case study: a YouTube video (IFrame API via `lib/youtube.ts`, behind the same controls), a video file, or a stand-in animated film, with an 8-frame filmstrip and playhead. |
 
 ### `src/components/gallery3d/`: the 3D gallery (three.js)
 
 | File | What it does |
 | --- | --- |
-| `GalleryScene.ts` | **The room.** Renderer, camera, post-processing (render → half-res GTAO → bloom → film/vignette shader with optional colour fringe and flash → output, Neutral tone mapping), the architecture (microcement walls, ceiling, dark marble floor with soft reflection, open passages with glimpse films, skylight, cove lighting, light lines at the wall feet), the screens with labels, the exhibition set, the two doors on the entrance wall. Exposes `layout` (stops and camera path), `setPose`, `setExposure`, `setDoor`, `playNear`, `pick`, `screenRect`, `workCentre`, `render`, plus the journey hosting API (`addJourney`, `showEntrance`, `setJourneyPost`, `galleryFov`). `ROOM` sets the room's size. |
+| `GalleryScene.ts` | **The room.** Renderer, camera, post-processing (render → half-res GTAO → bloom → film/vignette shader with optional colour fringe and flash → output, Neutral tone mapping), the architecture (microcement walls, ceiling, dark marble floor with soft reflection, open passages with glimpse films, skylight, cove lighting, light lines at the wall feet), the screens with labels (a film with a `youtube` link and no `trailer` gets a live YouTube player laid over its screen by the CSS3D renderer: `addWallYouTube`, loaded in `playNear`, lined up each frame in `render`), the exhibition set, the two doors on the entrance wall. Exposes `layout` (stops and camera path), `setPose`, `setExposure`, `setDoor`, `playNear`, `pick`, `screenRect`, `workCentre`, `render`, plus the journey hosting API (`addJourney`, `showEntrance`, `setJourneyPost`, `galleryFov`). `ROOM` sets the room's size. |
 | `warmset.ts` | The exhibition set pieces and finishes: `microcement` wall shader, `landscapeTexture`, `addCoveLighting`, `addPrismPlinth` (glass pyramid, logo, rainbows), `addBench`, `addWallTitle` (the "INSIGHT LAB / A non-fiction visual storytelling studio" lockup, centred above the far wall's two films; placed in `GalleryScene.addExhibition`), `addFramedPicture`, `addFloorReflection` / `sizeFloorReflection`. |
 | `marble.ts` | `marbleFloorMaterial()`: procedural polished stone slabs. |
 | `textures.ts` | Canvas-drawn textures: `skylightTexture`, `wallWashTexture`, `poolTexture`, `doorLightTexture`, `leafTextures` (door leaves), `textTexture` (labels, signs). |
@@ -165,7 +166,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | To change… | Edit |
 | --- | --- |
 | Copy, socials, About text | `src/content/site.ts` |
-| Add / edit a project | `src/content/projects.ts` |
+| Add / edit a project, or its film / YouTube link | `src/content/projects.ts` |
 | Speed and feel of the way in | constants at the top of `src/components/Gallery.tsx` |
 | The light burst look | `uWake` block in `src/components/LogoDoor.tsx` |
 | Room architecture, lights, post-processing | `src/components/gallery3d/GalleryScene.ts` |
