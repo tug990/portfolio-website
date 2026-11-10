@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 
 /*
   The warm exhibition set, after the art direction (a gallery at night):
@@ -608,59 +609,88 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
 
 /* ---------- the bench ---------- */
 
+/*
+  A gallery bench, as in the art direction: four plump caramel leather
+  cushions with soft rounded edges and a seam between each, on a slim brass
+  frame with sled legs at both ends. A lamp above lights its top.
+*/
 export function addBench(ctx: SetCtx, at: THREE.Vector3) {
   const { scene, keep, hq } = ctx;
   const g = new THREE.Group();
   g.position.copy(at);
   const L = 2.3;
-  const D = 0.5;
-  const seatY = 0.44;
+  const D = 0.56;
+  const seatTop = 0.47;
+  const cushT = 0.13; // cushion thickness
   const leather = new THREE.MeshPhysicalMaterial({
-    color: 0xa86a38, // caramel tan
-    roughness: 0.5,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.45,
-    sheen: 0.4,
-    sheenColor: new THREE.Color(0xffc9a0),
+    color: 0x9c5a26, // caramel
+    roughness: 0.42,
+    clearcoat: 0.55,
+    clearcoatRoughness: 0.32,
+    sheen: 0.6,
+    sheenRoughness: 0.5,
+    sheenColor: new THREE.Color(0xffc285),
   });
-  const brass = new THREE.MeshStandardMaterial({ color: 0xc19a5b, metalness: 1, roughness: 0.28 });
-  keep(leather, brass);
-  // Four cushions, slightly rounded
+  const brass = new THREE.MeshStandardMaterial({ color: 0xd2a861, metalness: 1, roughness: 0.22 });
+  const base = new THREE.MeshStandardMaterial({ color: 0x3a2516, roughness: 0.6 });
+  keep(leather, brass, base);
+
+  // Cushions
   const n = 4;
-  const cw = (L - 0.03 * (n - 1)) / n;
-  const cushGeo = new THREE.BoxGeometry(cw, 0.1, D, 6, 2, 6);
-  // round the top edges a touch
-  const pos = cushGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i) / (cw / 2);
-    const z = pos.getZ(i) / (D / 2);
-    if (pos.getY(i) > 0) pos.setY(i, pos.getY(i) - 0.012 * (x * x * x * x + z * z * z * z));
-  }
-  cushGeo.computeVertexNormals();
+  const gap = 0.012;
+  const cw = (L - gap * (n - 1)) / n;
+  const cushGeo = new RoundedBoxGeometry(cw, cushT, D, 5, 0.045);
   keep(cushGeo);
   for (let i = 0; i < n; i++) {
     const c = new THREE.Mesh(cushGeo, leather);
-    c.position.set(-L / 2 + cw / 2 + i * (cw + 0.03), seatY, 0);
+    c.position.set(-L / 2 + cw / 2 + i * (cw + gap), seatTop - cushT / 2, 0);
     c.castShadow = hq;
     c.receiveShadow = hq;
     g.add(c);
   }
-  // Brass frame: a rail under the seat and four legs
-  const bar = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-    const geo = new THREE.BoxGeometry(w, h, d);
+  // A dark platform under them, set in a little
+  const platGeo = new THREE.BoxGeometry(L - 0.04, 0.035, D - 0.04);
+  keep(platGeo);
+  const plat = new THREE.Mesh(platGeo, base);
+  plat.position.y = seatTop - cushT - 0.0175;
+  plat.castShadow = hq;
+  g.add(plat);
+
+  // Brass frame: a long rail each side under the seat, sled legs at both ends
+  const rod = (len: number, x: number, y: number, z: number, axis: "x" | "y" | "z") => {
+    const geo = new THREE.BoxGeometry(
+      axis === "x" ? len : 0.026,
+      axis === "y" ? len : 0.026,
+      axis === "z" ? len : 0.026,
+    );
     keep(geo);
     const m = new THREE.Mesh(geo, brass);
     m.position.set(x, y, z);
     m.castShadow = hq;
     g.add(m);
   };
-  bar(L, 0.03, 0.03, 0, seatY - 0.065, D / 2 - 0.02);
-  bar(L, 0.03, 0.03, 0, seatY - 0.065, -D / 2 + 0.02);
+  const frameTop = seatTop - cushT - 0.05;
+  for (const sz of [-1, 1]) rod(L - 0.2, 0, frameTop, sz * (D / 2 - 0.05), "x");
   for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1])
-      bar(0.03, seatY - 0.05, 0.03, sx * (L / 2 - 0.06), (seatY - 0.05) / 2, sz * (D / 2 - 0.02));
-    bar(0.03, 0.03, D, sx * (L / 2 - 0.06), 0.06, 0); // foot bar
+    const x = sx * (L / 2 - 0.1);
+    for (const sz of [-1, 1]) rod(frameTop, x, frameTop / 2, sz * (D / 2 - 0.05), "y"); // posts
+    rod(D - 0.07, x, 0.013, 0, "z"); // the runner on the floor
+    rod(D - 0.07, x, frameTop, 0, "z"); // and under the seat
   }
+
+  // A lamp above, lighting its top warmly and casting its shadow on the floor
+  const key = new THREE.SpotLight(0xffd2a0, hq ? 9 : 7, 0, 0.5, 0.85, 2);
+  key.position.set(0, 4.0, 1.2);
+  key.target.position.set(0, 0.3, 0);
+  if (hq) {
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 6;
+  }
+  g.add(key, key.target);
   scene.add(g);
 }
 
@@ -790,7 +820,7 @@ const SoftReflectorShader = {
         for (int y = -3; y <= 3; y++) {
           vec2 o = vec2(float(x), float(y));
           float w = exp(-dot(o, o) / 5.0);
-          sum += texture2D(tDiffuse, uv + o * uTexel * vec2(1.2, 2.4)).rgb * w;
+          sum += texture2D(tDiffuse, uv + o * uTexel * vec2(0.8, 1.7)).rgb * w;
           total += w;
         }
       }
@@ -807,7 +837,7 @@ export function addFloorReflection(ctx: SetCtx, w: number, len: number, mid: num
   const r = new Reflector(geo, {
     textureWidth: 1024,
     textureHeight: 1024,
-    color: new THREE.Color(0.75, 0.72, 0.68),
+    color: new THREE.Color(0.85, 0.82, 0.78),
     shader: SoftReflectorShader,
     multisample: 0,
   });

@@ -218,7 +218,7 @@ const FilmShader = {
     void main(){
       vec2 d = vUv - 0.5;
       vec3 c = texture2D(tDiffuse, vUv).rgb;
-      c *= 1.0 - 0.2 * smoothstep(0.18, 0.75, dot(d, d) * 1.7);
+      c *= 1.0 - 0.3 * smoothstep(0.15, 0.75, dot(d, d) * 1.7);
       gl_FragColor = vec4(c, 1.0);
     }`,
 };
@@ -370,7 +370,7 @@ export class GalleryScene {
     const allLen = len + BACK; // with the side gallery
     const allMid = (FRONT - D - BACK) / 2;
     const wallMat = matte(0xdcc0a0, 0.92); // warm taupe plaster
-    wallMat.emissive.set(0x1c120a); // the room's warm glow, between the spots
+    wallMat.emissive.set(0x110a05); // a little warm glow between the spots; the spots do the rest
     const left = plane(allLen, H, wallMat);
     left.position.set(-W / 2, H / 2, allMid);
     left.rotation.y = Math.PI / 2;
@@ -440,26 +440,9 @@ export class GalleryScene {
       cool.position.set(sx * (W / 2 - 0.55), H - 0.01, -D - 1.1);
       cool.lookAt(sx * (W / 2 - 0.55), 0, -D - 1.1);
       this.scene.add(cool);
-      // and pictures on the side gallery's walls
-      addFramedPicture(
-        set,
-        new THREE.Vector3(sx * (W / 2 - 0.004), 1.62, -D - 1.75),
-        new THREE.Vector3(-sx, 0, 0),
-        { w: 0.62, h: 0.84 },
-        sx > 0 ? 3 : 5,
-        new THREE.Vector3(0, 0, sx),
-      );
       const l = new THREE.PointLight(0xffb36b, 14, 6, 2);
       l.position.set(sx * (W / 2 - 0.7), 2.9, -D - BACK / 2);
       this.scene.add(l);
-      addFramedPicture(
-        set,
-        new THREE.Vector3(sx * (W / 2 - 0.62), 1.62, -D - BACK + 0.004),
-        new THREE.Vector3(0, 0, 1),
-        { w: 0.74, h: 0.52 },
-        sx > 0 ? 7 : 11,
-        new THREE.Vector3(1, 0, 0),
-      );
     }
 
     this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK);
@@ -513,7 +496,8 @@ export class GalleryScene {
       this.composer.addPass(ao);
     }
     // Glow only on what truly emits light: the skylight, the light lines, the doors.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.38, 0.55, 0.93);
+    // Glow on what emits light, and a little on the brightest light falling on things, as a lens sees it
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.6, 0.86);
     this.composer.addPass(this.bloom);
     this.film = new ShaderPass(FilmShader);
     this.composer.addPass(this.film);
@@ -545,15 +529,15 @@ export class GalleryScene {
     addWallTitle(set, v(-3.5, 1.72, -D), farN, aniso);
     lit(v(-3.5, 1.6, -D), farN);
 
-    // More lamps washing the walls wherever nothing hangs
+    // More lamps along the outer rails, between the films: they light the
+    // floor, so nothing glows on the bare wall between the works
     const taken = this.layout.works.filter((w) => w.nx !== 0).map((w) => w.z);
     for (let z = this.front - 1.4; z > -D + 0.8; z -= 1.1) {
       if (taken.some((t) => Math.abs(t - z) < 1.0)) continue;
       for (const side of sides) {
         this.fixtures.push({
           at: v(side.x + side.n.x * 1.55, H - 0.32, z),
-          aim: v(side.x, 2.0, z),
-          wash: { at: v(side.x, 0, z), normal: side.n, strength: 0.75 },
+          aim: v(side.x + side.n.x * 2.4, 0, z),
         });
       }
     }
@@ -587,7 +571,7 @@ export class GalleryScene {
     // The bench, in front of where you arrive
     const arrive = this.layout.stops[0];
     // Far enough ahead that it sits whole in the lower part of the view, legs and all
-    addBench(set, v(0, 0, arrive.z - 4.7));
+    addBench(set, v(0, 0, arrive.z - 4.4));
   }
 
   /*
@@ -812,7 +796,7 @@ export class GalleryScene {
     // The spotlight on it, from a head on the ceiling track
     const H = ROOM.H;
     const head = new THREE.Vector3(spot.x + spot.nx * 1.55, H - 0.32, spot.z + spot.nz * 1.55);
-    const sl = new THREE.SpotLight(0xffc88e, this.hq ? 26 : 20, 0, 0.36, 0.7, 2);
+    const sl = new THREE.SpotLight(0xffc88e, this.hq ? 34 : 26, 0, 0.36, 0.7, 2);
     sl.position.copy(head);
     sl.target.position.set(spot.x, SCREEN.y + 0.05, spot.z);
     if (this.hq) {
