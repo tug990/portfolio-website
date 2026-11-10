@@ -41,19 +41,21 @@ const AUTO_FROM = 0; // any forward scroll plays the way in by itself...
 const AUTO_SPEED = 2.2; // ...in under half a second (when the tunnel isn't available)
 
 /*
-  The prism journey, played by one scroll in about a second (progress 0 to 1):
-  the logo wakes (its panels part, light breaks out, the page darkens), you fly
-  into its opening and out of the white light into the prism tunnel, travel
-  down it until the gallery appears through its far end, and the tunnel
-  dissolves around you into the gallery.
+  The prism journey, played by one scroll in under a second (progress 0 to 1),
+  after the storyboard: the logo wakes (its panels part, light breaks out, the
+  page darkens); its panels become doors that swing open onto a glass
+  corridor of light; you travel down it until the gallery appears in a round
+  opening inside a vortex; the glass slides away and you arrive in the room.
 */
-const JOURNEY_SPEED = 0.95; // progress per second: the whole way in is ~1.05 s
-const WAKE: [number, number] = [0, 0.14]; // the logo responds
-const THRESHOLD: [number, number] = [0.06, 0.33]; // flying into its opening, into white light
-const LOGO_OUT: [number, number] = [0.33, 0.36]; // the logo layer goes once the tunnel covers it
-const TUNNEL_IN: [number, number] = [0.27, 0.34]; // the tunnel comes up out of the light
-const TUNNEL: [number, number] = [0.3, 0.93]; // travelling through it
-const TUNNEL_OUT: [number, number] = [0.86, 0.985]; // it dissolves into the gallery
+const JOURNEY_SPEED = 1.15; // progress per second: into the room in ~0.9 s
+const WAKE: [number, number] = [0, 0.12]; // 02: the logo responds
+const THRESHOLD: [number, number] = [0.03, 0.15]; // the logo grows towards you...
+const HANDOVER = 0.135; // ...and its panels become the 3D doors here
+const DOOR_ZOOM = 2.4; // how much the logo has grown by then
+const LOGO_OUT: [number, number] = [0.13, 0.16];
+const TUNNEL_IN: [number, number] = [0.12, 0.15];
+const TUNNEL: [number, number] = [0.13, 0.96]; // 03-07: doors, corridor, vortex, arrival
+const TUNNEL_OUT: [number, number] = [0.95, 0.995]; // the last of it fades into the room itself
 
 const STEP_LOCK_MS = 300; // one scroll gesture = one stop
 const FOLLOW = 6; // catching up after a resize (steps themselves are timed glides)
@@ -331,7 +333,7 @@ export function Gallery() {
           s.setDoor(i, c.doorAng[i], smooth(c.doorLit[i]));
         }
         // Only the films near you play.
-        const roomFrom = T ? TUNNEL[0] : 0.6; // seen through the tunnel's far end from early on
+        const roomFrom = T ? 0.42 : 0.6; // drawn from when it shows in the tunnel's far end
         const playAt = c.mode === "intro" ? (c.p > roomFrom ? 0 : -1) : c.at;
         if (playAt !== c.playing) {
           c.playing = playAt;
@@ -377,7 +379,11 @@ export function Gallery() {
     const T = !!tunnel.current;
     const e = T ? band(p, THRESHOLD) : band(p, [0, ZOOM_END]);
     const s0 = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
-    const zoom = Math.exp(Math.log(120) * Math.pow(e, 1.7));
+    const zoomOf = (x: number) => Math.exp(Math.log(T ? DOOR_ZOOM : 120) * Math.pow(x, 1.7));
+    const zoom = zoomOf(e);
+    // The 3D doors take over at the size the logo has reached
+    if (T)
+      tunnel.current!.setDoorFraction((LOGO.height * s0 * zoomOf(band(HANDOVER, THRESHOLD))) / H);
     const scale = s0 * zoom;
     const markY = H * 0.4;
     const restX = W / 2 + (LOGO.focus.x - LOGO.center.x) * s0;
