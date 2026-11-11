@@ -28,11 +28,12 @@ import {
 } from "./textures";
 import { marbleFloorMaterial } from "./marble";
 import {
-  addBench,
   addFloorReflection,
   addFramedPicture,
   addPrismPlinth,
+  PRISM_TOP,
   addCoveLighting,
+  PHONE_GLASS_OPACITY,
   microcement,
   addWallTitle,
   sizeFloorReflection,
@@ -61,6 +62,15 @@ const WORK_START = 4.2; // first side-wall screen, metres in from z = 0
 const WORK_GAP = 3.2; // between screens along a side wall
 const CENTRE_GAP = 3.4; // between the screens on the far wall
 const FAR_SCALE = 1.35; // the far wall's two films hang larger, as the room's main pieces
+// Metres from where you arrive to the prism's plinth: closer on tall (phone)
+// screens, whose wide lens makes everything look further away
+// (on tall screens the title rule below usually sets it, a little further back)
+const PRISM_AHEAD = { wide: 7.2, tall: 4.5 };
+const TITLE_BASE = 2.55; // the far wall title's lettering starts this high, just above the films
+const TITLE_CLEAR = 0.13; // the prism's tip stays this far below it, seen from where you arrive
+// The camera never walks through the prism: within this many metres of it,
+// it's eased out sideways along a smooth curve (see setPose)
+const PRISM_KEEP_OUT = 3.0; // passes clear the plinth by 0.55 m or more; stops move 6 cm at most
 const DOOR = { w: 1.15, h: 2.45, x: 1.35 };
 const LABEL = { w: 0.34, h: 0.21 };
 
@@ -298,12 +308,32 @@ type WallYouTube = {
   obj: CSS3DObject;
   box: HTMLDivElement;
   started: boolean;
+  pending?: number; // the timer that will load it
   player?: YTPlayer;
   poll?: number;
   placed: boolean;
   near: boolean;
 };
 const YT_PX = 1280; // the overlay's width in CSS pixels, scaled down to the screen's size
+const YT_LOAD_DELAY = 1200; // ms after you first come near (past the way in's settle)
+
+/* The convex hull of some points, in order round the outside (Andrew's monotone chain). */
+function convexHull(points: [number, number][]) {
+  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o: number[], a: number[], b: number[]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (list: [number, number][]) => {
+    const out: [number, number][] = [];
+    for (const q of list) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0) out.pop();
+      out.push(q);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(p), ...half([...p].reverse())];
+}
 
 type DoorMesh = {
   left: THREE.Group;
@@ -344,12 +374,17 @@ export class GalleryScene {
   private cssScene = new THREE.Scene();
   private canvas: HTMLCanvasElement;
   private disposed = false;
+  private prismPoints: THREE.Vector3[] = []; // the glass pyramid's outline, for the hole in the YouTube layer
+  private prismAt?: THREE.Vector3; // where the prism stands, for the camera to walk round it
+  private tall = false; // a phone-shaped window when the room was built
+  private clipKey = "";
 
   constructor(
     canvas: HTMLCanvasElement,
     opts: { projects: Project[]; aspect: number; hq: boolean },
   ) {
     this.hq = opts.hq;
+    this.tall = opts.aspect < 1;
     this.count = opts.projects.length;
     // Deep enough behind the overview spot to stand back and see the doors.
     this.front = Math.max(7.5, overviewZ(opts.aspect) + 4.5);
@@ -568,15 +603,15 @@ export class GalleryScene {
 
   /*
     The evening exhibition around the films: framed landscapes and the title
-    on the walls, the prism on its plinth, the bench, and the light on the walls
-    that lights it all.
+    on the walls, the prism on its plinth, and the light on the walls that
+    lights it all.
   */
   private addExhibition(set: SetCtx, W: number, D: number, H: number, aniso: number) {
     const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
     // The far wall: the exhibition title, centred above its two films
-    // (their tops are at ~2.3 m; the cove light begins ~3.4 m)
+    // (their tops, frames included, are at ~2.33 m; the wall runs up to H)
     const farN = v(0, 0, 1);
-    addWallTitle(set, v(0, 2.93, -D), farN, aniso);
+    addWallTitle(set, v(0, TITLE_BASE, -D), farN, aniso);
 
     // In each passage, a film on the outer wall, seen through the opening:
     // a glimpse of more work (not one of the stops)
@@ -586,15 +621,19 @@ export class GalleryScene {
       this.addGlimpseFilm(at, n, sx > 0 ? 7 : 8, aniso);
     }
 
-    const prismAt = v(0, 0, -D + 3.6);
-    const benchAt = v(0, 0, this.layout.stops[0].z - 4.4);
-
-    // The prism on its plinth, out from the far wall between the films
-    addPrismPlinth(set, prismAt, "/brand/mark-transparent.webp");
-
-    // The bench, in front of where you arrive
-    // Far enough ahead that it sits whole in the lower part of the view, legs and all
-    addBench(set, benchAt);
+    // The prism on its plinth, a set distance ahead of where you arrive (never
+    // further back than its old spot out from the far wall). But never so close
+    // that, from where you arrive, its tip rises over the wall title: seen from
+    // eye height, the tip lands on the far wall at
+    //   eye + (PRISM_TOP - eye) * (distance to the wall / distance to the prism)
+    // which must stay TITLE_CLEAR below the title's lettering.
+    const z0 = this.layout.stops[0].z;
+    const eye = ROOM.eye;
+    const tipClear = ((z0 + D) * (PRISM_TOP - eye)) / (TITLE_BASE - TITLE_CLEAR - eye);
+    const ahead = Math.max(this.tall ? PRISM_AHEAD.tall : PRISM_AHEAD.wide, tipClear);
+    const prismAt = v(0, 0, Math.max(z0 - ahead, -D + 3.6));
+    this.prismAt = prismAt;
+    this.prismPoints = addPrismPlinth(set, prismAt, "/brand/mark-transparent.webp").pyramidPoints;
   }
 
   /* A film playing in a passage: a glimpse of more work, seen from the room. */
@@ -801,7 +840,7 @@ export class GalleryScene {
     screen.position.z = 0.0455;
     group.add(screen);
     w.screen = screen;
-    if (ytId) w.yt = this.addWallYouTube(ytId, p.image ?? youtubeCover(ytId));
+    if (ytId) w.yt = this.addWallYouTube(ytId);
 
     // Glass: adds only reflections on top of the picture
     // A soft, broad sheen rather than mirror-sharp reflections, which read as
@@ -865,7 +904,7 @@ export class GalleryScene {
   }
 
   /* A YouTube player over a wall screen (see WallYouTube). The iframe itself loads in playNear. */
-  private addWallYouTube(id: string, cover: string): WallYouTube {
+  private addWallYouTube(id: string): WallYouTube {
     if (!this.css) {
       this.css = new CSS3DRenderer();
       const el = this.css.domElement;
@@ -883,8 +922,8 @@ export class GalleryScene {
       overflow: "hidden",
       position: "relative",
       pointerEvents: "none",
-      // the cover until the video shows (the WebGL screen has it too, but this layer is above)
-      background: `#000 center / cover url("${cover}")`,
+      // No background: until the video plays, the room's own screen (with the
+      // cover, lit like the room) shows through, so nothing pops in on the way in
     });
     const obj = new CSS3DObject(box);
     obj.element.style.pointerEvents = "none";
@@ -897,18 +936,16 @@ export class GalleryScene {
   private loadWallYouTube(yt: WallYouTube) {
     if (yt.started) return;
     yt.started = true;
-    // A little taller than the screen, so YouTube's own title bar and logo sit
-    // outside it (the video itself is letterboxed to the full width)
+    // Exactly the screen's size. (Not oversized and clipped to hide YouTube's
+    // title bar: iPhone Safari doesn't clip a 3D-transformed iframe, so the
+    // player spilled below the screen.)
     const wrap = document.createElement("div");
     Object.assign(wrap.style, {
       position: "absolute",
-      left: "0",
-      top: "-12%",
-      width: "100%",
-      height: "124%",
+      inset: "0",
       pointerEvents: "none",
-      opacity: "0", // until it's playing, so there's no black flash
-      transition: "opacity 700ms ease",
+      opacity: "0", // shown only while it's playing; otherwise the cover shows, never black
+      transition: "opacity 600ms ease",
     });
     const mount = document.createElement("div"); // YouTube replaces this with its iframe
     wrap.appendChild(mount);
@@ -927,12 +964,24 @@ export class GalleryScene {
               const f = yt.player?.getIframe();
               if (f) {
                 f.tabIndex = -1;
-                f.style.pointerEvents = "none";
+                Object.assign(f.style, {
+                  display: "block",
+                  width: "100%",
+                  height: "100%",
+                  border: "0",
+                  pointerEvents: "none",
+                });
               }
+              // Some phones ignore autoplay in the embed but allow a muted play() call
+              yt.player?.mute();
+              yt.player?.playVideo();
               yt.poll = window.setInterval(() => yt.player && keepLooping(yt.player), 200);
             },
+            // Playing (1): show it. Not started, paused, ended or cued (-1, 2, 0, 5), as
+            // when a phone blocks autoplay: back to the cover. Buffering (3): leave as is.
             onStateChange: (e) => {
-              if (e.data === 1) wrap.style.opacity = "1"; // playing
+              if (e.data === 1) wrap.style.opacity = "1";
+              else if (e.data !== 3) wrap.style.opacity = "0";
             },
           },
         });
@@ -947,6 +996,7 @@ export class GalleryScene {
     if (!this.css) return;
     const toCam = new THREE.Vector3();
     const normal = new THREE.Vector3();
+    let anyShown = false;
     this.works.forEach((w) => {
       const yt = w.yt;
       if (!yt) return;
@@ -960,8 +1010,66 @@ export class GalleryScene {
       normal.set(0, 0, 1).applyQuaternion(yt.obj.quaternion);
       toCam.copy(this.camera.position).sub(yt.obj.position);
       yt.obj.visible = yt.near && toCam.dot(normal) > 0.05;
+      anyShown ||= yt.obj.visible;
     });
+    this.clipPrism(anyShown);
     this.css.render(this.cssScene, this.camera);
+  }
+
+  /*
+    The YouTube layer is drawn over the room, so it can't pass behind anything.
+    The prism can stand in front of a far-wall film: cut the pyramid's outline
+    out of the layer, and the room (which draws the glass over the screen)
+    shows through there instead.
+  */
+  private clipPrism(anyShown: boolean) {
+    const el = this.css!.domElement;
+    const w = el.clientWidth;
+    const h = el.clientHeight;
+    let key = "";
+    let clip = "";
+    if (anyShown && this.prismPoints.length && w && h) {
+      this.camera.updateMatrixWorld();
+      const v = new THREE.Vector3();
+      const pts: [number, number][] = [];
+      for (const p of this.prismPoints) {
+        v.copy(p).project(this.camera);
+        if (v.z > 1) break; // behind you: it can't be in front of a film
+        pts.push([((v.x + 1) / 2) * w, ((1 - v.y) / 2) * h]);
+      }
+      if (pts.length === this.prismPoints.length) {
+        const hull = convexHull(pts);
+        const ring = hull.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`);
+        key = `${w}x${h}:${ring.join(",")}`;
+        if (this.hq) {
+          // Refracting glass: a clean hole, so the room's refraction shows there.
+          // The whole layer, then the hull: with evenodd, the hull is a hole
+          // (the seam back to the corner is drawn both ways, so it cancels out)
+          clip = `polygon(evenodd, 0 0, ${w}px 0, ${w}px ${h}px, 0 ${h}px, 0 0, ${ring.join(", ")}, ${ring[0]})`;
+        } else {
+          // Plain see-through glass (phones): a soft hole. Inside the prism the live
+          // video shows at (1 - the glass's opacity) over the room's glass, which is
+          // just how a pane that faint mixes them
+          const poly = hull.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+          const svg =
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+            `<path fill-rule="evenodd" fill="#fff" d="M0 0H${w}V${h}H0Z M${poly.replace(/ /g, " L")}Z"/>` +
+            `<polygon fill="#fff" fill-opacity="${(1 - PHONE_GLASS_OPACITY).toFixed(2)}" points="${poly}"/></svg>`;
+          clip = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+        }
+      }
+    }
+    if (key === this.clipKey) return; // unchanged: don't touch the style
+    this.clipKey = key;
+    const st = el.style as CSSStyleDeclaration & {
+      webkitClipPath?: string;
+      webkitMaskImage?: string;
+    };
+    const isMask = clip.startsWith("url(");
+    st.clipPath = st.webkitClipPath = isMask ? "" : clip;
+    st.maskImage = st.webkitMaskImage = isMask ? clip : "";
+    st.maskSize = isMask ? "100% 100%" : "";
+    st.maskRepeat = isMask ? "no-repeat" : "";
   }
 
   private addDoor(text: string, x: number, parent: THREE.Object3D, i: number, aniso: number) {
@@ -1195,6 +1303,22 @@ export class GalleryScene {
   }
 
   setPose(x: number, y: number, z: number, yaw: number, pitch = 0) {
+    // Walk round the prism, never through it. Within PRISM_KEEP_OUT (R) of it,
+    // a distance d becomes (d² + R²) / 2R: unchanged at R, smooth there (no kink),
+    // and never less than R / 2 at the centre. Further away, nothing changes.
+    const p = this.prismAt;
+    if (p) {
+      const R = PRISM_KEEP_OUT;
+      const dx = x - p.x;
+      const dz = z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d < R) {
+        const to = (d * d + R * R) / (2 * R);
+        const [ux, uz] = d > 1e-4 ? [dx / d, dz / d] : [1, 0];
+        x = p.x + ux * to;
+        z = p.z + uz * to;
+      }
+    }
     this.camera.position.set(x, y, z);
     this.camera.rotation.set(pitch, yaw, 0);
   }
@@ -1273,8 +1397,16 @@ export class GalleryScene {
       const atCentre = stops[stopIndex]?.kind === "centre";
       const near = stopIndex >= 0 && (Math.abs(k - stopIndex) <= 1 || atCentre);
       if (w.yt) {
-        w.yt.near = near;
-        if (near) this.loadWallYouTube(w.yt);
+        const yt = w.yt;
+        yt.near = near;
+        // Load it a moment after you first come near, not in the middle of the way
+        // in (making a YouTube player stalls a frame or two)
+        if (near && !yt.started && !yt.pending) {
+          yt.pending = window.setTimeout(() => {
+            yt.pending = undefined;
+            if (yt.near && !this.disposed) this.loadWallYouTube(yt);
+          }, YT_LOAD_DELAY);
+        }
         return;
       }
       if (!w.video) return;
@@ -1357,6 +1489,7 @@ export class GalleryScene {
     this.disposed = true;
     this.works.forEach((w) => {
       if (!w.yt) return;
+      window.clearTimeout(w.yt.pending);
       window.clearInterval(w.yt.poll);
       w.yt.player?.destroy();
     });

@@ -338,12 +338,19 @@ export function addCoveLighting(
 
 /* ---------- the centrepiece ---------- */
 
+/* How opaque the prism's plain glass is on phones (GalleryScene mixes the YouTube layer to match). */
+export const PHONE_GLASS_OPACITY = 0.22;
+const PLINTH_H = 0.68;
+const PYRAMID_H = 1.15;
+/* The height of the pyramid's tip above the floor (GalleryScene keeps it below the wall title). */
+export const PRISM_TOP = 0.03 + PLINTH_H + PYRAMID_H;
+
 export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) {
   const { scene, keep, hq } = ctx;
   const g = new THREE.Group();
   g.position.copy(at);
   const PW = 1.7;
-  const PH = 0.68;
+  const PH = PLINTH_H;
   const PD = 1.0;
 
   // Pale stone plinth
@@ -365,7 +372,10 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
     transparent: true,
     toneMapped: false,
   });
-  logoMat.color.setScalar(1.7); // bright enough to glow in its blue, white and orange
+  // At its true colours, as on the landing page: crisp black panels, a thin gap of
+  // light. (Brighter than 1, the room's bloom spread the gap into a wide white
+  // glow and greyed the panels.)
+  logoMat.color.setScalar(1);
   const logoGeo = new THREE.PlaneGeometry(0.29, 0.535); // the mark is 365 x 674
   keep(logoTex, logoMat, logoGeo);
   const logo = new THREE.Mesh(logoGeo, logoMat);
@@ -399,23 +409,43 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   g.add(pool);
 
   // The crystal pyramid
-  const pyrH = 1.15;
+  const pyrH = PYRAMID_H;
   const pyrGeo = new THREE.ConeGeometry(0.74, pyrH, 4, 1);
   pyrGeo.rotateY(Math.PI / 4);
-  const glass = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff,
-    metalness: 0,
-    roughness: 0.03,
-    transmission: 1,
-    thickness: 0.45,
-    ior: 1.52,
-    dispersion: 7,
-    clearcoat: 1,
-    envMapIntensity: 3.2,
-    emissive: new THREE.Color(0.05, 0.045, 0.04), // glass catching the spotlight
-    iridescence: 0.35,
-    iridescenceIOR: 1.3,
-  });
+  /*
+    Desktop: real refracting glass (transmission), a touch soft so the films
+    behind show through slightly blurred, with the reflections kept low enough
+    that they don't wash it white. Phones and tablets: plain see-through glass
+    with reflections. Transmission is the effect most likely to break on a
+    phone's graphics chip (black patches), and it costs a whole extra render.
+  */
+  const glass = hq
+    ? new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        metalness: 0,
+        roughness: 0.07,
+        transmission: 1,
+        thickness: 0.3, // gentle refraction: the apex doesn't bend in the black from the frames
+        ior: 1.52,
+        dispersion: 5,
+        clearcoat: 1,
+        envMapIntensity: 1.4,
+        emissive: new THREE.Color(0.015, 0.014, 0.012), // glass catching the spotlight
+        iridescence: 0.35,
+        iridescenceIOR: 1.3,
+      })
+    : new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        metalness: 0,
+        roughness: 0.05,
+        transparent: true,
+        opacity: PHONE_GLASS_OPACITY,
+        depthWrite: false,
+        clearcoat: 1,
+        envMapIntensity: 1.6,
+        iridescence: 0.35,
+        iridescenceIOR: 1.3,
+      });
   keep(pyrGeo, glass);
   const pyramid = new THREE.Mesh(pyrGeo, glass);
   pyramid.position.y = 0.03 + PH + pyrH / 2;
@@ -513,7 +543,18 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
   }
   g.add(key, key.target);
   scene.add(g);
-  return { core: coreMat };
+  // The pyramid's outline (its apex and four base corners, in the room), so
+  // anything drawn over the room can leave a gap where the prism stands in front
+  const r = 0.74 * Math.SQRT1_2; // the base corners, after the quarter turn
+  const baseY = 0.03 + PH;
+  const pyramidPoints = [
+    new THREE.Vector3(0, baseY + pyrH, 0),
+    new THREE.Vector3(r, baseY, r),
+    new THREE.Vector3(-r, baseY, r),
+    new THREE.Vector3(-r, baseY, -r),
+    new THREE.Vector3(r, baseY, -r),
+  ].map((p) => p.add(at));
+  return { core: coreMat, pyramidPoints };
 }
 
 /* ---------- the bench ---------- */
@@ -592,6 +633,14 @@ export function addBench(ctx: SetCtx, at: THREE.Vector3) {
 
 /* ---------- the exhibition title ---------- */
 
+/* The wall title's size: its plate, and where its lettering ends inside it (from the top). */
+const TITLE_PLATE = { w: 6.24, h: 1.56 };
+const TITLE_TEXT_BOTTOM = 430 / 512; // the subtitle's baseline, down the canvas (where it's drawn)
+
+/*
+  `at` is the middle of the lettering's bottom edge (the subtitle's baseline),
+  so the title can be set just above the films whatever its size.
+*/
 export function addWallTitle(ctx: SetCtx, at: THREE.Vector3, normal: THREE.Vector3, aniso: number) {
   const { scene, keep } = ctx;
   // A centred lockup, hung above the far wall's two films:
@@ -623,15 +672,16 @@ export function addWallTitle(ctx: SetCtx, at: THREE.Vector3, normal: THREE.Vecto
     };
     while (px > 40 && widthAt(px) > W * 0.92) px -= 2;
     widthAt(px);
-    spaced(sub, 430, px * 0.16);
+    spaced(sub, TITLE_TEXT_BOTTOM * Hh, px * 0.16);
   });
   tex.anisotropy = aniso;
   const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.6 });
-  const geo = new THREE.PlaneGeometry(3.9, 0.975);
+  const geo = new THREE.PlaneGeometry(TITLE_PLATE.w, TITLE_PLATE.h);
   keep(tex, mat, geo);
   const m = new THREE.Mesh(geo, mat);
   m.renderOrder = 5; // after the lamp's glow, so the vinyl reads dark on the lit wall
   m.position.copy(at).addScaledVector(normal, 0.014);
+  m.position.y += (TITLE_TEXT_BOTTOM - 0.5) * TITLE_PLATE.h; // from the lettering's bottom to the plate's centre
   m.lookAt(m.position.clone().add(normal));
   scene.add(m);
 }
