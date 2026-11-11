@@ -4,7 +4,7 @@ The map of this repo: what the site is, and which file owns what.
 **Read this before editing anything. Update it in the same change whenever you
 add, move, rename, delete, or change what a file is responsible for.**
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 ---
 
@@ -23,7 +23,7 @@ The visitor experience, in order:
    gap (header and headline stay), then the 3D gallery dissolves in through the
    light and the camera eases to rest.
 3. **The gallery**: a warm 3D exhibition room (three.js) with the films on
-   screens around the walls, a glass prism on a plinth, a leather bench, cove
+   screens around the walls, a frosted glass prism on a plinth ahead of you, cove
    lighting, a skylight, a polished dark floor, and two doors ("All work" /
    "About us") on the wall behind you. Scroll, swipe or use the arrow keys to
    step from film to film.
@@ -153,8 +153,8 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 
 | File | What it does |
 | --- | --- |
-| `GalleryScene.ts` | **The room.** Renderer, camera, post-processing (render → half-res GTAO → bloom → film/vignette shader with optional colour fringe and flash → output, Neutral tone mapping), the architecture (microcement walls, ceiling, dark marble floor with soft reflection, open passages with glimpse films, skylight, cove lighting, light lines at the wall feet), the screens with labels (a film with a `youtube` link and no `trailer` gets a live YouTube player laid over its screen by the CSS3D renderer: `addWallYouTube`, loaded in `playNear`, lined up each frame in `render`), the exhibition set, the two doors on the entrance wall. Exposes `layout` (stops and camera path), `setPose`, `setExposure`, `setDoor`, `playNear`, `pick`, `screenRect`, `workCentre`, `render`, plus the journey hosting API (`addJourney`, `showEntrance`, `setJourneyPost`, `galleryFov`). `ROOM` sets the room's size. |
-| `warmset.ts` | The exhibition set pieces and finishes: `microcement` wall shader, `landscapeTexture`, `addCoveLighting`, `addPrismPlinth` (glass pyramid, logo, rainbows), `addBench`, `addWallTitle` (the "INSIGHT LAB / A non-fiction visual storytelling studio" lockup, centred above the far wall's two films; placed in `GalleryScene.addExhibition`), `addFramedPicture`, `addFloorReflection` / `sizeFloorReflection`. |
+| `GalleryScene.ts` | **The room.** Renderer, camera, post-processing (render → half-res GTAO → bloom → film/vignette shader with optional colour fringe and flash → output, Neutral tone mapping), the architecture (microcement walls, ceiling, dark marble floor with soft reflection, open passages with glimpse films, skylight, cove lighting, light lines at the wall feet), the screens with labels (a film with a `youtube` link and no `trailer` gets a live YouTube player laid over its screen by the CSS3D renderer: `addWallYouTube`, loaded `YT_LOAD_DELAY` after you first come near, lined up each frame in `render`, with the glass pyramid's outline cut out of that layer by `clipPrism` so the prism stays in front), the exhibition set, the two doors on the entrance wall. Exposes `layout` (stops and camera path), `setPose`, `setExposure`, `setDoor`, `playNear`, `pick`, `screenRect`, `workCentre`, `render`, plus the journey hosting API (`addJourney`, `showEntrance`, `setJourneyPost`, `galleryFov`). `ROOM` sets the room's size; `PRISM_AHEAD` (`wide` / `tall`) sets how far ahead of where you arrive the prism stands, but never so close that its tip rises over the wall title (`TITLE_BASE`, `TITLE_CLEAR`); `setPose` steers the camera round it within `PRISM_KEEP_OUT`. On phones (`hq` off) the YouTube layer gets a soft prism-shaped mask instead of a hole, mixed to `PHONE_GLASS_OPACITY`. |
+| `warmset.ts` | The exhibition set pieces and finishes: `microcement` wall shader, `landscapeTexture`, `addCoveLighting`, `addPrismPlinth` (glass pyramid: refracting glass on desktop, plain see-through glass on phones at `PHONE_GLASS_OPACITY`; the logo at its true colours; rainbows; returns the pyramid's outline points), `addBench` (**unused**: the bench was taken out), `addWallTitle` (the "INSIGHT LAB / A non-fiction visual storytelling studio" lockup, centred above the far wall's two films; its size is `TITLE_PLATE`, and it's placed by its lettering's bottom edge at `GalleryScene`'s `TITLE_BASE`), `PRISM_TOP` (the pyramid tip's height), `addFramedPicture`, `addFloorReflection` / `sizeFloorReflection`. |
 | `marble.ts` | `marbleFloorMaterial()`: procedural polished stone slabs. |
 | `textures.ts` | Canvas-drawn textures: `skylightTexture`, `wallWashTexture`, `poolTexture`, `doorLightTexture`, `leafTextures` (door leaves), `textTexture` (labels, signs). |
 | `PrismTunnel.ts` | **Parked** (`USE_TUNNEL = false`). The prism glass corridor in front of the gallery's entrance, built in the gallery's own scene: logo doors in a mauve facade, prism glass walls, slim glowing frames, a reflective floor, a light ribbon, exit glass, and one spline camera path with keyframed timing. Turn it on in `Gallery.tsx`. |
@@ -169,8 +169,8 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | Add / edit a project, or its film / YouTube link | `src/content/projects.ts` |
 | Speed and feel of the way in | constants at the top of `src/components/Gallery.tsx` |
 | The light burst look | `uWake` block in `src/components/LogoDoor.tsx` |
-| Room architecture, lights, post-processing | `src/components/gallery3d/GalleryScene.ts` |
-| Prism plinth, bench, cove light, wall finish | `src/components/gallery3d/warmset.ts` |
+| Room architecture, lights, post-processing, where the prism stands | `src/components/gallery3d/GalleryScene.ts` |
+| Prism plinth and its glass, cove light, wall finish | `src/components/gallery3d/warmset.ts` |
 | Floor stone | `src/components/gallery3d/marble.ts` |
 | Case-study layout | `src/components/work/CaseStudy.tsx` |
 | Case-study open/close animation | `src/components/work/ProjectSheet.tsx` |

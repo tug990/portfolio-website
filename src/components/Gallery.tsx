@@ -78,7 +78,7 @@ const ROOM_IN = 0.4; // progress where the room starts to show through the light
 const SETTLE_S = 1.0; // seconds from the room appearing to the camera at rest
 const DOLLY = 2.4; // metres the camera drifts forward over that time
 const RISE = 0.14; // and how much it settles down to eye height
-const GLOW = 1.3; // how much brighter the room starts, lit by the logo's light
+const GLOW = 0.35; // how much brighter the room starts, lit by the logo's light (much more reads as a flicker)
 const settleK = (tau: number) => 1 - Math.pow(1 - clamp(tau / SETTLE_S, 0, 1), 3); // ease-out
 const SAVE_KEY = "insight-gallery-stop";
 
