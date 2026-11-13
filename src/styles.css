@@ -75,6 +75,10 @@
   body {
     padding-bottom: var(--dock);
   }
+  /* a page that is exactly one screen (the About page's sky) runs on under the bar instead */
+  body:has([data-full-screen]) {
+    padding-bottom: 0;
+  }
 }
 
 /* A tap you can feel: buttons and cards give a little as they're pressed */

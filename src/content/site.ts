@@ -19,6 +19,143 @@ export const ABOUT_HEADLINE = "We film what is real";
 export const ABOUT_INTRO =
   "Insight Lab, a non-fiction studio by Famecast. Documentaries, series and true stories, told with care from first question to final cut.";
 
+/*
+  About page, the top: "Know us from the perspective of you". Pick who you
+  are and the page tells you what Insight Lab makes for you. `clients` are
+  names from WORK_CLIENTS (their films and emblems are shown); leave it empty
+  where we haven't worked with one yet (the studio's own films are shown).
+  `ask` is the subject line of the email it offers.
+*/
+export const ABOUT_PERSPECTIVE_TITLE = "Know us from the perspective of you";
+export type PerspectiveId = "ngo" | "corporate" | "government" | "real-estate" | "university";
+export const ABOUT_PERSPECTIVES: {
+  id: PerspectiveId;
+  label: string;
+  title: string;
+  text: string;
+  offers: { title: string; text: string }[];
+  clients: string[];
+  ask: string;
+}[] = [
+  {
+    id: "ngo",
+    label: "NGO",
+    title: "Stories that move people to act",
+    text: "We film the people and places your work reaches, so donors, partners and the public can see the change for themselves, in the words of those who lived it.",
+    offers: [
+      {
+        title: "Impact documentaries",
+        text: "Your programme on the ground, told through the people it serves.",
+      },
+      {
+        title: "Campaign films",
+        text: "Short true stories that open hearts and wallets, made for every screen.",
+      },
+      {
+        title: "Reports on film",
+        text: "Your year, or a project's results, as a film people actually watch.",
+      },
+    ],
+    clients: ["MLINDA Charitable Trust", "Better World Foundation"],
+    ask: "A film for our NGO",
+  },
+  {
+    id: "corporate",
+    label: "Corporate",
+    title: "Your work, told as a true story",
+    text: "Non-fiction films about your people, your craft and the good your company does, told with a documentary eye rather than as an advert.",
+    offers: [
+      {
+        title: "Brand documentaries",
+        text: "Who you are and why it matters, through real people and real places.",
+      },
+      {
+        title: "CSR and sustainability films",
+        text: "The change your programmes make, shown honestly and on the ground.",
+      },
+      {
+        title: "Culture and leadership stories",
+        text: "The people behind the name, for your teams, investors and hires.",
+      },
+    ],
+    clients: [],
+    ask: "A film for our company",
+  },
+  {
+    id: "government",
+    label: "Government Institution",
+    title: "Public programmes, seen through the people they reach",
+    text: "We document schemes and initiatives where they happen, in the voices of the citizens they serve, for ministries, departments and the public.",
+    offers: [
+      {
+        title: "Scheme documentaries",
+        text: "How a programme works on the ground, from policy to a family's life.",
+      },
+      {
+        title: "Impact stories",
+        text: "Short films of real change, for outreach, reviews and the media.",
+      },
+      {
+        title: "Docu-series",
+        text: "A state or a mission told across episodes, district by district.",
+      },
+    ],
+    clients: [
+      "Central Govt. of India",
+      "Chhattisgarh Govt.",
+      "Jharkhand Govt.",
+      "Odisha Govt.",
+      "NABARD",
+      "SIDHKOFED",
+    ],
+    ask: "A film for our department",
+  },
+  {
+    id: "real-estate",
+    label: "Real Estate Company",
+    title: "The story of a place, before it's built and after",
+    text: "Films about the land, the people and the craft behind a project, made to last longer than a sales video and to be trusted more.",
+    offers: [
+      {
+        title: "Project documentaries",
+        text: "From the first drawing to the first family moving in.",
+      },
+      {
+        title: "Craft and construction stories",
+        text: "The hands and the thinking behind what you build.",
+      },
+      {
+        title: "Neighbourhood films",
+        text: "The place and the community your project becomes part of.",
+      },
+    ],
+    clients: [],
+    ask: "A film for our project",
+  },
+  {
+    id: "university",
+    label: "University",
+    title: "Research and campus life, told truthfully",
+    text: "Documentaries about your research, your people and what they change in the world, for students, funders and everyone who should know.",
+    offers: [
+      {
+        title: "Research films",
+        text: "The question, the work and why it matters, made clear without dumbing it down.",
+      },
+      {
+        title: "Campus and alumni stories",
+        text: "Real students and graduates, in their own words.",
+      },
+      {
+        title: "Outreach series",
+        text: "Your institution's work, episode by episode, for the public and partners.",
+      },
+    ],
+    clients: [],
+    ask: "A film for our university",
+  },
+];
+
 /* About page, "Expertise": `tags` is the small line under each description. */
 export const EXPERTISE = [
   {

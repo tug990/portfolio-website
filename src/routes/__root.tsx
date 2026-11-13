@@ -63,8 +63,8 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const path = useRouterState({ select: (s) => s.location.pathname });
-  // The landing (/) and the gallery (/gallery) fill the screen: no footer
-  const isHome = path === "/" || path === "/gallery";
+  // The landing (/), the gallery (/gallery) and the About page's sky (/about) fill the screen: no footer
+  const isHome = path === "/" || path === "/gallery" || path === "/about" || path === "/about/";
   // PlayerProvider and MiniPlayer: a film keeps playing, in the corner, across pages
   return (
     <PlayerProvider>
