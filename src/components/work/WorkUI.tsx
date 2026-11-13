@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import type { Project } from "@/content/projects";
+import type { WorkClient } from "@/content/site";
 import { Poster } from "@/components/Poster";
-import { SORTS, UI, coverOf, hasFilm, type SortKey } from "@/lib/work";
+import { SORTS, UI, coverOf, coverSources, hasFilm, type SortKey } from "@/lib/work";
+import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 
 /*
@@ -13,8 +15,9 @@ import { cn } from "@/lib/utils";
 
 /* The lavender page and the white panel the Work page and a film's page sit on (`wide`: the film page's wider panel). */
 export function WorkBackdrop({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
+  // clipped sideways only, and the panel not at all: menus may hang below it
   return (
-    <div className="relative overflow-hidden bg-[#f3f1fa]">
+    <div className="relative overflow-x-clip bg-[#f3f1fa]">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -29,7 +32,7 @@ export function WorkBackdrop({ children, wide }: { children: React.ReactNode; wi
           wide ? "max-w-[1400px]" : "max-w-6xl",
         )}
       >
-        <div className="relative overflow-hidden rounded-[24px] border border-white bg-white/85 px-4 pb-8 pt-6 shadow-[0_30px_80px_-40px_rgba(80,60,160,0.35)] sm:px-7">
+        <div className="relative rounded-[24px] border border-white bg-white/85 px-4 pb-8 pt-6 shadow-[0_30px_80px_-40px_rgba(80,60,160,0.35)] sm:px-7">
           {children}
         </div>
       </div>
@@ -40,41 +43,219 @@ export function WorkBackdrop({ children, wide }: { children: React.ReactNode; wi
 /* ---------- sorting ---------- */
 
 /*
-  The sort menu: a pill showing the current order ("Year (Newest First)", or
-  just "Newest" on phones, where "Sort by:" hides too, to keep its line short).
-  The browser's own picker opens on tap: the real <select> lies over the pill.
+  Sort by: a glass button showing the current order ("Year (Newest First)",
+  or just "Newest" on phones, where "Sort by:" hides too), opening a glass
+  menu of the orders with a check by the current one. (lib/menu.ts)
 */
 export function SortMenu({ value, onChange }: { value: SortKey; onChange: (k: SortKey) => void }) {
+  const m = useMenu();
   return (
-    <label className="flex items-center gap-2.5" style={UI}>
+    <div ref={m.root} className="relative flex items-center gap-2.5" style={UI}>
       <span className="hidden text-sm font-medium text-black/80 sm:inline">Sort by:</span>
-      <span className="relative flex h-9 items-center gap-1 rounded-full border border-[#dcd8ef] bg-white pl-3 pr-2 text-[13px] font-medium sm:gap-1.5 sm:pr-3 sm:text-sm hover:bg-[#f7f6fc] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#6d7bff]/40 sm:pl-4">
+      <button
+        ref={m.trigger}
+        type="button"
+        onClick={() => m.setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={m.open}
+        aria-label={`Sort by: ${SORTS[value].label}`}
+        className={cn(
+          "flex h-9 items-center gap-1 rounded-full pl-3 pr-2 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-[#6d7bff]/50 sm:gap-1.5 sm:pl-4 sm:pr-3 sm:text-sm",
+          GLASS_PILL,
+        )}
+      >
         <span className="whitespace-nowrap sm:hidden">{SORTS[value].short}</span>
         <span className="hidden whitespace-nowrap sm:inline">{SORTS[value].label}</span>
-        <svg
-          aria-hidden
-          viewBox="0 0 24 24"
-          className="h-4 w-4 shrink-0"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value as SortKey)}
+        <Chevron className={cn("transition-transform", m.open && "rotate-180")} />
+      </button>
+      {m.open && (
+        <div
+          role="listbox"
           aria-label="Sort by"
-          className="absolute inset-0 cursor-pointer appearance-none rounded-full opacity-0"
+          className={cn(
+            "absolute right-0 top-full z-30 mt-2 w-56 origin-top-right rounded-2xl p-1.5",
+            GLASS_PANEL,
+            MENU_IN,
+          )}
         >
           {(Object.keys(SORTS) as SortKey[]).map((k) => (
-            <option key={k} value={k}>
+            <button
+              key={k}
+              type="button"
+              role="option"
+              aria-selected={k === value}
+              onClick={() => {
+                onChange(k);
+                m.choose();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[14px] font-medium outline-none hover:bg-white/80 focus-visible:bg-white/80"
+            >
+              <Check on={k === value} />
               {SORTS[k].label}
-            </option>
+            </button>
           ))}
-        </select>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* The rules under a client's words, as on their badges */
+const RULES = {
+  tricolour: "linear-gradient(90deg, #ff7a1a, #ffb27a 28%, #f3f1ea 50%, #86c98a 72%, #1e8a3c)",
+  sidhkofed: "linear-gradient(90deg, #ef5a1c, #f7b52a 38%, #8cc34a 68%, #1d6b2c)",
+} as const;
+
+/*
+  A client in a glass pill, iPhone style: frosted translucent white over a
+  blur, a bright top edge and a light catch across its upper half, a soft
+  shadow. Inside, their exact emblem │ their words as on their badge (a small
+  line, a big one in their colour, their rule), or for clients without a
+  separate emblem their whole logo. `inline`: the emblem and big word alone,
+  no pill (inside a button that's already glass).
+*/
+export function ClientBadge({
+  client,
+  inline,
+  active,
+}: {
+  client: WorkClient;
+  inline?: boolean;
+  active?: boolean;
+}) {
+  const font = { fontFamily: '"Jost", ui-sans-serif, system-ui, sans-serif' };
+  if (inline)
+    return (
+      <span className="flex min-w-0 items-center gap-1.5" style={font}>
+        <img src={client.mark} alt="" className="h-6 w-auto shrink-0" />
+        {!client.markIsLogo && (
+          <span
+            className="hidden truncate text-[12px] font-semibold uppercase sm:block"
+            style={{ color: client.color }}
+          >
+            {client.big}
+          </span>
+        )}
       </span>
-    </label>
+    );
+  return (
+    <span
+      className={cn(
+        "relative flex h-[48px] w-full items-center justify-center gap-1.5 overflow-hidden rounded-full px-2.5 sm:h-[52px] sm:gap-2 sm:px-3.5",
+        "border border-white/80 bg-white/55 ring-1 ring-black/[0.06] backdrop-blur-xl backdrop-saturate-150",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(20,20,60,0.05),0_8px_20px_-10px_rgba(30,30,70,0.4)]",
+        active && "ring-2 ring-[#6d7bff]",
+      )}
+      style={font}
+    >
+      {/* light across the top of the glass */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-4 top-[1px] h-[45%] rounded-b-[40%] bg-gradient-to-b from-white/80 to-white/0"
+      />
+      {client.markIsLogo ? (
+        <img
+          src={client.mark}
+          alt=""
+          className="relative h-8 w-auto max-w-[88%] object-contain sm:h-9"
+        />
+      ) : (
+        <>
+          <img src={client.mark} alt="" className="relative h-7 w-auto shrink-0 sm:h-8" />
+          <span aria-hidden className="relative h-6 w-px shrink-0 bg-[#1b2350]/40 sm:h-7" />
+          <span className="relative min-w-0 text-left">
+            {client.small && (
+              <span className="line-clamp-3 text-[7px] font-medium uppercase leading-[1.15] tracking-[0.05em] text-[#1b2350]/85 sm:text-[7.5px]">
+                {client.small}
+              </span>
+            )}
+            <span
+              className="block truncate text-[11px] font-semibold uppercase leading-[1.15] tracking-[-0.01em] sm:text-[13px] sm:tracking-normal"
+              style={{ color: client.color }}
+            >
+              {client.big}
+            </span>
+            {client.rule && (
+              <span
+                aria-hidden
+                className="mt-[3px] block h-[2px] w-full rounded-full"
+                style={{ background: RULES[client.rule] }}
+              />
+            )}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/* ⌄ */
+export function Chevron({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className={cn("h-4 w-4 shrink-0", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+/* ✓ by the chosen option (an empty space by the others, so they line up) */
+export function Check({ on }: { on: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className={cn("h-4 w-4 shrink-0 text-[#4b5bff]", !on && "invisible")}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
+/*
+  A film's picture, light: the browser picks the size it needs from the
+  YouTube cover's WebP sizes (`sizes` says how wide it shows), loads it lazily
+  unless `eager` (the first thing you see), and falls back to a JPEG every
+  video has if a WebP size is missing.
+*/
+export function Cover({
+  project,
+  sizes,
+  eager,
+  className,
+}: {
+  project: Project;
+  sizes: string;
+  eager?: boolean;
+  className?: string;
+}) {
+  const s = coverSources(project);
+  const [failed, setFailed] = useState(false);
+  if (!s) return null;
+  const useFallback = failed && !!s.fallback;
+  return (
+    <img
+      src={useFallback ? s.fallback : s.src}
+      srcSet={useFallback ? undefined : s.srcSet}
+      sizes={s.srcSet && !useFallback ? sizes : undefined}
+      alt=""
+      loading={eager ? "eager" : "lazy"}
+      fetchPriority={eager ? "high" : undefined}
+      decoding="async"
+      onError={() => s.fallback && !failed && setFailed(true)}
+      className={className}
+    />
   );
 }
 
@@ -92,10 +273,9 @@ export function VideoCard({ project }: { project: Project }) {
         aria-label={project.title}
       >
         {cover ? (
-          <img
-            src={cover}
-            alt=""
-            loading="lazy"
+          <Cover
+            project={project}
+            sizes="(min-width: 1024px) 270px, (min-width: 768px) 33vw, (min-width: 640px) 50vw, 100vw"
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
           />
         ) : (

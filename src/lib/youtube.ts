@@ -11,8 +11,23 @@ export function youtubeId(url: string) {
   return m ? m[1] : undefined;
 }
 
-/* The video's cover image (YouTube's largest). */
-export const youtubeCover = (id: string) => `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
+/* The video's cover image: YouTube's largest, as WebP (about half the size of its JPEG). */
+export const youtubeCover = (id: string) => `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp`;
+
+/*
+  The cover in sizes for the browser to choose from (srcset), all WebP:
+  320 x 180, 640 (4:3, the picture letterboxed: a 16:9 frame crops the bars
+  off), and 1280 x 720. A small card loads ~20 KB instead of ~90 KB.
+*/
+export const youtubeCoverSet = (id: string) =>
+  [
+    `https://i.ytimg.com/vi_webp/${id}/mqdefault.webp 320w`,
+    `https://i.ytimg.com/vi_webp/${id}/sddefault.webp 640w`,
+    `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp 1280w`,
+  ].join(", ");
+
+/* A JPEG every video has, should a WebP size be missing. */
+export const youtubeCoverFallback = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 
 /* youtube-nocookie.com is YouTube's privacy-enhanced mode. */
 export const YT_HOST = "https://www.youtube-nocookie.com";

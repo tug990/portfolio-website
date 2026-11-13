@@ -5,7 +5,7 @@ export const SITE = {
   tagline: "Where the light comes through.",
   description:
     "Insight Lab is a non-fiction studio by Famecast. A portfolio of documentaries, series and stories rooted in what is real.",
-  email: "hello@insightlab.example",
+  email: "info@insightlab.media",
   url: "https://example.com",
   socials: [
     { label: "Instagram", href: "https://instagram.com/" },
@@ -175,73 +175,87 @@ export const WORK_PAGE = {
 };
 
 /*
-  The studio's clients. On the Work page, "Initiatives of": a badge button per
-  client, in this order; tapping one shows only that client's films (a film is
-  theirs when its `client` in projects.ts is exactly this `name`). On a film's
-  page, its client's card: their emblem, their name (in `color`), and `about`.
+  The studio's clients. On the Work page, "Initiatives of": a glass pill per
+  client, in this order (ClientBadge in components/work/WorkUI.tsx), and
+  picking one shows only that client's films (a film is theirs when its
+  `client` in projects.ts is exactly this `name`). On a film's page, the
+  client card: their emblem, their name (in `color`), and `about`.
 
-    logo        the badge (pill) image, 480 x 160, in public/clients/
-    mark        the emblem alone, cut out of the badge, in public/clients/marks/
-    markIsLogo  the mark is the whole logo, name included (no name set beside it)
-    color       their name's colour on the card, from their badge
-    about       a line about them on the card (optional)
+    mark        their emblem, exactly as on their badge (cut out, background
+                removed), in public/clients/marks/
+    markIsLogo  the mark is their whole logo, name included (no words beside it)
+    small, big  the words beside the emblem on their pill, as on their badge:
+                a small line above, a big line in `color`
+    rule        the line under the words: India's tricolour, or SIDHKOFED's
+    color       their name's colour
+    about       a line about them on a film's page (optional)
 */
 export type WorkClient = {
   name: string;
-  logo: string;
   mark: string;
   markIsLogo?: boolean;
+  small?: string;
+  big?: string;
+  rule?: "tricolour" | "sidhkofed";
   color: string;
   about?: string;
 };
 export const WORK_CLIENTS: WorkClient[] = [
   {
     name: "Central Govt. of India",
-    logo: "/clients/central-govt-of-india.webp",
     mark: "/clients/marks/central-govt-of-india.webp",
+    small: "Central",
+    big: "Govt. of India",
+    rule: "tricolour",
     color: "#15172b",
   },
   {
     name: "Chhattisgarh Govt.",
-    logo: "/clients/chhattisgarh-govt.webp",
     mark: "/clients/marks/chhattisgarh-govt.webp",
+    small: "Government of",
+    big: "Chhattisgarh",
+    rule: "tricolour",
     color: "#14592a",
   },
   {
     name: "Jharkhand Govt.",
-    logo: "/clients/jharkhand-govt.webp",
     mark: "/clients/marks/jharkhand-govt.webp",
+    small: "Government of",
+    big: "Jharkhand",
+    rule: "tricolour",
     color: "#14522a",
   },
   {
     name: "Odisha Govt.",
-    logo: "/clients/odisha-govt.webp",
     mark: "/clients/marks/odisha-govt.webp",
+    small: "Government of",
+    big: "Odisha",
+    rule: "tricolour",
     color: "#13256b",
   },
   {
     name: "NABARD",
-    logo: "/clients/nabard.webp",
     mark: "/clients/marks/nabard.webp",
+    small: "National Bank for Agriculture and Rural Development",
+    big: "NABARD",
     color: "#176b2c",
     about: "Rural development, livelihoods and sustainable growth.",
   },
   {
     name: "SIDHKOFED",
-    logo: "/clients/sidhkofed.webp",
     mark: "/clients/marks/sidhkofed.webp",
+    big: "SIDHKOFED",
+    rule: "sidhkofed",
     color: "#14522a",
   },
   {
     name: "MLINDA Charitable Trust",
-    logo: "/clients/mlinda.webp",
     mark: "/clients/marks/mlinda.webp",
     markIsLogo: true,
     color: "#111111",
   },
   {
     name: "Better World Foundation",
-    logo: "/clients/better-world-foundation.webp",
     mark: "/clients/marks/better-world-foundation.webp",
     markIsLogo: true,
     color: "#13426b",
@@ -251,5 +265,5 @@ export const WORK_CLIENTS: WorkClient[] = [
 /* Footer call to action. */
 export const CTA = {
   title: "Tell us the story you want to tell.",
-  call: { label: "Book a call", href: "mailto:hello@insightlab.example?subject=A%20call" },
+  call: { label: "Book a call", href: "mailto:info@insightlab.media?subject=A%20call" },
 };

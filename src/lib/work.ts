@@ -1,5 +1,5 @@
 import type { Project } from "@/content/projects";
-import { youtubeCover, youtubeId } from "@/lib/youtube";
+import { youtubeCover, youtubeCoverFallback, youtubeCoverSet, youtubeId } from "@/lib/youtube";
 
 /* Values the Work page shares with its components (components/work/WorkUI.tsx). */
 
@@ -12,6 +12,20 @@ export function coverOf(p: Project) {
   const id = p.youtube ? youtubeId(p.youtube) : undefined;
   return id ? youtubeCover(id) : undefined;
 }
+/*
+  A film's picture with its sizes, for <img src srcSet>: its own image, or its
+  YouTube cover in several sizes (WebP), with a JPEG to fall back on.
+*/
+export function coverSources(
+  p: Project,
+): { src: string; srcSet?: string; fallback?: string } | undefined {
+  if (p.image) return { src: p.image };
+  const id = p.youtube ? youtubeId(p.youtube) : undefined;
+  return id
+    ? { src: youtubeCover(id), srcSet: youtubeCoverSet(id), fallback: youtubeCoverFallback(id) }
+    : undefined;
+}
+
 export const hasFilm = (p: Project) => !!(p.youtube || p.trailer || p.video);
 
 /* Ways to sort a list of films */

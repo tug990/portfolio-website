@@ -31,7 +31,8 @@ export function SiteNav() {
         )}
       >
         <Link to="/" className="flex items-center gap-3" aria-label={SITE.name}>
-          <img src="/brand/mark-transparent.webp" alt="" className="h-7 w-auto" />
+          {/* a small copy (1.5 KB) of brand/mark-transparent.webp, which the gallery uses large */}
+          <img src="/brand/mark-nav.webp" alt="" width={45} height={84} className="h-7 w-auto" />
           <span className="tracked hidden text-[11px] font-medium sm:inline">{SITE.name}</span>
         </Link>
         <ul className="flex items-center gap-6">

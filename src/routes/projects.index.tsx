@@ -1,9 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PROJECTS, type Project } from "@/content/projects";
 import { WORK_CLIENTS, WORK_PAGE } from "@/content/site";
 import { Poster } from "@/components/Poster";
-import { PlayButton, SortMenu, VideoCard, WorkBackdrop } from "@/components/work/WorkUI";
+import {
+  Check,
+  Chevron,
+  ClientBadge,
+  Cover,
+  PlayButton,
+  SortMenu,
+  VideoCard,
+  WorkBackdrop,
+} from "@/components/work/WorkUI";
+import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
 import { UI, coverOf, hasFilm, sortFilms, type SortKey } from "@/lib/work";
 import { seo } from "@/lib/seo";
 import { cn } from "@/lib/utils";
@@ -55,7 +65,7 @@ function Work() {
 
       <section aria-labelledby="projects" className="mt-6">
         {/* One line: PROJECTS (n) on the left; Initiatives of and Sort by on the right */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="relative flex items-center justify-between gap-2">
           <h2
             id="projects"
             className="tracked whitespace-nowrap text-[12px] font-semibold tracking-[0.16em] sm:text-sm sm:tracking-[0.32em]"
@@ -90,10 +100,12 @@ function Work() {
 }
 
 /*
-  "Initiatives of": one button on the Projects line, showing the chosen
-  client's badge (or "All"). It opens the badges (site.ts WORK_CLIENTS) and
-  "All films": in a dropdown under it on tablets and up, in a menu sliding up
-  from the bottom on phones. Picking one shows only that client's films.
+  "Initiatives of": a glass button on the Projects line showing the chosen
+  client's badge (or "All"). It opens "All films" and the clients' badges
+  (site.ts WORK_CLIENTS): a glass dropdown under the Projects line on tablets
+  and up (anchored to the whole line, so it always fits inside the panel), a
+  glass panel rising from the bottom on phones. Picking one shows only that
+  client's films. Behaviour and glass: lib/menu.ts.
 */
 function InitiativesFilter({
   selected,
@@ -102,84 +114,50 @@ function InitiativesFilter({
   selected: string | null;
   onSelect: (name: string | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
+  const m = useMenu({ lockScroll: () => window.matchMedia("(max-width: 639px)").matches });
   const current = WORK_CLIENTS.find((c) => c.name === selected);
-
-  useEffect(() => {
-    if (!open) return;
-    const phone = window.matchMedia("(max-width: 639px)").matches;
-    // phones: the page stays put behind the menu
-    const before = document.body.style.overflow;
-    if (phone) document.body.style.overflow = "hidden";
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    // the dropdown closes when you click elsewhere (the phone menu has its own backdrop)
-    const away = (e: PointerEvent) => {
-      if (!phone && !root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("keydown", esc);
-    document.addEventListener("pointerdown", away);
-    root.current
-      ?.querySelector<HTMLElement>(
-        `[data-menu="${phone ? "sheet" : "drop"}"] :is(button[aria-pressed=true], button)`,
-      )
-      ?.focus();
-    const t = trigger.current;
-    return () => {
-      document.body.style.overflow = before;
-      document.removeEventListener("keydown", esc);
-      document.removeEventListener("pointerdown", away);
-      t?.focus();
-    };
-  }, [open]);
 
   const pick = (name: string | null) => {
     onSelect(name);
-    setOpen(false);
+    m.choose();
   };
 
-  // "All films" and a badge per client: in the dropdown and the phone menu alike
-  const choices = (cols: string) => (
+  // "All films", then a badge per client: in the dropdown and the phone panel alike
+  const choices = (
     <>
       <button
         type="button"
+        role="option"
+        aria-selected={!selected}
         onClick={() => pick(null)}
-        aria-pressed={!selected}
         style={UI}
         className={cn(
-          "h-10 w-full rounded-full border text-sm font-semibold",
+          "flex h-10 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#6d7bff]",
           !selected
-            ? "border-[#6d7bff] bg-[#f1f0ff] text-[#262f6b]"
-            : "border-[#dcd8ef] text-black/70 hover:bg-[#f7f6fc]",
+            ? "bg-white/90 text-[#262f6b] shadow-[0_1px_6px_-2px_rgba(40,30,90,0.3)] ring-1 ring-[#6d7bff]/60"
+            : "bg-white/40 text-black/70 ring-1 ring-black/[0.06] hover:bg-white/80",
         )}
       >
+        <Check on={!selected} />
         All films
       </button>
-      <ul className={cn("mt-2.5 grid gap-2", cols)}>
+      <ul className="mt-2.5 grid grid-cols-2 gap-2">
         {WORK_CLIENTS.map((c) => {
           const on = selected === c.name;
           return (
             <li key={c.name}>
               <button
                 type="button"
-                onClick={() => pick(c.name)}
-                aria-pressed={on}
+                role="option"
+                aria-selected={on}
                 aria-label={`Initiatives of ${c.name}`}
+                onClick={() => pick(c.name)}
                 className={cn(
                   "block w-full rounded-full outline-none transition duration-200 focus-visible:ring-2 focus-visible:ring-[#6d7bff]",
                   "hover:-translate-y-0.5 hover:drop-shadow-[0_6px_10px_rgba(110,90,200,0.25)]",
-                  on && "ring-2 ring-[#6d7bff] ring-offset-1",
                 )}
               >
-                <img
-                  src={c.logo}
-                  alt=""
-                  width={480}
-                  height={160}
-                  loading="lazy"
-                  className="block h-auto w-full"
-                />
+                <ClientBadge client={c} active={on} />
               </button>
             </li>
           );
@@ -189,19 +167,23 @@ function InitiativesFilter({
   );
 
   return (
-    <div ref={root} className="relative flex items-center gap-2.5" style={UI}>
+    // not positioned itself: the dropdown hangs from the whole Projects line
+    <div ref={m.root} className="flex items-center gap-2.5" style={UI}>
       <span className="hidden text-sm font-medium text-black/80 sm:inline">Initiatives of:</span>
       <button
-        ref={trigger}
+        ref={m.trigger}
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
+        onClick={() => m.setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={m.open}
         aria-label={`Initiatives of: ${current ? current.name : "all"}`}
-        className="flex h-9 items-center gap-1 rounded-full border border-[#dcd8ef] bg-white pl-1.5 pr-2 text-sm font-medium sm:gap-1.5 sm:pl-2 sm:pr-3 hover:bg-[#f7f6fc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d7bff]/40"
+        className={cn(
+          "flex h-9 items-center gap-1 rounded-full pl-1.5 pr-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-[#6d7bff]/50 sm:gap-1.5 sm:pl-2 sm:pr-3",
+          GLASS_PILL,
+        )}
       >
         {current ? (
-          <img src={current.logo} alt="" className="-my-1 h-6 w-auto sm:h-8" />
+          <ClientBadge client={current} inline />
         ) : (
           <span className="flex items-center gap-1.5 pl-1 sm:pl-1.5">
             {/* a funnel: this filters */}
@@ -219,59 +201,54 @@ function InitiativesFilter({
             <span className="hidden sm:inline">All</span>
           </span>
         )}
-        {/* down on wider screens (a dropdown); up on phones (the menu rises) */}
-        <svg
-          aria-hidden
-          viewBox="0 0 24 24"
-          className={cn(
-            "h-4 w-4 shrink-0 transition-transform",
-            open && "sm:rotate-180",
-            "max-sm:rotate-180",
-          )}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        {/* down on wider screens (a dropdown); up on phones (the panel rises) */}
+        <Chevron
+          className={cn("transition-transform max-sm:rotate-180", m.open && "sm:rotate-180")}
+        />
       </button>
 
-      {open && (
+      {m.open && (
         <>
-          {/* tablets and up: a dropdown under the button */}
+          {/* tablets and up: a glass dropdown under the Projects line, at its right */}
           <div
-            data-menu="drop"
-            role="dialog"
+            role="listbox"
             aria-label="Initiatives of"
-            className="absolute right-0 top-11 z-30 hidden w-[440px] rounded-2xl bg-white p-3 shadow-[0_12px_40px_-8px_rgba(40,30,90,0.28),0_0_0_1px_rgba(0,0,0,0.04)] duration-150 animate-in fade-in slide-in-from-top-1 sm:block"
+            className={cn(
+              "absolute right-0 top-full z-30 mt-2 hidden w-[min(400px,100%)] origin-top-right rounded-3xl p-3 sm:block",
+              GLASS_PANEL,
+              MENU_IN,
+            )}
           >
-            {choices("grid-cols-2")}
+            {choices}
           </div>
 
-          {/* phones: a menu sliding up from the bottom of the screen */}
+          {/* phones: a glass panel rising from the bottom of the screen */}
           <div className="fixed inset-0 z-50 sm:hidden">
             <button
               type="button"
               aria-label="Close"
               tabIndex={-1}
-              onClick={() => setOpen(false)}
-              className="absolute inset-0 bg-black/40 duration-200 animate-in fade-in"
+              onClick={() => m.setOpen(false)}
+              className="absolute inset-0 bg-black/30 backdrop-blur-[2px] duration-200 animate-in fade-in"
             />
             <div
-              data-menu="sheet"
-              role="dialog"
+              role="listbox"
               aria-modal="true"
               aria-label="Initiatives of"
-              className="absolute inset-x-0 bottom-0 max-h-[80vh] overflow-y-auto rounded-t-3xl bg-white px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_40px_rgba(40,30,90,0.25)] duration-300 animate-in slide-in-from-bottom"
+              className={cn(
+                "absolute inset-x-0 bottom-0 max-h-[80vh] overflow-y-auto rounded-t-[28px] px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 duration-300 animate-in slide-in-from-bottom",
+                GLASS_PANEL,
+                "bg-white/75",
+              )}
             >
-              <span aria-hidden className="mx-auto block h-1 w-10 rounded-full bg-black/15" />
+              <span aria-hidden className="mx-auto block h-1 w-10 rounded-full bg-black/20" />
               <div className="mb-3 mt-3 flex items-center justify-between">
                 <h3 className="tracked text-[12px] font-semibold">Initiatives of</h3>
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={() => m.setOpen(false)}
                   aria-label="Close"
-                  className="grid h-9 w-9 place-items-center rounded-full text-black/70 hover:bg-black/5"
+                  className="grid h-9 w-9 place-items-center rounded-full bg-white/60 text-black/70 ring-1 ring-black/[0.06] hover:bg-white/90"
                 >
                   <svg
                     aria-hidden
@@ -285,7 +262,7 @@ function InitiativesFilter({
                   </svg>
                 </button>
               </div>
-              {choices("grid-cols-2")}
+              {choices}
             </div>
           </div>
         </>
@@ -297,7 +274,7 @@ function InitiativesFilter({
 /* ---------- the header: the picture, with the words over its left side ---------- */
 
 /*
-  public/brand/work-header.webp (2000 x 667): sunrise over forested hills on
+  public/brand/work-header-{1200,2000,phone}.webp (2000 x 667 at full size): sunrise over forested hills on
   the left, a glass prism splitting the light on the right. The words sit over
   the sunrise on a soft shade; on phones the picture is cropped taller and
   shifted right, so the prism stays in view, with the words along the bottom.
@@ -308,11 +285,26 @@ function Hero() {
     // Its height is the words plus room above and below them (never less than a
     // pleasing strip of the picture), so the words always fit with space around
     <header className="relative flex min-h-[300px] items-end overflow-hidden rounded-2xl bg-[#1d1b2a] sm:min-h-[260px] sm:items-center lg:min-h-[330px]">
-      <img
-        src="/brand/work-header.webp"
-        alt=""
-        className="absolute inset-0 h-full w-full object-cover object-[78%_50%] sm:object-[70%_50%] lg:object-center"
-      />
+      {/*
+        Light, and as sharp as before: phones (where it's cropped tall) get a
+        full-resolution crop of the prism side (60 KB); wider screens the
+        1200 or 2000 px picture as the screen needs (55 / 106 KB). Was 200 KB
+        everywhere.
+      */}
+      <picture>
+        <source media="(max-width: 639px)" srcSet="/brand/work-header-phone.webp" />
+        <img
+          src="/brand/work-header-1200.webp"
+          srcSet="/brand/work-header-1200.webp 1200w, /brand/work-header-2000.webp 2000w"
+          sizes="(min-width: 1152px) 1100px, 960px"
+          width={2000}
+          height={667}
+          fetchPriority="high"
+          decoding="async"
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover object-[70%_50%] sm:object-[70%_50%] lg:object-center"
+        />
+      </picture>
       {/* shade under the words: from below on phones, from the left on wider screens */}
       <span
         aria-hidden
@@ -371,9 +363,9 @@ function FeaturedFilm({ project }: { project: Project }) {
       className="group relative mt-4 block aspect-[16/9] overflow-hidden rounded-2xl bg-black sm:aspect-[4/1] lg:aspect-[5.6/1]"
     >
       {cover ? (
-        <img
-          src={cover}
-          alt=""
+        <Cover
+          project={project}
+          sizes="(min-width: 1152px) 1100px, 100vw"
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
         />
       ) : (
