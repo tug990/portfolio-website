@@ -2,6 +2,8 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { SITE } from "@/content/site";
 import { cn } from "@/lib/utils";
 import { useStageTone } from "@/lib/stage";
+import { worldOf } from "@/lib/perspective";
+import { PerspectiveSwitch } from "@/components/PerspectiveMenu";
 
 const LINKS = [
   { to: "/projects", label: "Work" },
@@ -21,7 +23,10 @@ const ICONS: Record<(typeof LINKS)[number]["to"], string> = {
   landing; Work / About / Contact). Phones: a floating glass bar of icons
   along the bottom, as an app's tab bar (Home: the landing; Work; About;
   Contact); the room it takes is --dock (styles.css), so pages keep room for
-  it and the mini player sits above it. (The gallery is reached from its card
+  it and the mini player sits above it. In a perspective's world
+  (/about/<perspective>) the top bar's About becomes "About · NGO", a menu to
+  change perspective (PerspectiveSwitch; phones change it from the world's own
+  sticky bar). (The gallery is reached from its card
   above every footer, "Step into the light".) Both carry `data-site-nav`, so
   the landing's way in can hide them.
 */
@@ -31,6 +36,8 @@ export function SiteNav() {
   // the landing and the gallery: full-screen stages (light, or dark when they say so)
   const isHome = path === "/" || path === "/gallery";
   const tone = useStageTone();
+  // in a perspective's world (/about/<perspective>), About becomes the menu to change it
+  const world = worldOf(path);
   const onDark = isHome && tone === "dark"; // the home page is light now unless it says otherwise
 
   return (
@@ -42,10 +49,7 @@ export function SiteNav() {
       >
         <nav
           className={cn(
-            "mx-auto flex h-14 max-w-5xl items-center justify-between rounded-xl border px-4 transition-colors",
-            // No background blur over the 3D gallery: on phones, blurring a 3D scene
-            // every frame is expensive. A more solid bar reads just as well there.
-            isHome ? "" : "backdrop-blur-md",
+            "relative isolate mx-auto flex h-14 max-w-5xl items-center justify-between rounded-xl border px-4 transition-colors",
             onDark
               ? "border-white/10 bg-black/40 text-white"
               : isHome
@@ -53,26 +57,44 @@ export function SiteNav() {
                 : "border-black/5 bg-white/50 text-black",
           )}
         >
+          {/*
+            The frosted blur, as a layer behind the bar's contents (on the bar
+            itself, a menu opening from it, the perspective menu, couldn't
+            frost what's behind it). No blur over the 3D gallery: on phones,
+            blurring a 3D scene every frame is expensive; a more solid bar
+            reads just as well there.
+          */}
+          {!isHome && (
+            <span aria-hidden className="absolute inset-0 -z-10 rounded-xl backdrop-blur-md" />
+          )}
           <Link to="/" className="flex items-center gap-3" aria-label={SITE.name}>
             {/* a small copy (1.5 KB) of brand/mark-transparent.webp, which the gallery uses large */}
             <img src="/brand/mark-nav.webp" alt="" width={45} height={84} className="h-7 w-auto" />
             <span className="tracked text-[11px] font-medium">{SITE.name}</span>
           </Link>
           <ul className="flex items-center gap-6">
-            {LINKS.map((l) => (
-              <li key={l.to}>
-                <Link
-                  to={l.to}
-                  className={cn(
-                    "tracked text-[11px] transition-colors",
-                    onDark ? "text-white/55 hover:text-white" : "text-neutral-500 hover:text-black",
-                  )}
-                  activeProps={{ className: onDark ? "!text-white" : "!text-black" }}
-                >
-                  {l.label}
-                </Link>
-              </li>
-            ))}
+            {LINKS.map((l) =>
+              l.to === "/about" && world ? (
+                <li key={l.to}>
+                  <PerspectiveSwitch current={world} variant="nav" />
+                </li>
+              ) : (
+                <li key={l.to}>
+                  <Link
+                    to={l.to}
+                    className={cn(
+                      "tracked text-[11px] transition-colors",
+                      onDark
+                        ? "text-white/55 hover:text-white"
+                        : "text-neutral-500 hover:text-black",
+                    )}
+                    activeProps={{ className: onDark ? "!text-white" : "!text-black" }}
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ),
+            )}
           </ul>
         </nav>
       </header>

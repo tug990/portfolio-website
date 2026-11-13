@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ABOUT_HEADLINE,
   ABOUT_INTRO,
+  ABOUT_PERSPECTIVES,
+  ABOUT_PERSPECTIVE_TITLE,
   APPROACH,
   AWARDS,
   CLIENTS,
@@ -11,9 +14,15 @@ import {
   TEAM,
   TEAM_INTRO,
   TESTIMONIALS,
+  SITE,
+  WORK_CLIENTS,
+  type PerspectiveId,
 } from "@/content/site";
 import { PROJECTS } from "@/content/projects";
 import { Poster } from "@/components/Poster";
+import { ClientBadge, VideoCard } from "@/components/work/WorkUI";
+import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
+import { PerspectiveIcon, PerspectiveSwitch } from "@/components/PerspectiveMenu";
 import { cn } from "@/lib/utils";
 
 /* Sections of the About page, top to bottom. Content lives in content/site.ts. */
@@ -583,5 +592,830 @@ export function Faq() {
 function Reveal({ children }: { children: ReactNode }) {
   return (
     <span className="block animate-in fade-in slide-in-from-top-1 duration-300">{children}</span>
+  );
+}
+
+/* ---------- the top: "Know us from the perspective of you" ---------- */
+
+/*
+  The About page: the sky, and nothing else. Clouds, and the mark as a door
+  of light standing in them; over it the question in wide-spaced capitals
+  and a glass picker of who you are, just above the door. Large screens: the
+  wide picture (public/brand/about-sky-2000/1200.webp) standing on the
+  screen's foot. Phones: a tall picture made for them (about-sky-phone.webp:
+  the gate in the middle, clouds rising either side, a sea of cloud below),
+  so the gate, the clouds and the picker sit in the middle of the frame as
+  they do on a large screen. The sky lives: mist drifts slowly over it
+  (SkyMist) and the picture breathes, very slightly. Choosing carries you
+  through the door into your world (`enter`).
+*/
+export function PerspectiveHero() {
+  const navigate = useNavigate();
+  const sky = useRef<HTMLDivElement>(null);
+  const img = useRef<HTMLImageElement>(null);
+  const [entering, setEntering] = useState(false);
+
+  // the sky drawing's push in and brightness as you go through (SkyFlow: drawn, never rescaled)
+  const view = useRef({ k: 1, bright: 1, live: false });
+
+  const enter = (id: PerspectiveId) => {
+    const go = () => navigate({ to: "/about/$perspective", params: { perspective: id } });
+    const el = img.current;
+    const box = sky.current;
+    if (!el || !box || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
+    setEntering(true);
+    const d = doorOnScreen(el);
+    const b = box.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    /*
+      A gentle push in towards the door: never more than half again its size,
+      so the photograph stays sharp (blown up further, it would blur and show
+      its pixels). The going-through is the light: see below.
+    */
+    if (view.current.live) {
+      // in the drawing itself, about the door's slot, at the screen's own resolution
+      const t0 = performance.now();
+      const push = (now: number) => {
+        const t = Math.min(1, (now - t0) / 1500);
+        const e = Math.pow(t, 2.3); // easing in, gathering pace
+        view.current.k = 1 + 0.5 * e;
+        view.current.bright = 1 + 0.25 * e;
+        if (t < 1) requestAnimationFrame(push);
+      };
+      requestAnimationFrame(push);
+      box
+        .querySelector("canvas[data-mist]")
+        ?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 900, fill: "forwards" });
+    } else {
+      box.style.transformOrigin = `${d.x - b.left}px ${d.y - b.top}px`;
+      box.animate(
+        [
+          { transform: "scale(1)", filter: "brightness(1)" },
+          { transform: "scale(1.5)", filter: "brightness(1.25)" },
+        ],
+        { duration: 1500, easing: "cubic-bezier(0.5, 0, 0.75, 0.3)", fill: "forwards" },
+      );
+    }
+    /*
+      The light in the door's slot opens towards you until it fills the
+      screen: drawn by the browser at every size (soft gradients), so however
+      large it grows it stays crisp, never a stretched picture.
+    */
+    const gap = d.gap;
+    const light = document.createElement("div");
+    Object.assign(light.style, {
+      position: "fixed",
+      zIndex: "69",
+      pointerEvents: "none",
+      // an ellipse of light that feathers out at every size: white at the heart,
+      // a breath of the door's blue to the left and amber to the right
+      background: [
+        "radial-gradient(closest-side, #ffffff 0%, #ffffff 52%, rgba(255,255,255,0.85) 66%, rgba(255,255,255,0) 100%)",
+        "radial-gradient(closest-side at 30% 50%, rgba(90,120,255,0.35), rgba(90,120,255,0) 100%)",
+        "radial-gradient(closest-side at 70% 50%, rgba(255,150,60,0.35), rgba(255,150,60,0) 100%)",
+      ].join(", "),
+    });
+    document.body.append(light);
+    const rect = (x: number, y: number, w: number, h: number, o: number) => ({
+      left: `${x - w / 2}px`,
+      top: `${y - h / 2}px`,
+      width: `${w}px`,
+      height: `${h}px`,
+      opacity: o,
+    });
+    // from the slot (a little wider than it, the glow round it) to well past the screen's edges
+    light.animate(
+      [
+        rect(gap.x, gap.y, gap.w * 2.4, gap.h * 1.25, 0),
+        { ...rect(gap.x, gap.y, gap.w * 3.2, gap.h * 1.35, 1), offset: 0.18 },
+        rect(vw / 2, vh / 2, vw * 2.6, vh * 2.6, 1),
+      ],
+      { duration: 1400, delay: 100, easing: "cubic-bezier(0.7, 0, 0.84, 0)", fill: "forwards" },
+    );
+    // then all white; and on the other side, the white clears into their world
+    const veil = document.createElement("div");
+    Object.assign(veil.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "70",
+      pointerEvents: "none",
+      opacity: "0",
+      background: "#fbfaf8",
+    });
+    document.body.append(veil);
+    const done = () => {
+      veil.remove();
+      light.remove();
+    };
+    veil
+      .animate([{ opacity: 0 }, { opacity: 1 }], {
+        duration: 350,
+        delay: 1250,
+        easing: "ease-in",
+        fill: "forwards",
+      })
+      .finished.then(() => {
+        light.remove();
+        go();
+        return veil
+          .animate([{ opacity: 1 }, { opacity: 0 }], {
+            duration: 900,
+            delay: 200,
+            easing: "ease-out",
+            fill: "forwards",
+          })
+          .finished.then(done);
+      })
+      .catch(done);
+  };
+
+  return (
+    <section
+      data-full-screen
+      className="relative isolate flex min-h-[100svh] flex-col items-center overflow-hidden bg-[#ecebea] px-4 pb-[calc(var(--dock,0px)+2rem)] pt-[max(calc(env(safe-area-inset-top)+1.5rem),calc(53svh-9.5rem))] sm:bg-[#e4e2e3] sm:pt-[7.1rem]"
+    >
+      {/*
+        (on phones it runs on under the tab bar, so the page is exactly one
+        screen: data-full-screen, styles.css; there the words and the picker
+        sit just above the gate, in the middle of the frame)
+      */}
+      <div ref={sky} aria-hidden className="absolute inset-0 -z-10">
+        {/* the photograph (and, drawn over it where the device can, the same photograph with its clouds flowing) */}
+        <div className="absolute inset-0">
+          <picture>
+            <source media="(max-width: 639px)" srcSet="/brand/about-sky-phone.webp" />
+            <img
+              ref={img}
+              src="/brand/about-sky-2000.webp"
+              alt=""
+              fetchPriority="high"
+              className="absolute inset-0 h-full w-full object-cover object-[50%_62%] sm:object-bottom"
+            />
+          </picture>
+          <SkyFlow img={img} view={view} />
+        </div>
+        <SkyMist img={img} />
+      </div>
+      <div
+        className={cn(
+          "flex w-full flex-col items-center transition-opacity duration-500",
+          entering && "pointer-events-none opacity-0",
+        )}
+      >
+        <h1 className="flex w-full max-w-5xl items-center justify-center gap-3 sm:gap-10">
+          <span aria-hidden className="h-px w-6 shrink-0 bg-black/30 sm:w-14" />
+          {/* (the padding on the left balances the spacing after the last letter) */}
+          <span className="pl-[0.3em] text-center text-[12px] font-medium uppercase leading-[2.1] tracking-[0.3em] text-black/85 sm:pl-[0.42em] sm:text-[18px] sm:leading-normal sm:tracking-[0.42em]">
+            {ABOUT_PERSPECTIVE_TITLE}
+          </span>
+          <span aria-hidden className="h-px w-6 shrink-0 bg-black/30 sm:w-14" />
+        </h1>
+        <div className="mt-5 w-full sm:mt-7">
+          <PerspectivePicker onChoose={enter} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/*
+  Where the door is in each sky picture, as fractions of its width and height:
+  the slot of light (`slot`, where the sky draws in towards), the gap between
+  its panels (`gap`: its middle, width and height), and where the picture is
+  pinned in the frame (`posY`: 1 stands it on the foot, as large screens; the
+  phone's sits a little below the middle).
+*/
+const SKY_DOOR = {
+  wide: {
+    slot: { x: 838 / 1672, y: 640 / 941 },
+    gap: { x: 839 / 1672, y: 690 / 941, w: 42 / 1672, h: 290 / 941 },
+    posY: 1,
+    // what stays still while the clouds flow: the gate, its light and the floor under it (x0, y0, x1, y1)
+    still: [0.415, 0.5, 0.585, 1],
+  },
+  phone: {
+    slot: { x: 0.5, y: 0.6201 },
+    gap: { x: 0.5012, y: 0.649, w: 0.0525, h: 0.1674 },
+    posY: 0.62,
+    still: [0.33, 0.52, 0.67, 0.81],
+  },
+};
+
+/*
+  Where the door is on screen now: the picture is drawn with object-fit
+  cover (at the larger of its two scales, centred across, pinned at `posY`
+  down), and may be breathing (its box then a little larger: still right).
+*/
+function doorOnScreen(el: HTMLImageElement) {
+  const at = el.currentSrc.includes("phone") ? SKY_DOOR.phone : SKY_DOOR.wide;
+  const r = el.getBoundingClientRect();
+  const k = Math.max(r.width / el.naturalWidth, r.height / el.naturalHeight) || 1;
+  const dw = el.naturalWidth * k;
+  const dh = el.naturalHeight * k;
+  const left = r.left + (r.width - dw) / 2;
+  const top = r.top + (r.height - dh) * at.posY;
+  return {
+    x: left + at.slot.x * dw,
+    y: top + at.slot.y * dh,
+    gap: { x: left + at.gap.x * dw, y: top + at.gap.y * dh, w: at.gap.w * dw, h: at.gap.h * dh },
+  };
+}
+
+/*
+  The clouds flow, in the photograph itself (as a cinemagraph): the picture
+  drawn by the graphics card with a slow current running through it, a drift
+  to the right that curls a little, everywhere but the gate, its light and
+  the floor under it (`still`), which stay perfectly still and sharp. (Two
+  copies of the picture, each carried along the current and taken back in
+  turn; most of the time only one shows, and they cross-fade only briefly,
+  so the clouds stay crisp and the flow never jumps.)
+  Without losing pixels: drawn at the screen's own resolution, enlarged with
+  bicubic (Catmull-Rom) sampling rather than plain blending, and the
+  picture's slow breath and the push in as you go through the door (`view`)
+  happen in the drawing, never by rescaling what's drawn. Over the
+  photograph, which shows instead where the device can't draw it; none
+  under reduced motion.
+*/
+function SkyFlow({
+  img,
+  view,
+}: {
+  img: React.RefObject<HTMLImageElement | null>;
+  view: React.RefObject<{ k: number; bright: number; live: boolean }>;
+}) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = canvas.current;
+    const pic = img.current;
+    if (!cv || !pic || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const gl = cv.getContext("webgl", { alpha: false, antialias: false });
+    if (!gl) return;
+    const vs = "attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }";
+    const fs = /* glsl */ `
+      precision highp float;
+      uniform sampler2D uTex;
+      uniform vec2 uRes;    // the canvas, in its pixels
+      uniform vec2 uImg;    // the picture's size, in its pixels
+      uniform float uPosY;  // where it's pinned, down (as object-position)
+      uniform vec4 uStill;  // what doesn't flow, in the picture's fractions
+      uniform vec2 uSlot;   // the door's slot, in the picture's fractions (the breath and push in centre on it)
+      uniform float uZoom;  // the push in (1: none)
+      uniform float uBright;
+      uniform float uTime;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+      }
+      // bicubic (Catmull-Rom) sampling in nine taps: sharper than plain blending when enlarging
+      vec3 sharp(vec2 uv) {
+        vec2 sp = uv * uImg;
+        vec2 t1 = floor(sp - 0.5) + 0.5;
+        vec2 f = sp - t1;
+        vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+        vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+        vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+        vec2 w3 = f * f * (-0.5 + 0.5 * f);
+        vec2 w12 = w1 + w2;
+        vec2 t0 = (t1 - 1.0) / uImg;
+        vec2 t3 = (t1 + 2.0) / uImg;
+        vec2 t12 = (t1 + w2 / w12) / uImg;
+        vec3 r = texture2D(uTex, vec2(t0.x, t0.y)).rgb * w0.x * w0.y
+          + texture2D(uTex, vec2(t12.x, t0.y)).rgb * w12.x * w0.y
+          + texture2D(uTex, vec2(t3.x, t0.y)).rgb * w3.x * w0.y
+          + texture2D(uTex, vec2(t0.x, t12.y)).rgb * w0.x * w12.y
+          + texture2D(uTex, vec2(t12.x, t12.y)).rgb * w12.x * w12.y
+          + texture2D(uTex, vec2(t3.x, t12.y)).rgb * w3.x * w12.y
+          + texture2D(uTex, vec2(t0.x, t3.y)).rgb * w0.x * w3.y
+          + texture2D(uTex, vec2(t12.x, t3.y)).rgb * w12.x * w3.y
+          + texture2D(uTex, vec2(t3.x, t3.y)).rgb * w3.x * w3.y;
+        return clamp(r, 0.0, 1.0);
+      }
+      void main() {
+        vec2 f = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+        // as object-fit: cover
+        float k = max(uRes.x / uImg.x, uRes.y / uImg.y);
+        vec2 dsz = uImg * k;
+        vec2 off = vec2((uRes.x - dsz.x) * 0.5, (uRes.y - dsz.y) * uPosY);
+        vec2 uv = (f - off) / dsz;
+        // the slow breath (a few percent over most of a minute) and the push in, about the slot
+        float breath = 1.0 + 0.0175 * (1.0 - cos(6.2831853 * uTime / 52.0));
+        uv = uSlot + (uv - uSlot) / (breath * uZoom);
+        // how freely this point flows: not at all on the gate, fully a little way off it
+        vec2 near = clamp(uv, uStill.xy, uStill.zw);
+        float away = length((uv - near) * vec2(uImg.x / uImg.y, 1.0));
+        float m = smoothstep(0.0, 0.07, away);
+        // the current: a drift to the right, curling up and down a little, varying from place to place
+        float n1 = noise(uv * vec2(3.0, 4.0) + vec2(uTime * 0.03, 0.0));
+        float n2 = noise(uv * vec2(5.0, 6.0) - vec2(0.0, uTime * 0.02));
+        vec2 dir = vec2(0.8 + 0.5 * n1, (n2 - 0.5) * 0.7) * m;
+        // two copies along it, half a cycle apart; one shows, the other takes over only near the
+        // end of its run (a short cross-fade), so the clouds are seldom doubled
+        // (how far, as a share of the picture's height: the same pace on a tall phone picture as a wide one)
+        float T = 7.0;
+        float p0 = fract(uTime / T);
+        float p1 = fract(uTime / T + 0.5);
+        vec2 s = vec2(uImg.y / uImg.x, 1.0) * 0.045;
+        float w = smoothstep(0.7, 1.0, abs(p0 - 0.5) * 2.0);
+        vec3 c;
+        if (w < 0.002) c = sharp(uv - dir * s * (p0 - 0.5));
+        else if (w > 0.998) c = sharp(uv - dir * s * (p1 - 0.5));
+        else c = mix(sharp(uv - dir * s * (p0 - 0.5)), sharp(uv - dir * s * (p1 - 0.5)), w);
+        gl_FragColor = vec4(min(c * uBright, 1.0), 1.0);
+      }`;
+    const sh = (type: number, src: string) => {
+      const x = gl.createShader(type)!;
+      gl.shaderSource(x, src);
+      gl.compileShader(x);
+      return x;
+    };
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+    gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "p");
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const u = (n: string) => gl.getUniformLocation(prog, n);
+    const uRes = u("uRes");
+    const uImg = u("uImg");
+    const uPosY = u("uPosY");
+    const uStill = u("uStill");
+    const uSlot = u("uSlot");
+    const uZoom = u("uZoom");
+    const uBright = u("uBright");
+    const uTime = u("uTime");
+    // the picture the page chose (wide, or the phone's): uploaded, every pixel as it is, when
+    // it has loaded, and again if it changes
+    let src = "";
+    const upload = () => {
+      if (!pic.complete || !pic.naturalWidth || pic.currentSrc === src) return;
+      src = pic.currentSrc;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, pic);
+    };
+    pic.addEventListener("load", upload);
+    let raf = 0;
+    let last = 0;
+    const t0 = performance.now();
+    const draw = (now: number) => {
+      raf = requestAnimationFrame(draw);
+      // about 30 frames a second (clouds don't hurry); every frame while going through the door
+      if (now - last < 32 && view.current.k === 1) return;
+      last = now;
+      upload();
+      if (!src) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(1, Math.round(cv.clientWidth * dpr));
+      const h = Math.max(1, Math.round(cv.clientHeight * dpr));
+      if (cv.width !== w || cv.height !== h) {
+        cv.width = w;
+        cv.height = h;
+      }
+      gl.viewport(0, 0, w, h);
+      const at = src.includes("phone") ? SKY_DOOR.phone : SKY_DOOR.wide;
+      gl.uniform2f(uRes, w, h);
+      gl.uniform2f(uImg, pic.naturalWidth, pic.naturalHeight);
+      gl.uniform1f(uPosY, at.posY);
+      gl.uniform4f(uStill, at.still[0], at.still[1], at.still[2], at.still[3]);
+      gl.uniform2f(uSlot, at.slot.x, at.slot.y);
+      gl.uniform1f(uZoom, view.current.k);
+      gl.uniform1f(uBright, view.current.bright);
+      gl.uniform1f(uTime, (now - t0) / 1000);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (!view.current.live) {
+        view.current.live = true;
+        cv.style.opacity = "1"; // now over the photograph
+      }
+    };
+    raf = requestAnimationFrame(draw);
+    return () => {
+      cancelAnimationFrame(raf);
+      pic.removeEventListener("load", upload);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    };
+  }, [img, view]);
+  return (
+    <canvas
+      ref={canvas}
+      aria-hidden
+      className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+    />
+  );
+}
+
+/*
+  Mist drifting over the sky, as clouds move: soft billows of white (noise
+  folded into itself, so it curls and flows rather than slides), denser low
+  down in the sea of cloud and in a veil across the gate's foot, thin in the
+  open sky; warm where the gate's light falls on it, cool white elsewhere. A
+  small WebGL drawing at about 30 frames a second, at half the screen's
+  resolution (it has no edges to lose); still under reduced motion; nothing
+  if the device can't draw it.
+*/
+function SkyMist({ img }: { img: React.RefObject<HTMLImageElement | null> }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = canvas.current;
+    const gl = cv?.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false });
+    if (!cv || !gl) return;
+    const vs = "attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }";
+    const fs = /* glsl */ `
+      precision mediump float;
+      uniform vec2 uRes;
+      uniform float uTime;
+      uniform vec2 uDoor;   // the gate's slot, in canvas pixels (from the bottom)
+      uniform float uFoot;  // the gate's foot, as a height (0 bottom .. 1 top)
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+      }
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
+        for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+        return v;
+      }
+      void main() {
+        vec2 f = gl_FragCoord.xy;
+        vec2 p = f / uRes.y;
+        float t = uTime;
+        vec2 q = p * vec2(1.6, 2.6) + vec2(t * 0.032, 0.0);
+        vec2 w = vec2(fbm(q + vec2(0.0, t * 0.03)), fbm(q + vec2(5.2, 1.3) - t * 0.022));
+        float n = fbm(q + 1.8 * w + vec2(t * 0.012, 0.0));
+        float h = f.y / uRes.y;
+        float low = smoothstep(0.66, 0.02, h);
+        float veil = exp(-pow((h - uFoot) / 0.07, 2.0));
+        float dens = smoothstep(0.46, 0.86, n) * (0.18 + 0.82 * low + 0.7 * veil);
+        float d = distance(f, uDoor) / uRes.y;
+        vec3 col = mix(vec3(1.0, 0.95, 0.88), vec3(0.965, 0.968, 0.98), smoothstep(0.02, 0.55, d));
+        float a = clamp(dens * 0.66, 0.0, 0.7);
+        gl_FragColor = vec4(col * a, a);
+      }`;
+    const sh = (type: number, src: string) => {
+      const s = gl.createShader(type)!;
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      return s;
+    };
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+    gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "p");
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const uRes = gl.getUniformLocation(prog, "uRes");
+    const uTime = gl.getUniformLocation(prog, "uTime");
+    const uDoor = gl.getUniformLocation(prog, "uDoor");
+    const uFoot = gl.getUniformLocation(prog, "uFoot");
+    // half the screen's device pixels (the mist has no edges to lose; a phone's full count would cost)
+    const SCALE = Math.min(window.devicePixelRatio || 1, 2) * 0.5;
+    let raf = 0;
+    let last = 0;
+    const t0 = performance.now();
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const draw = (now: number) => {
+      raf = still ? 0 : requestAnimationFrame(draw);
+      if (now - last < 32) return; // about 30 frames a second is plenty for mist
+      last = now;
+      const r = cv.getBoundingClientRect();
+      const w = Math.max(1, Math.round(r.width * SCALE));
+      const h = Math.max(1, Math.round(r.height * SCALE));
+      if (cv.width !== w || cv.height !== h) {
+        cv.width = w;
+        cv.height = h;
+      }
+      gl.viewport(0, 0, w, h);
+      let dx = w / 2;
+      let dy = h * 0.35;
+      let foot = 0.15;
+      if (img.current?.naturalWidth) {
+        const d = doorOnScreen(img.current);
+        dx = (d.x - r.left) * SCALE;
+        dy = (r.bottom - d.y) * SCALE;
+        foot = (r.bottom - (d.gap.y + d.gap.h / 2)) / r.height;
+      }
+      gl.uniform2f(uRes, w, h);
+      gl.uniform1f(uTime, (now - t0) / 1000 + 40);
+      gl.uniform2f(uDoor, dx, dy);
+      gl.uniform1f(uFoot, foot);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => {
+      cancelAnimationFrame(raf);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    };
+  }, [img]);
+  return (
+    <canvas
+      ref={canvas}
+      data-mist
+      aria-hidden
+      className="pointer-events-none absolute inset-0 h-full w-full"
+    />
+  );
+}
+
+/*
+  The picker: a glass pill with a soft line of prism light under it; open,
+  the list of perspectives hangs from it as one piece of glass (an icon and a
+  name each, hairlines between). Keys as the site's other menus (lib/menu.ts).
+*/
+function PerspectivePicker({
+  value,
+  onChoose,
+}: {
+  value?: PerspectiveId;
+  onChoose: (id: PerspectiveId) => void;
+}) {
+  // (`value`: the one chosen, if any, shown on the pill)
+  const m = useMenu();
+  const chosen = ABOUT_PERSPECTIVES.find((p) => p.id === value);
+  return (
+    // a compact pill, centred: its words in the middle (the arrow kept to the right),
+    // the list below in one centred column (icons lined up, names beside them)
+    <div ref={m.root} className="relative mx-auto w-[min(300px,100%)]">
+      {!m.open && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-8 -bottom-1 h-3 rounded-full opacity-60 blur-md"
+          style={{ background: "var(--prism)" }}
+        />
+      )}
+      <button
+        ref={m.trigger}
+        type="button"
+        onClick={() => m.setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={m.open}
+        className={cn(
+          "relative flex h-12 w-full items-center justify-center gap-2 px-11 text-[15px] font-medium tracking-[0.02em] text-black/85 outline-none focus-visible:ring-2 focus-visible:ring-[#6d7bff]/50",
+          GLASS_PILL,
+          m.open ? "rounded-t-[24px] rounded-b-none" : "rounded-[24px]",
+        )}
+      >
+        {chosen && <PerspectiveIcon id={chosen.id} className="h-[18px] w-[18px] shrink-0" />}
+        <span className="truncate">{chosen ? chosen.label : "Select your perspective"}</span>
+        <svg
+          aria-hidden
+          viewBox="0 0 24 24"
+          className={cn(
+            "absolute right-4 h-[18px] w-[18px] transition-transform",
+            m.open && "rotate-180",
+          )}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M6.5 9.5l5.5 5.5 5.5-5.5" />
+        </svg>
+      </button>
+      {m.open && (
+        <ul
+          role="listbox"
+          aria-label="Your perspective"
+          className={cn(
+            "absolute inset-x-0 top-full z-20 origin-top overflow-hidden rounded-b-[24px] border-t-0 px-2 pb-2.5 pt-1",
+            GLASS_PANEL,
+            MENU_IN,
+          )}
+        >
+          {ABOUT_PERSPECTIVES.map((p, i) => (
+            <li key={p.id} role="none">
+              <button
+                type="button"
+                role="option"
+                aria-selected={p.id === value}
+                onClick={() => {
+                  m.choose();
+                  onChoose(p.id);
+                }}
+                className="flex w-full justify-center rounded-xl py-2.5 text-[15px] tracking-[0.04em] text-black/80 outline-none transition hover:bg-white/70 focus-visible:bg-white/80 sm:py-2"
+              >
+                <span className="flex w-[13.5rem] items-center gap-3.5 text-left">
+                  <PerspectiveIcon id={p.id} className="h-5 w-5 shrink-0 text-black/75" />
+                  <span className="flex-1">{p.label}</span>
+                  {p.id === value && (
+                    <span
+                      aria-hidden
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: "var(--prism)" }}
+                    />
+                  )}
+                </span>
+              </button>
+              {i < ABOUT_PERSPECTIVES.length - 1 && (
+                <div className="mx-auto h-px w-[13.5rem] bg-black/[0.06]" />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/*
+  The light of each world, either side of the white you came through: the
+  door's blue and amber, turned to suit (warm for NGOs, cool for companies,
+  saffron and green for government, sand for building, deep blue for
+  universities).
+*/
+const WORLD_LIGHT: Record<PerspectiveId, [string, string]> = {
+  ngo: ["rgba(255,110,110,0.16)", "rgba(255,170,90,0.2)"],
+  corporate: ["rgba(60,80,255,0.16)", "rgba(110,200,255,0.16)"],
+  government: ["rgba(255,153,51,0.18)", "rgba(19,136,8,0.14)"],
+  "real-estate": ["rgba(185,140,90,0.2)", "rgba(255,196,130,0.18)"],
+  university: ["rgba(40,60,200,0.18)", "rgba(140,100,255,0.16)"],
+};
+
+/*
+  A perspective's world, on the other side of the About page's door. You
+  arrive in its light (white at the heart, the world's colours either side,
+  a beam down the middle as the door's): its sign, its headline over a line
+  of prism light and a few words; then what we make for them, who we've made
+  films with (their emblems) and their films (or, where we haven't yet, the
+  studio's own), and the way to start a conversation or choose another
+  perspective. "All perspectives" leads back to the door.
+*/
+export function PerspectiveWorld({ id }: { id: PerspectiveId }) {
+  const p = ABOUT_PERSPECTIVES.find((x) => x.id === id)!;
+  const [left, right] = WORLD_LIGHT[id];
+  const clients = WORK_CLIENTS.filter((c) => p.clients.includes(c.name));
+  const films = (
+    clients.length
+      ? PROJECTS.filter((f) => f.client && p.clients.includes(f.client))
+      : PROJECTS.filter((f) => !f.client)
+  ).slice(0, 3);
+  return (
+    <>
+      {/*
+        phones: a sticky bar of glass along the top (the site's own bar is at
+        the bottom): back to the door, and the perspective, to change it
+        (large screens change it from the header: SiteNav)
+      */}
+      <div className="sticky top-0 z-30 -mb-[calc(env(safe-area-inset-top)+4rem)] px-3 pt-[calc(env(safe-area-inset-top)+0.5rem)] sm:hidden">
+        <div className="relative isolate flex h-12 items-center gap-1 px-1">
+          {/*
+            the glass, as a layer behind the bar's contents (not on the bar
+            itself: then the menu that opens from it couldn't frost what's
+            behind it, nor span the screen)
+          */}
+          <span
+            aria-hidden
+            className="absolute inset-0 -z-10 rounded-full border border-white/70 bg-white/60 shadow-[0_14px_34px_-14px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.85)] ring-1 ring-black/[0.05] backdrop-blur-2xl backdrop-saturate-[1.8]"
+          />
+          <Link
+            to="/about"
+            aria-label="All perspectives"
+            className="press grid h-10 w-10 shrink-0 place-items-center rounded-full text-black/70 transition hover:bg-white/70"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M14.5 6l-6 6 6 6" />
+            </svg>
+          </Link>
+          <PerspectiveSwitch current={id} variant="bar" />
+          <span aria-hidden className="w-10 shrink-0" />
+        </div>
+      </div>
+      <section className="relative isolate flex min-h-[100svh] flex-col items-center justify-center overflow-hidden bg-[#fbfaf8] px-5 pb-[calc(var(--dock,0px)+5rem)] pt-24 text-center sm:pt-28">
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10"
+          style={{
+            background: `radial-gradient(60% 80% at 50% 42%, #ffffff 0%, rgba(255,255,255,0) 72%), linear-gradient(90deg, ${left}, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%, ${right})`,
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute left-1/2 top-0 -z-10 h-full w-[24rem] max-w-[70vw] -translate-x-1/2 blur-3xl"
+          style={{
+            background: `linear-gradient(90deg, ${left}, #ffffff 38%, #ffffff 62%, ${right})`,
+          }}
+        />
+        <div className="duration-1000 animate-in fade-in slide-in-from-bottom-4">
+          <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-white/80 bg-white/60 shadow-[0_14px_36px_-14px_rgba(40,30,90,0.35),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-xl">
+            <PerspectiveIcon id={p.id} className="h-7 w-7 text-black/80" />
+          </span>
+          <p className="tracked mt-6 text-[10px] text-black/50">Your world · {p.label}</p>
+          <h1 className="mx-auto mt-4 max-w-3xl text-[34px] font-light leading-[1.1] tracking-tight sm:text-6xl">
+            {p.title}
+          </h1>
+          <div className="prism-rule mx-auto mt-7 w-20" />
+          <p className="mx-auto mt-7 max-w-xl text-[16px] leading-relaxed text-black/60 sm:text-lg">
+            {p.text}
+          </p>
+        </div>
+        <a
+          href="#world"
+          className="tracked absolute bottom-[calc(var(--dock,0px)+1.5rem)] left-1/2 flex -translate-x-1/2 flex-col items-center gap-2 text-[10px] text-black/45 transition hover:text-black/70"
+        >
+          What we make for you
+          <svg
+            aria-hidden
+            viewBox="0 0 24 24"
+            className="h-4 w-4 motion-safe:animate-bounce"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6.5 9.5l5.5 5.5 5.5-5.5" />
+          </svg>
+        </a>
+      </section>
+
+      <section id="world" className="scroll-mt-24 px-4 pb-8 pt-16 sm:px-6 sm:pt-24">
+        <div className="mx-auto max-w-6xl">
+          <p className="tracked text-[10px] text-black/50">What we make for you</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3 sm:gap-4">
+            {p.offers.map((o) => (
+              <article
+                key={o.title}
+                className="rounded-2xl border border-black/[0.07] bg-white p-5 sm:p-6"
+              >
+                <h3 className="text-[16px] font-medium leading-snug">{o.title}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-black/60">{o.text}</p>
+              </article>
+            ))}
+          </div>
+
+          {clients.length > 0 && (
+            <div className="mt-12 sm:mt-14">
+              <p className="tracked text-[10px] text-black/50">Who we've made films with</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {clients.map((c) => (
+                  <Link key={c.name} to="/projects" search={{ client: c.name }} className="press">
+                    <ClientBadge client={c} />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {films.length > 0 && (
+            <div className="mt-12 sm:mt-14">
+              <p className="tracked text-[10px] text-black/50">
+                {clients.length ? "Their films" : "From our films"}
+              </p>
+              <div className="mt-5 grid gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+                {films.map((f) => (
+                  <VideoCard key={f.slug} project={f} bleed />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-12 flex flex-wrap items-center gap-3 sm:mt-14">
+            <a
+              href={`mailto:${SITE.email}?subject=${encodeURIComponent(p.ask)}`}
+              className="press rounded-full bg-black px-6 py-3 text-[14px] text-white transition hover:bg-black/85"
+            >
+              Start a conversation
+            </a>
+            <Link
+              to="/about"
+              className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[14px] transition hover:bg-black/[0.03]"
+            >
+              Choose another perspective
+            </Link>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }
