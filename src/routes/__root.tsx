@@ -62,9 +62,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  // The home page is the full-screen gallery, so it has no footer.
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const isHome = path === "/";
+  // The landing (/) and the gallery (/gallery) fill the screen: no footer
+  const isHome = path === "/" || path === "/gallery";
   // PlayerProvider and MiniPlayer: a film keeps playing, in the corner, across pages
   return (
     <PlayerProvider>

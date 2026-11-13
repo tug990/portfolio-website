@@ -10,14 +10,20 @@ import type { GalleryScene, Layout, Pose, Stop } from "@/components/gallery3d/Ga
 import type { PrismTunnel } from "@/components/gallery3d/PrismTunnel";
 
 /*
-  The home page.
+  Two pages share this:
 
-  It opens on the Insight Lab logo (LogoDoor, drawn live with WebGL). Scrolling
-  flies you into the light at the top of its gap; once you're in, it carries
-  you the rest of the way: the view floods with prism light and fades into the
-  gallery, which starts bright and settles, like eyes adjusting. You arrive
-  standing back with the whole room in view: all six films playing, two on
-  each of the three walls ahead of you.
+  The landing page (/, start="landing"): the Insight Lab logo (LogoDoor,
+  drawn live with WebGL). Scrolling (or a swipe, a click, an arrow key) wakes
+  it: its light breaks out and floods the view, and you land on the Work
+  page, the site's home. No 3D room is loaded here.
+
+  The gallery (/gallery, start="room"): you start standing back with the
+  whole room in view: all six films playing, two on each of the three walls
+  ahead of you. "VR view" steps inside: in a headset's browser (Meta Quest,
+  Apple Vision Pro…) a real VR session (GalleryScene.enterVR); on a phone,
+  the room side by side for a VR holder, looked round by moving the phone; on
+  a computer, how to open it in a headset. Phones can also look round by
+  moving (Motion); computers by moving the mouse, or A / D.
 
   The gallery itself is a real 3D room (gallery3d/GalleryScene, three.js): six
   films on the left, far and right walls, and two prism-lit doors on the wall
@@ -25,7 +31,7 @@ import type { PrismTunnel } from "@/components/gallery3d/PrismTunnel";
   stop: the left wall, the far wall, the right wall, then you turn round to
   the doors. Click the
   film you're at to walk up to it and open its page; click a door to walk
-  through it. Scrolling back from the middle takes you back out to the logo.
+  through it. (Leave goes back to the Work page.)
 */
 
 type Mode = "intro" | "free" | "visit";
@@ -108,10 +114,17 @@ const glideSpeed = (g: Glide, t: number) =>
   ((6 * t * t - 6 * t) * g.from + (3 * t * t - 4 * t + 1) * g.m0 + (-6 * t * t + 6 * t) * g.to) /
   (g.dur / 1000);
 
-export function Gallery() {
+export function Gallery({ start }: { start: "landing" | "room" }) {
   const navigate = useNavigate();
   const router = useRouter();
-  const { work } = useSearch({ from: "/" });
+  const { work } = useSearch({ strict: false }) as { work?: string };
+  const room = start === "room";
+  // What "VR view" can do here: a headset's own VR, a phone in a holder, or neither (explain)
+  const [vrKind, setVrKind] = useState<"headset" | "phone" | "none">("none");
+  const [vrOn, setVrOn] = useState<"" | "headset" | "phone">("");
+  const [vrHelp, setVrHelp] = useState(false);
+  const [motion, setMotion] = useState(false);
+  const sceneMod = useRef<typeof import("@/components/gallery3d/GalleryScene") | null>(null);
   // The case study open over the gallery, if any
   const [sheet, setSheet] = useState<null | {
     slug: string;
@@ -147,6 +160,10 @@ export function Gallery() {
     at: 0, // the stop you're at
     playing: -2,
     insideFlag: false,
+    left: false, // the landing has handed over to the Work page
+    // looking round (radians): where it's heading, and where it is
+    // (gy, gp: keys and the phone; mx, my: the mouse, a little on top)
+    look: { yaw: 0, pitch: 0, gy: 0, gp: 0, mx: 0, my: 0 },
     journeyFlag: false, // the header steps aside while this is true
     settleFrom: 0, // when the room appeared (ms), while the arrival move is still easing out
     pose: { x: 0, z: -0.5, yaw: 0, y: EYE },
@@ -196,6 +213,7 @@ export function Gallery() {
     setStageTone("light");
 
     (async () => {
+      if (!room) return; // the landing page has no room
       try {
         // Labels are drawn with the site font, so wait for it.
         await Promise.all([
@@ -204,6 +222,12 @@ export function Gallery() {
         ]).catch(() => {});
         const mod = await import("@/components/gallery3d/GalleryScene");
         if (!alive || !roomCanvas.current) return;
+        sceneMod.current = mod;
+        mod.GalleryScene.vrSupported().then((ok) => {
+          if (!alive) return;
+          if (ok) setVrKind("headset");
+          else if (window.matchMedia("(pointer: coarse)").matches) setVrKind("phone");
+        });
         const coarse = window.matchMedia("(pointer: coarse)").matches;
         const s = new mod.GalleryScene(roomCanvas.current, {
           projects: GALLERY_FILMS,
@@ -238,9 +262,10 @@ export function Gallery() {
           }
         }
 
-        // Coming back from a page: put you back where you were.
-        const saved = readSaved();
-        if (saved !== null) {
+        // In the room from the start (back where you were, if you've just been
+        // to a page from it)
+        const saved = readSaved() ?? 0;
+        {
           const c = cam.current;
           const stops = s.layout.stops;
           c.mode = "free";
@@ -256,6 +281,7 @@ export function Gallery() {
       } catch (err) {
         console.warn("The 3D gallery couldn't start:", err);
         failed.current = true;
+        navigate({ to: "/projects" }); // no 3D here: the work instead
       }
     })();
 
@@ -269,6 +295,7 @@ export function Gallery() {
       document.documentElement.classList.remove("journey");
       setStageTone(null);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ---------- the frame loop ---------- */
@@ -300,12 +327,13 @@ export function Gallery() {
           c.p += (c.pGoal - c.p) * damp(7, dt);
           if (Math.abs(c.pGoal - c.p) < 0.0008) c.p = c.pGoal;
         }
-        if (!s) {
-          if (failed.current && c.p > 0.6) {
-            // No 3D available: go straight to the work instead.
-            c.p = c.pGoal = 0;
+        if (!room) {
+          // The landing: once its light has filled the view, on to the Work page
+          if (c.p > 0.6 && !c.left) {
+            c.left = true;
             navigate({ to: "/projects" });
           }
+        } else if (!s) {
           c.p = Math.min(c.p, 0.78); // wait in the light until the room is ready
         }
         drawIntro(c.p);
@@ -384,6 +412,12 @@ export function Gallery() {
         }
       }
 
+      // Looking round: eased towards where the mouse, the keys or the phone point
+      const lk = c.look;
+      lk.yaw += (lk.gy + lk.mx - lk.yaw) * damp(motion ? 14 : 6, dt);
+      lk.pitch += (lk.gp + lk.my - lk.pitch) * damp(motion ? 14 : 6, dt);
+      const looking = c.mode !== "intro";
+
       if (s && L) {
         // The doors: ajar when you arrive, wider under the mouse, wide open when clicked.
         const end = L.stops[L.stops.length - 1];
@@ -413,7 +447,14 @@ export function Gallery() {
           if (journeyOn) {
             const t = clamp((c.p - TUNNEL[0]) / (TUNNEL[1] - TUNNEL[0]), 0, 1);
             T.update(t, (now - t0) / 1000, L.stops[0]);
-          } else s.setPose(pose.x, pose.y, pose.z, pose.yaw);
+          } else if (!s.inVR)
+            s.setPose(
+              pose.x,
+              pose.y,
+              pose.z,
+              pose.yaw + (looking ? lk.yaw : 0),
+              looking ? lk.pitch : 0,
+            );
           s.setExposure(exposure);
           s.render((now - t0) / 1000);
         }
@@ -431,7 +472,7 @@ export function Gallery() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [motion]);
 
   /* ---------- the logo, for the current progress ---------- */
 
@@ -515,7 +556,7 @@ export function Gallery() {
     const c = cam.current;
     const L = gs.current?.layout;
     if (c.mode !== "free" || !L) return;
-    if (dir < 0 && c.at === 0) return goOut(false);
+    if (dir < 0 && c.at === 0) return room ? undefined : goOut(false);
     stepTo(clamp(c.at + dir, 0, L.stops.length - 1));
   };
 
@@ -577,7 +618,7 @@ export function Gallery() {
   const workSlug = (i: number) => GALLERY_FILMS[i]?.slug;
   const showWork = (slug: string, replace = false) =>
     navigate({
-      to: "/",
+      to: "/gallery",
       search: { work: slug },
       mask: { to: "/projects/$slug", params: { slug } },
       replace,
@@ -663,7 +704,7 @@ export function Gallery() {
     if (pushedSheet.current) {
       pushedSheet.current = false;
       router.history.back();
-    } else navigate({ to: "/", search: {}, replace: true });
+    } else navigate({ to: "/gallery", search: {}, replace: true });
   }, [navigate, router]);
 
   const openDoor = (i: number) => {
@@ -712,8 +753,111 @@ export function Gallery() {
     else stepTo(last);
   };
 
-  const handlers = useRef({ step, goIn, goOut, clickWork });
-  handlers.current = { step, goIn, goOut, clickWork };
+  /* ---------- VR, and looking round ---------- */
+
+  // Moving the phone looks round (asks first on iPhone). `full`: all the way
+  // round (side by side in a holder); otherwise a gentle look either side.
+  const motionRef = useRef({
+    on: false,
+    full: false,
+    base: null as null | { yaw: number; pitch: number },
+  });
+  const startMotion = async (full: boolean) => {
+    const DOE = window.DeviceOrientationEvent as unknown as
+      { requestPermission?: () => Promise<"granted" | "denied"> } | undefined;
+    if (!DOE) return false;
+    if (typeof DOE.requestPermission === "function") {
+      const r = await DOE.requestPermission().catch(() => "denied" as const);
+      if (r !== "granted") return false;
+    }
+    motionRef.current = { on: true, full, base: null };
+    setMotion(true);
+    return true;
+  };
+  const stopMotion = () => {
+    motionRef.current = { on: false, full: false, base: null };
+    const lk = cam.current.look;
+    lk.gy = lk.gp = 0;
+    setMotion(false);
+  };
+  useEffect(() => {
+    const orient = (e: DeviceOrientationEvent) => {
+      const m = motionRef.current;
+      const mod = sceneMod.current;
+      if (!m.on || !mod || e.alpha === null || e.beta === null || e.gamma === null) return;
+      const angle = window.screen.orientation?.angle ?? 0;
+      const v = mod.GalleryScene.lookFromDevice(e.alpha, e.beta, e.gamma, angle);
+      if (!m.base) m.base = v; // where you were pointing when it started = straight ahead
+      let dy = v.yaw - m.base.yaw;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      const lk = cam.current.look;
+      lk.gy = m.full ? dy : clamp(dy, -0.9, 0.9);
+      lk.gp = clamp(v.pitch, -1.1, 1.1);
+    };
+    window.addEventListener("deviceorientation", orient);
+    return () => window.removeEventListener("deviceorientation", orient);
+  }, []);
+
+  const enterVR = async () => {
+    const s = gs.current;
+    const c = cam.current;
+    if (!s || c.mode !== "free") return;
+    if (vrKind === "headset") {
+      try {
+        await s.enterVR(
+          c.pose,
+          c.at,
+          (_pick, stop) => {
+            // keep the screen's place in step with where you are in VR
+            c.at = stop;
+            c.q = c.goal = s.layout.stops[stop].s;
+            c.glide = null;
+          },
+          () => setVrOn(""),
+        );
+        setVrOn("headset");
+      } catch (err) {
+        console.warn("VR couldn't start:", err);
+      }
+    } else if (vrKind === "phone") {
+      // side by side, full screen, sideways, looked round by moving the phone
+      await startMotion(true);
+      const el = stageRef.current as
+        (HTMLDivElement & { webkitRequestFullscreen?: () => void }) | null;
+      try {
+        if (el?.requestFullscreen) await el.requestFullscreen();
+        else el?.webkitRequestFullscreen?.();
+        const o = window.screen.orientation as ScreenOrientation & {
+          lock?: (o: string) => Promise<void>;
+        };
+        await o?.lock?.("landscape");
+      } catch {
+        /* the browser keeps its own full screen and turning: turn the phone yourself */
+      }
+      s.setStereo(true);
+      document.documentElement.classList.add("journey"); // the header and bottom bar step aside
+      setVrOn("phone");
+    } else setVrHelp(true);
+  };
+  const exitVR = () => {
+    const s = gs.current;
+    if (vrOn === "headset") s?.exitVR();
+    if (vrOn === "phone") {
+      s?.setStereo(false);
+      document.documentElement.classList.remove("journey");
+      stopMotion();
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      try {
+        window.screen.orientation?.unlock?.();
+      } catch {
+        /* nothing locked */
+      }
+    }
+    setVrOn("");
+  };
+
+  const handlers = useRef({ step, goIn, goOut, clickWork, enterVR });
+  handlers.current = { step, goIn, goOut, clickWork, enterVR };
 
   /* ---------- input ---------- */
 
@@ -785,8 +929,9 @@ export function Gallery() {
       const t = e.target as HTMLElement | null;
       if (t?.closest?.("input, textarea, select, a, button")) return;
       const h = handlers.current;
-      const fwd = ["ArrowDown", "ArrowRight", "PageDown", " "].includes(e.key);
-      const back = ["ArrowUp", "ArrowLeft", "PageUp"].includes(e.key);
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const fwd = ["ArrowDown", "ArrowRight", "PageDown", " ", "w"].includes(k);
+      const back = ["ArrowUp", "ArrowLeft", "PageUp", "s"].includes(k);
       if (c.mode === "intro") {
         if (fwd || e.key === "Enter") {
           e.preventDefault();
@@ -795,8 +940,16 @@ export function Gallery() {
         return;
       }
       if (c.mode !== "free") return;
+      if (k === "a" || k === "d" || k === "q" || k === "e") {
+        // look round: a step to the side each press (back to the front with the next step)
+        const lk = c.look;
+        lk.gy = clamp(lk.gy + (k === "a" || k === "q" ? 0.32 : -0.32), -1.4, 1.4);
+        return;
+      }
+      if (k === "v") return void h.enterVR();
       if (fwd || back) {
         e.preventDefault();
+        c.look.gy = c.look.gp = 0;
         h.step(fwd ? 1 : -1);
       } else if (e.key === "Enter") {
         const st = gs.current?.layout.stops[c.at];
@@ -840,6 +993,19 @@ export function Gallery() {
       }
       return;
     }
+    // A mouse looks round a little, as if you turned your head towards it
+    if (
+      c.mode === "free" &&
+      e.pointerType === "mouse" &&
+      !motionRef.current.on &&
+      stageRef.current
+    ) {
+      const r = stageRef.current.getBoundingClientRect();
+      const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+      const ny = ((e.clientY - r.top) / r.height) * 2 - 1;
+      c.look.mx = -nx * 0.16;
+      c.look.my = -ny * 0.08;
+    }
     // Hover: point at a film or door to show it can be clicked; doors open a little more.
     if (c.mode !== "free" || e.pointerType !== "mouse" || !gs.current || !stageRef.current) return;
     const hit = gs.current.pick(e.clientX, e.clientY, stageRef.current.getBoundingClientRect());
@@ -854,6 +1020,7 @@ export function Gallery() {
     if (c.mode !== "free" || !gs.current || !stageRef.current) return;
     const dx = d.x - d.x0;
     const dy = d.y - d.y0;
+    if (d.dist <= 6 && vrOn === "phone") return step(1); // in a holder: a tap walks on
     if (d.dist <= 6) {
       const hit = gs.current.pick(e.clientX, e.clientY, stageRef.current.getBoundingClientRect());
       if (hit?.kind === "work") clickWork(hit.index);
@@ -861,7 +1028,10 @@ export function Gallery() {
       return;
     }
     const move = d.pointer === "mouse" || Math.abs(dx) > Math.abs(dy) ? dx : dy;
-    if (Math.abs(move) > 40) step(move < 0 ? 1 : -1); // swipe left/up = next
+    if (Math.abs(move) > 40) {
+      if (!motionRef.current.on) c.look.gy = c.look.gp = 0;
+      step(move < 0 ? 1 : -1); // swipe left/up = next
+    }
   };
 
   return (
@@ -880,16 +1050,30 @@ export function Gallery() {
 
         {/* The room */}
         <canvas ref={roomCanvas} aria-hidden className="absolute inset-0 h-full w-full" />
+        {/* while the room loads */}
+        {room && !inside && (
+          <p className="tracked pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 text-[10px] text-black/50">
+            Opening the gallery
+            <span className="h-8 w-px overflow-hidden bg-black/10">
+              <span
+                className="block h-1/2 w-full bg-black/60"
+                style={{ animation: "hint-line 1.8s ease-in-out infinite" }}
+              />
+            </span>
+          </p>
+        )}
 
-        {/* The logo you fly into */}
-        <IntroDoor
-          rootRef={introRef}
-          scene={scene}
-          logoGl={logoGl}
-          onClick={() => {
-            if (cam.current.drag.dist <= 6) goIn();
-          }}
-        />
+        {/* The logo you fly into (the landing page) */}
+        {!room && (
+          <IntroDoor
+            rootRef={introRef}
+            scene={scene}
+            logoGl={logoGl}
+            onClick={() => {
+              if (cam.current.drag.dist <= 6) goIn();
+            }}
+          />
+        )}
 
         {/* For keyboards and screen readers: every film and both doors */}
         <nav aria-label="Works in the gallery" className="sr-only">
@@ -934,28 +1118,85 @@ export function Gallery() {
           className={cn(
             // above the phone's bottom bar (--dock, SiteNav)
             "pointer-events-none absolute inset-x-0 bottom-[calc(1.5rem+var(--dock,0px))] z-10 flex items-center justify-between gap-4 px-6 transition-opacity duration-700",
-            inside ? "opacity-100" : "opacity-0",
+            inside && !vrOn ? "opacity-100" : "pointer-events-none opacity-0",
           )}
         >
           <button
             type="button"
-            onClick={() => goOut(true)}
+            onClick={() => navigate({ to: "/projects" })}
             tabIndex={inside ? 0 : -1}
-            className="tracked pointer-events-auto whitespace-nowrap rounded-md border border-black/10 bg-white/85 px-4 py-2.5 text-[10px] text-black/75 shadow-sm transition-colors hover:text-black"
+            className="tracked press pointer-events-auto whitespace-nowrap rounded-full border border-white/70 bg-white/60 px-4 py-2.5 text-[10px] text-black/75 shadow-sm backdrop-blur-md transition-colors hover:text-black"
           >
             ← Leave
           </button>
           <p
             className={cn(
-              "tracked rounded-full bg-white/70 px-3 py-1.5 text-center text-[10px] text-black/55 transition-opacity duration-700",
+              "tracked hidden rounded-full bg-white/70 px-3 py-1.5 text-center text-[10px] text-black/55 transition-opacity duration-700 sm:block",
               !hint && "opacity-0",
             )}
           >
-            <span className="hidden sm:inline">Scroll for the next film</span>
-            <span className="sm:hidden">Swipe for the next film</span>
+            Scroll or ← → to walk · A D or the mouse to look · V for VR
           </p>
-          <span className="w-[86px]" aria-hidden />
+          <span className="flex items-center gap-2">
+            {/* phones: look round by moving the phone */}
+            {vrKind === "phone" && !vrOn && (
+              <button
+                type="button"
+                tabIndex={inside ? 0 : -1}
+                onClick={() => (motion ? stopMotion() : startMotion(false))}
+                aria-pressed={motion}
+                className={cn(
+                  "tracked press pointer-events-auto whitespace-nowrap rounded-full border px-3.5 py-2.5 text-[10px] shadow-sm backdrop-blur-md transition-colors",
+                  motion
+                    ? "border-black bg-black text-white"
+                    : "border-white/70 bg-white/60 text-black/75",
+                )}
+              >
+                Motion
+              </button>
+            )}
+            <button
+              type="button"
+              tabIndex={inside ? 0 : -1}
+              onClick={enterVR}
+              className="tracked press pointer-events-auto flex items-center gap-2 whitespace-nowrap rounded-full bg-black px-4 py-2.5 text-[10px] text-white shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5)]"
+            >
+              <VRIcon />
+              VR view
+            </button>
+          </span>
         </div>
+
+        {/* side by side in a holder: a way out (top left, before it goes in) */}
+        {vrOn === "phone" && (
+          <button
+            type="button"
+            onClick={exitVR}
+            aria-label="Leave VR view"
+            className="pointer-events-auto absolute left-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black/50 text-white backdrop-blur-md"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        )}
+        {/* the left eye's half shows where the other eye's starts: a fine line between */}
+        {vrOn === "phone" && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-px bg-black/60"
+          />
+        )}
+
+        {/* a computer without a headset: how to step inside */}
+        {vrHelp && <VRHelp onClose={() => setVrHelp(false)} />}
       </div>
       {/* A film's case study, over the gallery */}
       {sheet && getProject(sheet.slug) && (
@@ -975,6 +1216,92 @@ export function Gallery() {
         />
       )}
     </>
+  );
+}
+
+/* ---------- VR ---------- */
+
+/* A headset, seen from the front */
+function VRIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    >
+      <path d="M3 8.5c0-1.1.9-2 2-2h14a2 2 0 012 2v6.5a2 2 0 01-2 2h-3.6l-1.7-2.4a2 2 0 00-3.4 0l-1.7 2.4H5a2 2 0 01-2-2z" />
+      <circle cx="8" cy="11.5" r="1.4" />
+      <circle cx="16" cy="11.5" r="1.4" />
+    </svg>
+  );
+}
+
+/* On a computer without a headset: how to step inside the gallery in VR. */
+function VRHelp({ onClose }: { onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [onClose]);
+  return (
+    <div
+      className="pointer-events-auto absolute inset-0 z-30 grid place-items-center bg-black/30 p-4 backdrop-blur-[2px]"
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="VR view"
+        className="w-full max-w-[420px] rounded-3xl border border-white/70 bg-white/80 p-6 text-black shadow-[0_22px_60px_-14px_rgba(0,0,0,0.4)] backdrop-blur-2xl"
+      >
+        <p className="eyebrow">VR view</p>
+        <p className="tracked mt-2 text-[18px] font-light">Step inside the gallery</p>
+        <span aria-hidden className="prism-rule mt-3 block w-20" />
+        <ul className="mt-4 space-y-2.5 text-[14px] leading-relaxed text-black/75">
+          <li>
+            <b className="font-medium text-black">In a headset</b> (Meta Quest, Apple Vision Pro,
+            Pico): open this page in its browser and press VR view. Point and select, or look and
+            pinch, at a film to walk to it; the thumbstick turns you and walks on.
+          </li>
+          <li>
+            <b className="font-medium text-black">On a phone</b>: open it there and press VR view;
+            slip the phone into a VR holder, and look round by moving your head.
+          </li>
+          <li>
+            <b className="font-medium text-black">Here</b>: scroll or ← → to walk, A D or the mouse
+            to look round.
+          </li>
+        </ul>
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(window.location.href.split("?")[0]);
+                setCopied(true);
+              } catch {
+                /* no clipboard */
+              }
+            }}
+            className="press flex h-10 items-center rounded-md bg-black px-4 text-[14px] text-white"
+          >
+            {copied ? "Link copied" : "Copy the link"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="press flex h-10 items-center rounded-md bg-black/[0.06] px-4 text-[14px]"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
