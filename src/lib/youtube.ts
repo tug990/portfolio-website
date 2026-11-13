@@ -26,6 +26,13 @@ export const youtubeCoverSet = (id: string) =>
     `https://i.ytimg.com/vi_webp/${id}/maxresdefault.webp 1280w`,
   ].join(", ");
 
+/*
+  The largest cover as JPEG, for the gallery's wall screens: drawing an image
+  into WebGL needs the host's CORS permission, which YouTube sends for its
+  JPEG covers (vi/) but not its WebP ones (vi_webp/).
+*/
+export const youtubeCoverJpeg = (id: string) => `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
+
 /* A JPEG every video has, should a WebP size be missing. */
 export const youtubeCoverFallback = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 
