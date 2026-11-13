@@ -1,42 +1,658 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import type { Project } from "@/content/projects";
 import type { WorkClient } from "@/content/site";
 import { Poster } from "@/components/Poster";
-import { SORTS, UI, coverOf, coverSources, hasFilm, type SortKey } from "@/lib/work";
+import { SORTS, UI, clientOf, coverSources, filmOf, kindOf, type SortKey } from "@/lib/work";
+import { usePlayer } from "@/lib/player";
 import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 
 /*
-  The YouTube-like pieces of the Work page (/projects): the lavender page and
-  white panel, the video card with its ⋮ menu, the play button, the sort menu.
+  The pieces of the Work page (our YouTube channel) and a film's page (our
+  watch page), after YouTube's own, in the studio's dress: Inter for the
+  working type, Libre Caslon for titles, ink and soft lavender greys instead
+  of YouTube's black and red, and the prism's colours as the one accent.
 */
 
-/* The lavender page and the white panel the Work page and a film's page sit on (`wide`: the film page's wider panel). */
-export function WorkBackdrop({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
-  // clipped sideways only, and the panel not at all: menus may hang below it
+export const INK = "#14172e";
+export const MUTED = "#5f6382";
+export const SERIF = '"Libre Caslon Text", "Iowan Old Style", Georgia, serif';
+/* the prism's light: the accent (the chosen tab, a card's hover line, progress) */
+export const PRISM = "linear-gradient(90deg, #7b6dff, #8fd3ff 40%, #ffd08f 70%, #ff8f6b)";
+
+/*
+  The page both sit on: near-white, with a faint wash of the prism's colours
+  at the top. `wide`: a film's page (YouTube's watch page runs wider). Phones
+  keep a 16 px edge, which films and cards run out over (edge to edge).
+*/
+export function WorkBackdrop({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return (
-    <div className="relative overflow-x-clip bg-[#f3f1fa]">
+    <div className="relative overflow-x-clip bg-[#fcfbfe]" style={{ ...UI, color: INK }}>
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[520px]"
         style={{
           background:
-            "radial-gradient(55% 45% at 90% 5%, rgba(196,186,255,0.55), transparent 70%), radial-gradient(45% 40% at 0% 70%, rgba(255,210,238,0.45), transparent 70%), radial-gradient(40% 30% at 100% 95%, rgba(200,225,255,0.5), transparent 70%)",
+            "radial-gradient(50% 60% at 85% 0%, rgba(196,186,255,0.38), transparent 70%), radial-gradient(40% 50% at 8% 10%, rgba(255,214,236,0.35), transparent 70%)",
         }}
       />
       <div
         className={cn(
-          "relative mx-auto px-3 pb-12 pt-[84px] sm:px-4",
-          wide ? "max-w-[1400px]" : "max-w-6xl",
+          "relative mx-auto px-4 pb-16 pt-[84px] sm:px-6 sm:pt-[92px] lg:px-8",
+          wide ? "max-w-[1720px]" : "max-w-[1320px]",
         )}
       >
-        <div className="relative rounded-[24px] border border-white bg-white/85 px-4 pb-8 pt-6 shadow-[0_30px_80px_-40px_rgba(80,60,160,0.35)] sm:px-7">
-          {children}
-        </div>
+        {children}
       </div>
     </div>
+  );
+}
+
+/* ---------- avatars ---------- */
+
+/*
+  A round avatar, as YouTube puts by every channel: the studio's mark, or a
+  client's exact emblem (or, for those without one, their whole logo), on
+  white, inside a hairline ring.
+*/
+export function Avatar({
+  client,
+  size,
+  className,
+}: {
+  client?: WorkClient;
+  size: number;
+  className?: string;
+}) {
+  const src = client ? client.mark : "/brand/mark-avatar.webp";
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "grid shrink-0 place-items-center overflow-hidden rounded-full bg-white shadow-[0_1px_3px_rgba(20,23,46,0.12)] ring-1 ring-[#14172e]/10",
+        className,
+      )}
+      style={{ width: size, height: size }}
+    >
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        className={cn(
+          "object-contain",
+          client?.markIsLogo ? "h-auto w-[82%]" : client ? "h-[68%] w-auto" : "h-[64%] w-auto",
+        )}
+      />
+    </span>
+  );
+}
+
+/* A client's name, short: their big word (as on their badge), else their name. */
+export const shortName = (c: WorkClient) => c.big ?? c.name;
+
+/* ---------- chips and rows that scroll ---------- */
+
+/* A chip, as YouTube's: a small rounded label; the chosen one is ink. */
+export function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[14px] font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[#7b6dff]/60",
+        active
+          ? "bg-[#14172e] text-white"
+          : "bg-[#14172e]/[0.06] text-[#14172e] hover:bg-[#14172e]/[0.11]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/*
+  A row that scrolls sideways (chips, a shelf of films): by swiping, or on
+  wider screens with round arrow buttons at its ends, which show only while
+  there's more that way. The ends fade.
+*/
+export function Scroller({
+  children,
+  className,
+  gap = "gap-3",
+  step = 0.8,
+  label,
+}: {
+  children: ReactNode;
+  className?: string;
+  gap?: string;
+  step?: number;
+  label: string;
+}) {
+  const el = useRef<HTMLUListElement>(null);
+  const [ends, setEnds] = useState({ left: false, right: false });
+  const update = useCallback(() => {
+    const s = el.current;
+    if (!s) return;
+    setEnds({
+      left: s.scrollLeft > 4,
+      right: s.scrollLeft + s.clientWidth < s.scrollWidth - 4,
+    });
+  }, []);
+  useEffect(() => {
+    const s = el.current;
+    if (!s) return;
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(s);
+    return () => ro.disconnect();
+  }, [update]);
+  const go = (dir: 1 | -1) =>
+    el.current?.scrollBy({ left: dir * el.current.clientWidth * step, behavior: "smooth" });
+
+  const arrow = (dir: 1 | -1) => (
+    <button
+      type="button"
+      aria-label={dir > 0 ? "More" : "Back"}
+      onClick={() => go(dir)}
+      className={cn(
+        "absolute top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white text-[#14172e] shadow-[0_2px_10px_rgba(20,23,46,0.18)] ring-1 ring-black/5 transition hover:bg-[#f4f3fa] sm:grid",
+        dir > 0 ? "-right-2" : "-left-2",
+      )}
+    >
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+      >
+        <path d={dir > 0 ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} />
+      </svg>
+    </button>
+  );
+
+  return (
+    <div className={cn("relative", className)}>
+      {ends.left && arrow(-1)}
+      <ul
+        ref={el}
+        aria-label={label}
+        onScroll={update}
+        className={cn(
+          "flex snap-x overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          gap,
+        )}
+        style={{
+          maskImage: `linear-gradient(90deg, ${ends.left ? "transparent, #000 40px" : "#000, #000"}, #000 calc(100% - 40px), ${ends.right ? "transparent" : "#000"})`,
+        }}
+      >
+        {children}
+      </ul>
+      {ends.right && arrow(1)}
+    </div>
+  );
+}
+
+/* ---------- a film's picture ---------- */
+
+/*
+  A film's picture, light: the browser picks the size it needs from the
+  YouTube cover's WebP sizes (`sizes` says how wide it shows), loads it lazily
+  unless `eager` (the first thing you see), and falls back to a JPEG every
+  video has if a WebP size is missing.
+*/
+export function Cover({
+  project,
+  sizes,
+  eager,
+  className,
+}: {
+  project: Project;
+  sizes: string;
+  eager?: boolean;
+  className?: string;
+}) {
+  const s = coverSources(project);
+  const [failed, setFailed] = useState(false);
+  if (!s) return null;
+  const useFallback = failed && !!s.fallback;
+  return (
+    <img
+      src={useFallback ? s.fallback : s.src}
+      srcSet={useFallback ? undefined : s.srcSet}
+      sizes={s.srcSet && !useFallback ? sizes : undefined}
+      alt=""
+      loading={eager ? "eager" : "lazy"}
+      fetchPriority={eager ? "high" : undefined}
+      decoding="async"
+      onError={() => s.fallback && !failed && setFailed(true)}
+      className={className}
+    />
+  );
+}
+
+/* The picture in a card: the cover (or the stand-in poster), its length, and on hover a line of prism light. */
+function Thumb({
+  project,
+  sizes,
+  className,
+}: {
+  project: Project;
+  sizes: string;
+  className?: string;
+}) {
+  return (
+    <span className={cn("relative block aspect-video overflow-hidden bg-[#0d0d16]", className)}>
+      {coverSources(project) ? (
+        <Cover
+          project={project}
+          sizes={sizes}
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+        />
+      ) : (
+        <span className="absolute inset-0 transition-transform duration-700 ease-out group-hover:scale-[1.04]">
+          <Poster title={project.title} />
+        </span>
+      )}
+      <span
+        aria-hidden
+        className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10"
+      />
+      {project.duration && (
+        <span className="absolute bottom-1.5 right-1.5 rounded-[5px] bg-[#0b0b14]/75 px-1.5 py-px text-[12px] font-medium tabular-nums text-white backdrop-blur-sm">
+          {project.duration}
+        </span>
+      )}
+      <span
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-[3px] origin-left scale-x-0 transition-transform duration-500 group-hover:scale-x-100"
+        style={{ background: PRISM }}
+      />
+    </span>
+  );
+}
+
+/* A link to a film's page, or (in the gallery's sheet, which opens films in place) a button. */
+function ToFilm({
+  project,
+  onOpen,
+  className,
+  children,
+  label,
+  tabIndex,
+}: {
+  project: Project;
+  onOpen?: (slug: string) => void;
+  className?: string;
+  children: ReactNode;
+  label?: string;
+  tabIndex?: number;
+}) {
+  if (onOpen)
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(project.slug)}
+        aria-label={label}
+        tabIndex={tabIndex}
+        className={cn("text-left", className)}
+      >
+        {children}
+      </button>
+    );
+  return (
+    <Link
+      to="/projects/$slug"
+      params={{ slug: project.slug }}
+      aria-label={label}
+      tabIndex={tabIndex}
+      className={className}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/* ---------- video cards ---------- */
+
+/*
+  A film, as a YouTube video card: its picture, then the client's avatar, the
+  title (two lines at most), the client, and what kind of film and its year.
+  `bleed`: on phones the picture runs edge to edge (as in YouTube's app).
+  `avatar={false}`: in a client's own row, where it would only repeat.
+*/
+export function VideoCard({
+  project,
+  bleed,
+  avatar = true,
+  onOpen,
+  sizes = "(min-width: 1280px) 300px, (min-width: 1024px) 31vw, (min-width: 640px) 48vw, 100vw",
+}: {
+  project: Project;
+  bleed?: boolean;
+  avatar?: boolean;
+  /* opens films in place (the gallery's sheet) instead of going to their page */
+  onOpen?: (slug: string) => void;
+  sizes?: string;
+}) {
+  const client = clientOf(project);
+  return (
+    <article className="group">
+      <ToFilm
+        project={project}
+        onOpen={onOpen}
+        label={project.title}
+        className={cn("block w-full", bleed ? "-mx-4 w-[calc(100%+2rem)] sm:mx-0 sm:w-full" : "")}
+      >
+        <Thumb project={project} sizes={sizes} className={bleed ? "sm:rounded-xl" : "rounded-xl"} />
+      </ToFilm>
+      <div className="mt-3 flex items-start gap-3">
+        {avatar && <Avatar client={client} size={36} className="mt-0.5" />}
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 text-[15px] font-semibold leading-[1.35]">
+            <ToFilm project={project} onOpen={onOpen} tabIndex={-1}>
+              {project.title}
+            </ToFilm>
+          </h3>
+          <p className="mt-1 truncate text-[13px] leading-[1.45]" style={{ color: MUTED }}>
+            {project.client ?? "Insight Lab"}
+          </p>
+          <p className="truncate text-[13px] leading-[1.45]" style={{ color: MUTED }}>
+            {[kindOf(project), project.year].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+        <CardMenu project={project} />
+      </div>
+    </article>
+  );
+}
+
+/* A film in a list beside the player ("Up next"): a small picture, and its words to the right. */
+export function CompactCard({
+  project,
+  onOpen,
+}: {
+  project: Project;
+  onOpen?: (slug: string) => void;
+}) {
+  return (
+    <article className="group flex items-start gap-2.5">
+      <ToFilm
+        project={project}
+        onOpen={onOpen}
+        label={project.title}
+        className="block w-[168px] shrink-0"
+      >
+        <Thumb project={project} sizes="168px" className="rounded-lg" />
+      </ToFilm>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <h3 className="line-clamp-2 text-[14px] font-semibold leading-[1.35]">
+          <ToFilm project={project} onOpen={onOpen} tabIndex={-1}>
+            {project.title}
+          </ToFilm>
+        </h3>
+        <p className="mt-1 truncate text-[12px] leading-[1.5]" style={{ color: MUTED }}>
+          {project.client ?? "Insight Lab"}
+        </p>
+        <p className="truncate text-[12px] leading-[1.5]" style={{ color: MUTED }}>
+          {[kindOf(project), project.year].filter(Boolean).join(" · ")}
+        </p>
+      </div>
+      <CardMenu project={project} />
+    </article>
+  );
+}
+
+/* ⋮ on a card: play it in the mini player (and keep browsing), open its page, watch it on YouTube, copy its link. */
+export function CardMenu({ project }: { project: Project }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const { play } = usePlayer();
+  const film = filmOf(project);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  const watch = project.youtube ?? project.link;
+  const copy = async () => {
+    setOpen(false);
+    const url = `${window.location.origin}/projects/${project.slug}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied");
+    } catch {
+      toast(url);
+    }
+  };
+
+  const item =
+    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[14px] hover:bg-[#14172e]/[0.06]";
+  return (
+    <div ref={root} className="relative -mr-2 -mt-1 shrink-0">
+      <button
+        type="button"
+        aria-label={`More for ${project.title}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="grid h-8 w-8 place-items-center rounded-full opacity-80 transition hover:bg-[#14172e]/[0.07] hover:opacity-100"
+      >
+        <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="currentColor" aria-hidden>
+          <circle cx="12" cy="5" r="1.8" />
+          <circle cx="12" cy="12" r="1.8" />
+          <circle cx="12" cy="19" r="1.8" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className={cn(
+            "absolute right-0 top-9 z-30 w-60 origin-top-right rounded-xl p-1.5",
+            GLASS_PANEL,
+            MENU_IN,
+          )}
+        >
+          {film && (
+            <button
+              role="menuitem"
+              type="button"
+              className={item}
+              onClick={() => {
+                setOpen(false);
+                play(film);
+              }}
+            >
+              <MiniIcon className="h-[18px] w-[18px]" />
+              Play in the mini player
+            </button>
+          )}
+          <Link
+            role="menuitem"
+            to="/projects/$slug"
+            params={{ slug: project.slug }}
+            className={item}
+          >
+            <MenuIcon d="M5 5h14v14H5zM10 9.5v5l4-2.5z" />
+            Open the film
+          </Link>
+          {watch && (
+            <a role="menuitem" href={watch} target="_blank" rel="noreferrer" className={item}>
+              <MenuIcon d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5" />
+              {project.youtube ? "Watch on YouTube" : "Watch the film"}
+            </a>
+          )}
+          <button role="menuitem" type="button" onClick={copy} className={item}>
+            <MenuIcon d="M9 15l6-6M10.5 6.5l1.8-1.8a4 4 0 015.7 5.7l-1.8 1.8M13.5 17.5l-1.8 1.8a4 4 0 01-5.7-5.7l1.8-1.8" />
+            Copy link
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuIcon({ d }: { d: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className="h-[18px] w-[18px] shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={d} />
+    </svg>
+  );
+}
+
+/* A screen with a small one in its corner: the mini player. */
+export function MiniIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className={cn("shrink-0", className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/* ---------- the box a film plays in ---------- */
+
+/*
+  Where a film plays on a page (a film's page, the featured film on the Work
+  page): its cover and a play button until it plays, then the site's player
+  sits exactly over this box (lib/player.tsx). If it's in the mini player
+  instead, the cover says so; playing it again brings it back here.
+  `children`: words over the cover. `heroRef`: the gallery sheet's animation.
+*/
+export function FilmBox({
+  project,
+  className,
+  heroRef,
+  eager,
+  sizes,
+  children,
+}: {
+  project: Project;
+  className?: string;
+  heroRef?: Ref<HTMLDivElement>;
+  eager?: boolean;
+  sizes: string;
+  children?: ReactNode;
+}) {
+  const { film, docked, play, setSlot } = usePlayer();
+  const playable = filmOf(project);
+  const here = film?.slug === project.slug;
+  const showing = here && docked;
+
+  const slug = project.slug;
+  const slot = useCallback(
+    (el: HTMLDivElement | null) => {
+      setSlot(slug, el);
+      if (typeof heroRef === "function") heroRef(el);
+      else if (heroRef) heroRef.current = el;
+    },
+    [slug, heroRef, setSlot],
+  );
+
+  return (
+    <div ref={slot} className={cn("relative aspect-video overflow-hidden bg-[#0d0d16]", className)}>
+      {!showing && (
+        <button
+          type="button"
+          onClick={() => playable && play(playable)}
+          disabled={!playable}
+          aria-label={playable ? `Play ${project.title}` : `${project.title} (no film yet)`}
+          className="group absolute inset-0 block h-full w-full text-left disabled:cursor-default"
+        >
+          {coverSources(project) ? (
+            <Cover
+              project={project}
+              eager={eager}
+              sizes={sizes}
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.015]"
+            />
+          ) : (
+            <span className="absolute inset-0">
+              <Poster title="" live />
+            </span>
+          )}
+          <span
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(0deg, rgba(8,8,18,0.62), rgba(8,8,18,0.08) 45%, transparent 70%)",
+            }}
+          />
+          {children}
+          {here && (
+            <span className="absolute left-3 top-3 flex items-center gap-2 rounded-full border border-white/30 bg-black/35 px-3 py-1.5 text-[12px] font-medium text-white backdrop-blur-md">
+              <MiniIcon className="h-4 w-4" />
+              Playing in the mini player
+            </span>
+          )}
+          {playable && (
+            <PlayButton className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 sm:h-[72px] sm:w-[72px]" />
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* A round glass play button, with a ring of prism light when you're over it. */
+export function PlayButton({ className }: { className?: string }) {
+  return (
+    <span aria-hidden className={cn("relative grid place-items-center", className)}>
+      <span
+        className="absolute inset-[-3px] rounded-full opacity-0 blur-[2px] transition-opacity duration-500 group-hover:opacity-100"
+        style={{
+          background: "conic-gradient(from 200deg, #7b6dff, #8fd3ff, #ffd08f, #ff8f6b, #7b6dff)",
+        }}
+      />
+      <span className="absolute inset-0 rounded-full border border-white/60 bg-white/20 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md transition-transform duration-300 group-hover:scale-105" />
+      <svg
+        viewBox="0 0 24 24"
+        className="relative ml-[8%] h-[38%] w-[38%] text-white"
+        fill="currentColor"
+      >
+        <path d="M7 4.5v15l13-7.5z" />
+      </svg>
+    </span>
   );
 }
 
@@ -220,184 +836,5 @@ export function Check({ on }: { on: boolean }) {
     >
       <path d="M5 12.5l4.5 4.5L19 7.5" />
     </svg>
-  );
-}
-
-/*
-  A film's picture, light: the browser picks the size it needs from the
-  YouTube cover's WebP sizes (`sizes` says how wide it shows), loads it lazily
-  unless `eager` (the first thing you see), and falls back to a JPEG every
-  video has if a WebP size is missing.
-*/
-export function Cover({
-  project,
-  sizes,
-  eager,
-  className,
-}: {
-  project: Project;
-  sizes: string;
-  eager?: boolean;
-  className?: string;
-}) {
-  const s = coverSources(project);
-  const [failed, setFailed] = useState(false);
-  if (!s) return null;
-  const useFallback = failed && !!s.fallback;
-  return (
-    <img
-      src={useFallback ? s.fallback : s.src}
-      srcSet={useFallback ? undefined : s.srcSet}
-      sizes={s.srcSet && !useFallback ? sizes : undefined}
-      alt=""
-      loading={eager ? "eager" : "lazy"}
-      fetchPriority={eager ? "high" : undefined}
-      decoding="async"
-      onError={() => s.fallback && !failed && setFailed(true)}
-      className={className}
-    />
-  );
-}
-
-/* ---------- video cards ---------- */
-
-export function VideoCard({ project }: { project: Project }) {
-  const cover = coverOf(project);
-  const line = project.series ?? project.client ?? project.tags[0];
-  return (
-    <article className="group" style={UI}>
-      <Link
-        to="/projects/$slug"
-        params={{ slug: project.slug }}
-        className="relative block aspect-video overflow-hidden rounded-xl bg-black"
-        aria-label={project.title}
-      >
-        {cover ? (
-          <Cover
-            project={project}
-            sizes="(min-width: 1024px) 270px, (min-width: 768px) 33vw, (min-width: 640px) 50vw, 100vw"
-            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-          />
-        ) : (
-          <span className="absolute inset-0 transition-transform duration-500 group-hover:scale-[1.03]">
-            <Poster title={project.title} />
-          </span>
-        )}
-        {hasFilm(project) && (
-          <PlayButton className="absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2" />
-        )}
-        {project.duration && (
-          <span className="absolute bottom-1.5 right-1.5 rounded-[5px] bg-black/75 px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-white">
-            {project.duration}
-          </span>
-        )}
-      </Link>
-      <div className="mt-2 flex items-start gap-1 pl-0.5">
-        <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-[15px] font-semibold leading-[1.3] text-[#0f0f0f]">
-            <Link to="/projects/$slug" params={{ slug: project.slug }}>
-              {project.title}
-            </Link>
-          </h3>
-          <p className="mt-0.5 flex items-center gap-2 text-[13px] font-medium text-[#262f6b]">
-            {line && <span className="truncate">{line}</span>}
-            {line && <span aria-hidden className="h-3 w-px shrink-0 bg-[#262f6b]/60" />}
-            <span className="tabular-nums">{project.year}</span>
-          </p>
-        </div>
-        <CardMenu project={project} />
-      </div>
-    </article>
-  );
-}
-
-/* The ⋮ menu on a card: open it, watch it on YouTube, copy its link. */
-export function CardMenu({ project }: { project: Project }) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("pointerdown", away);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [open]);
-
-  const watch = project.youtube ?? project.link;
-  const copy = async () => {
-    setOpen(false);
-    const url = `${window.location.origin}/projects/${project.slug}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast("Link copied");
-    } catch {
-      toast(url);
-    }
-  };
-
-  const item = "flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-black/[0.05]";
-  return (
-    <div ref={root} className="relative -mr-2 -mt-1.5 shrink-0">
-      <button
-        type="button"
-        aria-label={`More for ${project.title}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="grid h-8 w-8 place-items-center rounded-full text-[#0f0f0f] hover:bg-black/[0.07]"
-      >
-        <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="currentColor" aria-hidden>
-          <circle cx="12" cy="5" r="1.9" />
-          <circle cx="12" cy="12" r="1.9" />
-          <circle cx="12" cy="19" r="1.9" />
-        </svg>
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-9 z-20 w-52 overflow-hidden rounded-xl bg-white py-2 shadow-[0_4px_32px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.04)]"
-        >
-          <Link
-            role="menuitem"
-            to="/projects/$slug"
-            params={{ slug: project.slug }}
-            className={item}
-          >
-            Open the case study
-          </Link>
-          {watch && (
-            <a role="menuitem" href={watch} target="_blank" rel="noreferrer" className={item}>
-              {project.youtube ? "Watch on YouTube" : "Watch the film"}
-            </a>
-          )}
-          <button role="menuitem" type="button" onClick={copy} className={item}>
-            Copy link
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function PlayButton({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "grid place-items-center rounded-full border-2 border-white/95 bg-black/35 text-white backdrop-blur-[2px] transition-transform duration-300 group-hover:scale-110",
-        className,
-      )}
-    >
-      <svg viewBox="0 0 24 24" className="ml-[8%] h-[42%] w-[42%]" fill="currentColor">
-        <path d="M7 4.5v15l13-7.5z" />
-      </svg>
-    </span>
   );
 }

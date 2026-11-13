@@ -52,6 +52,20 @@ function Player({ film }: { film: Film }) {
   const [inSheet, setInSheet] = useState(false);
   const media = useMedia(film, docked);
 
+  // In the corner the film is drawn at a normal player's size and scaled down
+  // to fit: YouTube crowds a tiny player with its own buttons, a normal one not.
+  const STAGE = 480;
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const el = screen.current;
+    if (!el || docked) return;
+    const fit = () => setScale(el.clientWidth / STAGE);
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [docked]);
+
   // Docked: keep the player exactly over the slot, every frame (it scrolls,
   // resizes, animates). On the page it's placed in page coordinates, so it
   // scrolls with the page; in the sheet, on screen and cut to the sheet.
@@ -248,7 +262,16 @@ function Player({ film }: { film: Film }) {
             : "aspect-video w-[118px] shrink-0 rounded-[10px] sm:w-full sm:rounded-xl",
         )}
       >
-        {media.element}
+        <div
+          className="absolute left-0 top-0 h-full w-full origin-top-left"
+          style={
+            docked
+              ? undefined
+              : { width: STAGE, height: (STAGE * 9) / 16, transform: `scale(${scale})` }
+          }
+        >
+          {media.element}
+        </div>
         {/* phones: ⌄ minimises (tap, or swipe down on it), like YouTube's */}
         {docked && (
           <button

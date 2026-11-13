@@ -1,71 +1,86 @@
 import { useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { PROJECTS, type Project } from "@/content/projects";
+import { createFileRoute } from "@tanstack/react-router";
+import { PROJECTS } from "@/content/projects";
 import { WORK_CLIENTS, WORK_PAGE } from "@/content/site";
-import { Poster } from "@/components/Poster";
 import {
   Check,
   Chevron,
+  Chip,
   ClientBadge,
-  Cover,
-  PlayButton,
+  MUTED,
+  Scroller,
   SortMenu,
   VideoCard,
   WorkBackdrop,
 } from "@/components/work/WorkUI";
+import { usePlayer } from "@/lib/player";
 import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
-import { UI, coverOf, hasFilm, sortFilms, type SortKey } from "@/lib/work";
+import { UI, filmOf, hasFilm, kindOf, sortFilms, type SortKey } from "@/lib/work";
 import { seo } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 
+type Search = { client?: string; kind?: string };
+
+/* The kinds of film there are (the chips), newest films' kinds first. */
+const KINDS = [...new Set(sortFilms(PROJECTS, "newest").map(kindOf).filter(Boolean))] as string[];
+
 export const Route = createFileRoute("/projects/")({
-  // ?client=<name> opens the page already showing only that client's films
-  validateSearch: (s: Record<string, unknown>): { client?: string } =>
-    typeof s.client === "string" && WORK_CLIENTS.some((c) => c.name === s.client)
-      ? { client: s.client }
-      : {},
+  // ?client=<name>: only that client's films; ?kind=<kind>: one kind of film
+  validateSearch: (s: Record<string, unknown>): Search => {
+    const out: Search = {};
+    if (typeof s.client === "string" && WORK_CLIENTS.some((c) => c.name === s.client))
+      out.client = s.client;
+    if (typeof s.kind === "string" && KINDS.includes(s.kind)) out.kind = s.kind;
+    return out;
+  },
   head: () => seo("Work", WORK_PAGE.intro),
   component: Work,
 });
 
 /*
-  The Work page, a compact YouTube-like layout on one white panel:
-    the header picture (HeaderPicture: brand/work-header-*.webp, with a glow), OUR WORK / Stories that create impact. over it
-    the featured film: a slim banner with a play button
+  The Work page, YouTube-like:
+    the banner (the prism picture, glowing; the headline; Play showreel)
+    YouTube's search box (titles, clients, kinds)
     one line: PROJECTS (n) | Initiatives of: [a client's badge, or All] | Sort by: [...]
-      (Initiatives of opens the client badges, site.ts WORK_CLIENTS; picking one shows only their films)
-    the films as video cards, four across
-  The panel, cards and sort menu are in components/work/WorkUI.tsx.
+      (Initiatives of opens the clients' glass badges, site.ts WORK_CLIENTS;
+      picking one shows only their films)
+    chips of the kinds of film (All, Documentary, Impact film…)
+    the films as YouTube video cards: 1 across on phones (edge to edge), 2 on
+      tablets, 3–4 on PC
+  Pieces (cards, chips, badges, the sort menu): components/work/WorkUI.tsx.
 */
 
 function Work() {
-  const [sort, setSort] = useState<SortKey>("newest");
   const search = Route.useSearch();
-  const [client, setClient] = useState<string | null>(search.client ?? null);
+  const navigate = Route.useNavigate();
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>("newest");
+  const set = (next: Search) => navigate({ search: next, replace: true, resetScroll: false });
 
-  // The banner: the first featured film that has a film and a picture
-  const featured =
-    PROJECTS.find((p) => p.featured && hasFilm(p) && coverOf(p)) ??
-    PROJECTS.find((p) => hasFilm(p)) ??
-    PROJECTS[0];
-
-  const shown = useMemo(
-    () =>
-      sortFilms(
-        PROJECTS.filter((p) => !client || p.client === client),
-        sort,
-      ),
-    [client, sort],
-  );
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return sortFilms(PROJECTS, sort).filter(
+      (p) =>
+        (!search.client || p.client === search.client) &&
+        (!search.kind || kindOf(p) === search.kind) &&
+        (!q ||
+          [p.title, p.client, kindOf(p), p.series, ...p.tags].some((t) =>
+            t?.toLowerCase().includes(q),
+          )),
+    );
+  }, [search.client, search.kind, query, sort]);
 
   return (
     <WorkBackdrop>
-      <Hero />
-      {featured && <FeaturedFilm project={featured} />}
+      <Banner />
+
+      <div className="mt-4 sm:mt-5">
+        <SearchBox value={query} onChange={setQuery} />
+      </div>
 
       <section aria-labelledby="projects" className="mt-6">
         {/* One line: PROJECTS (n) on the left; Initiatives of and Sort by on the right */}
-        <div className="relative flex items-center justify-between gap-2">
+        <div className="relative z-20 flex items-center justify-between gap-2">
           <h2
             id="projects"
             className="tracked whitespace-nowrap text-[12px] font-semibold tracking-[0.16em] sm:text-sm sm:tracking-[0.32em]"
@@ -73,25 +88,58 @@ function Work() {
             Projects <span className="text-black/45 max-[359px]:hidden">({shown.length})</span>
           </h2>
           <div className="flex items-center gap-1.5 sm:gap-5">
-            <InitiativesFilter selected={client} onSelect={setClient} />
+            <InitiativesFilter
+              selected={search.client ?? null}
+              onSelect={(c) => set({ ...search, client: c ?? undefined })}
+            />
             <SortMenu value={sort} onChange={setSort} />
           </div>
         </div>
 
+        {/* the kinds of film, as YouTube's chips */}
+        <Scroller
+          label="Kinds of film"
+          gap="gap-2"
+          step={0.6}
+          className="-mx-4 mt-4 px-4 sm:mx-0 sm:px-0"
+        >
+          <li className="shrink-0">
+            <Chip active={!search.kind} onClick={() => set({ ...search, kind: undefined })}>
+              All
+            </Chip>
+          </li>
+          {KINDS.map((k) => (
+            <li key={k} className="shrink-0">
+              <Chip
+                active={search.kind === k}
+                onClick={() => set({ ...search, kind: search.kind === k ? undefined : k })}
+              >
+                {k}
+              </Chip>
+            </li>
+          ))}
+        </Scroller>
+
         {shown.length > 0 ? (
-          <ul className="mt-4 grid gap-x-3 gap-y-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          <ul className="mt-5 grid gap-x-4 gap-y-7 sm:grid-cols-2 sm:gap-y-10 lg:grid-cols-3 2xl:grid-cols-4">
             {shown.map((p) => (
               <li key={p.slug}>
-                <VideoCard project={p} />
+                <VideoCard
+                  project={p}
+                  bleed
+                  sizes="(min-width: 1536px) 300px, (min-width: 1024px) 31vw, (min-width: 640px) 48vw, 100vw"
+                />
               </li>
             ))}
           </ul>
         ) : (
           <p
-            className="mt-4 rounded-xl bg-[#f6f5fb] px-5 py-10 text-center text-[15px] text-black/60"
-            style={UI}
+            className="mt-5 rounded-xl bg-[#14172e]/[0.04] px-5 py-12 text-center text-[15px]"
+            style={{ color: MUTED }}
           >
-            Films for {client} are on their way.
+            {query
+              ? "No films match that yet."
+              : `Films for ${search.client ?? "this"} are on their way.`}
           </p>
         )}
       </section>
@@ -271,88 +319,69 @@ function InitiativesFilter({
   );
 }
 
-/* ---------- the header: the picture, with the words over its left side ---------- */
+/* ---------- the banner ---------- */
 
 /*
-  public/brand/work-header-{1400,2000,phone}.webp (2000 x 667 at full size): sunrise over forested hills on
-  the left, a glass prism splitting the light on the right. The words sit over
-  the sunrise on a soft shade; on phones the picture is cropped taller and
-  shifted right, so the prism stays in view, with the words along the bottom.
+  public/brand/work-header-{1400,2000,phone}.webp: sunrise over forested hills,
+  a glass prism splitting the light, with the prism's glow (the same picture,
+  blurred, its bright parts laid over in "screen", breathing: styles.css
+  prism-glow). The headline over the sunrise; Play showreel starts the
+  showreel in the mini player, so you can keep browsing.
 */
-function Hero() {
+function Banner() {
+  const { play } = usePlayer();
+  const reel =
+    PROJECTS.find((p) => p.tags.includes("Showreel") && hasFilm(p)) ??
+    PROJECTS.find((p) => p.featured && hasFilm(p));
+  const film = reel && filmOf(reel);
   const [first, ...rest] = WORK_PAGE.headline.split("\n");
   return (
-    // Its height is the words plus room above and below them (never less than a
-    // pleasing strip of the picture), so the words always fit with space around
-    <header className="relative flex min-h-[300px] items-end overflow-hidden rounded-2xl bg-[#1d1b2a] sm:min-h-[260px] sm:items-center lg:min-h-[330px]">
-      {/*
-        The picture, light: phones (where it's cropped tall) get a
-        full-resolution crop of the prism side (45 KB); wider screens the 1400
-        or 2000 px picture as the screen needs (47 / 74 KB).
-      */}
+    <header className="relative -mx-4 aspect-[16/8] overflow-hidden bg-[#1d1b2a] sm:mx-0 sm:aspect-[3.6/1] sm:rounded-2xl lg:aspect-[4.4/1]">
       <HeaderPicture
         eager
         className="absolute inset-0 h-full w-full object-cover object-[70%_50%] lg:object-center"
       />
-      {/*
-        The prism's glow, like a lens's bloom: the same picture again (already
-        loaded), blurred, with its mid-tones pushed down so only the bright
-        parts (the prism, its rays) remain, laid over in "screen", breathing
-        slowly. Kept to the prism's side, away from the words.
-      */}
       <HeaderPicture
         aria-hidden
-        className="prism-glow pointer-events-none absolute inset-0 h-full w-full object-cover object-[70%_50%] [mask-image:linear-gradient(180deg,#000_25%,transparent_70%)] sm:[mask-image:linear-gradient(90deg,transparent_40%,#000_62%)] lg:object-center"
+        className="prism-glow pointer-events-none absolute inset-0 h-full w-full object-cover object-[70%_50%] [mask-image:linear-gradient(90deg,transparent_30%,#000_60%)] lg:object-center"
         style={{
           filter: "blur(16px) brightness(0.72) contrast(2.3) saturate(1.7)",
           mixBlendMode: "screen",
           animation: "prism-glow 5s ease-in-out infinite",
         }}
       />
-      {/*
-        Shade for the words, kept to where they are so the rest stays bright:
-        from below on phones; on wider screens, soft from the left and a little
-        deeper right behind the words.
-      */}
       <span
         aria-hidden
-        className="absolute inset-0 sm:hidden"
+        className="absolute inset-0"
         style={{
           background:
-            "linear-gradient(0deg, rgba(8,6,18,0.86), rgba(8,6,18,0.55) 42%, rgba(8,6,18,0.06) 78%)",
+            "radial-gradient(55% 95% at 15% 60%, rgba(8,6,18,0.55), transparent 75%), linear-gradient(90deg, rgba(8,6,18,0.45), transparent 60%)",
         }}
       />
-      <span
-        aria-hidden
-        className="absolute inset-0 hidden sm:block"
-        style={{
-          background:
-            "radial-gradient(48% 78% at 22% 54%, rgba(8,6,18,0.5), transparent 78%), linear-gradient(90deg, rgba(8,6,18,0.5), rgba(8,6,18,0.26) 38%, transparent 60%)",
-        }}
-      />
-      <div className="relative w-full px-5 pb-6 pt-16 text-white sm:max-w-[58%] sm:px-9 sm:py-10 lg:max-w-[50%] lg:px-11 lg:py-12">
-        <p className="tracked text-[11px] font-semibold text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] sm:text-[13px]">
+      <div className="absolute inset-y-0 left-0 flex max-w-[64%] flex-col justify-center px-5 text-white sm:max-w-[55%] sm:px-8 lg:px-10">
+        <p className="tracked text-[10px] font-semibold text-white/90 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] sm:text-[11px]">
           {WORK_PAGE.eyebrow}
         </p>
-        <h1 className="mt-2 text-[21px] font-normal uppercase leading-[1.3] tracking-[0.2em] [text-shadow:0_1px_2px_rgba(0,0,0,0.45),0_2px_18px_rgba(0,0,0,0.55)] sm:mt-3 sm:text-[28px] lg:text-[34px]">
+        <p className="mt-1.5 text-[17px] font-normal uppercase leading-[1.3] tracking-[0.18em] [text-shadow:0_1px_2px_rgba(0,0,0,0.45),0_2px_18px_rgba(0,0,0,0.55)] sm:mt-2 sm:text-[22px] lg:text-[26px]">
           {first}
           {rest.length > 0 && (
             <>
-              <br className="hidden sm:block" /> {rest.join(" ")}
+              <br /> {rest.join(" ")}
             </>
           )}
-        </h1>
-        <span
-          aria-hidden
-          className="mt-3 block h-[4px] w-28 rounded-full sm:w-36"
-          style={{ background: "linear-gradient(90deg, #8f9bff, #c9bfff 55%, #fff)" }}
-        />
-        <p
-          className="mt-3 max-w-sm text-[14px] leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.5),0_1px_10px_rgba(0,0,0,0.55)] sm:text-[15px]"
-          style={UI}
-        >
-          {WORK_PAGE.intro}
         </p>
+        {film && (
+          <button
+            type="button"
+            onClick={() => play(film)}
+            className="mt-3 flex h-9 w-fit items-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 text-[13px] font-medium text-white backdrop-blur-md transition hover:bg-white/25 sm:mt-4"
+          >
+            <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
+              <path d="M7 4.5v15l13-7.5z" />
+            </svg>
+            Play showreel
+          </button>
+        )}
       </div>
     </header>
   );
@@ -376,7 +405,7 @@ function HeaderPicture({
       <img
         src="/brand/work-header-1400.webp"
         srcSet="/brand/work-header-1400.webp 1400w, /brand/work-header-2000.webp 2000w"
-        sizes="(min-width: 1152px) 1100px, 960px"
+        sizes="(min-width: 1320px) 1030px, 100vw"
         width={2000}
         height={667}
         fetchPriority={eager ? "high" : undefined}
@@ -389,56 +418,63 @@ function HeaderPicture({
   );
 }
 
-/* ---------- the featured film: a slim banner ---------- */
+/* ---------- search ---------- */
 
-function FeaturedFilm({ project }: { project: Project }) {
-  const cover = coverOf(project);
-  const kind = project.format ?? project.tags[0];
+/* YouTube's search: a long pill and a round-ended button with the magnifier. */
+function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <Link
-      to="/projects/$slug"
-      params={{ slug: project.slug }}
-      aria-label={`Watch ${project.title}`}
-      className="group relative mt-4 block aspect-[16/9] overflow-hidden rounded-2xl bg-black sm:aspect-[4/1] lg:aspect-[5.6/1]"
+    <form
+      role="search"
+      onSubmit={(e) => e.preventDefault()}
+      className="flex w-full max-w-[640px] lg:mx-auto"
     >
-      {cover ? (
-        <Cover
-          project={project}
-          sizes="(min-width: 1152px) 1100px, 100vw"
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
+      <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-l-full border border-[#14172e]/15 bg-white pl-4 pr-2 shadow-[inset_0_1px_2px_rgba(20,23,46,0.06)] focus-within:border-[#7b6dff] focus-within:ring-1 focus-within:ring-[#7b6dff]/40">
+        <span className="sr-only">Search films</span>
+        <input
+          type="search"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Search films, initiatives…"
+          className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#5f6382]/80 [&::-webkit-search-cancel-button]:hidden"
         />
-      ) : (
-        <span className="absolute inset-0">
-          <Poster title="" live />
-        </span>
-      )}
-      <span
-        aria-hidden
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(90deg, rgba(0,0,0,0.75), rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.12)), linear-gradient(0deg, rgba(0,0,0,0.3), transparent 50%)",
-        }}
-      />
-      {project.client && (
-        <span
-          style={UI}
-          className="absolute right-4 top-4 rounded-full border-[1.5px] border-white/90 px-3.5 py-1 text-[12px] font-semibold uppercase tracking-[0.12em] text-white sm:right-6"
-        >
-          {project.client}
-        </span>
-      )}
-      <span className="absolute bottom-4 left-5 right-20 text-white sm:bottom-auto sm:left-9 sm:right-auto sm:top-1/2 sm:max-w-[40%] sm:-translate-y-1/2">
-        {kind && <span className="tracked block text-[11px] font-medium">{kind}</span>}
-        <span className="mt-1 block text-[26px] font-medium leading-[1.05] sm:text-[34px]">
-          {project.title}
-        </span>
-        {project.client && (
-          <span className="tracked mt-1.5 block text-[11px] text-white/90">{project.client}</span>
+        {value && (
+          <button
+            type="button"
+            aria-label="Clear"
+            onClick={() => onChange("")}
+            className="grid h-7 w-7 place-items-center rounded-full hover:bg-[#14172e]/[0.07]"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         )}
-      </span>
-      {/* Phones: in the corner, beside the title. Wider: clear of the title, centred when there's room */}
-      <PlayButton className="absolute bottom-4 right-4 h-12 w-12 sm:bottom-auto sm:left-[62%] sm:right-auto sm:top-1/2 sm:h-14 sm:w-14 sm:-translate-x-1/2 sm:-translate-y-1/2 lg:left-1/2" />
-    </Link>
+      </label>
+      <button
+        type="submit"
+        aria-label="Search"
+        className="grid h-10 w-16 shrink-0 place-items-center rounded-r-full border border-l-0 border-[#14172e]/15 bg-[#14172e]/[0.05] transition hover:bg-[#14172e]/[0.1]"
+      >
+        <svg
+          aria-hidden
+          viewBox="0 0 24 24"
+          className="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+        >
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M16 16l4.5 4.5" />
+        </svg>
+      </button>
+    </form>
   );
 }
