@@ -13,7 +13,7 @@ import {
   YT_HOST,
   keepLooping,
   loadYouTubeApi,
-  youtubeCover,
+  youtubeCoverJpeg,
   youtubeId,
   ytPlayerVars,
   type YTPlayer,
@@ -808,7 +808,7 @@ export class GalleryScene {
       w.video = v;
       this.disposables.push(tex);
     } else if (p.image || ytId) {
-      const tex = new THREE.TextureLoader().load(p.image ?? youtubeCover(ytId!));
+      const tex = new THREE.TextureLoader().load(p.image ?? youtubeCoverJpeg(ytId!));
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = aniso;
       mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
