@@ -5,26 +5,25 @@ import { useStageTone } from "@/lib/stage";
 
 const LINKS = [
   { to: "/projects", label: "Work" },
-  { to: "/gallery", label: "Gallery" },
   { to: "/about", label: "About" },
   { to: "/contact", label: "Contact" },
 ] as const;
 
-/* Line icons for the phone's bar (Home, the Work page, is the mark itself; the gallery a headset) */
-const ICONS: Record<Exclude<(typeof LINKS)[number]["to"], "/projects">, string> = {
-  "/gallery":
-    "M3 8.5c0-1.1.9-2 2-2h14a2 2 0 012 2v6.5a2 2 0 01-2 2h-3.6l-1.7-2.4a2 2 0 00-3.4 0l-1.7 2.4H5a2 2 0 01-2-2zM8 10.1a1.4 1.4 0 110 2.8 1.4 1.4 0 010-2.8zM16 10.1a1.4 1.4 0 110 2.8 1.4 1.4 0 010-2.8z",
+/* Line icons for the phone's bar (Home, the landing, is the mark itself) */
+const ICONS: Record<(typeof LINKS)[number]["to"], string> = {
+  "/projects": "M4 6.5h16v11H4zM10 9.5v5l4.2-2.5z",
   "/about": "M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5.5M12 7.5v.5",
   "/contact": "M3.5 6.5h17v11h-17zM4 7l8 6 8-6",
 };
 
 /*
   The site's header. Tablets and up: a bar along the top (the logo, to the
-  landing; Work / Gallery / About / Contact). Phones: a floating glass bar of
-  icons along the bottom, as an app's tab bar (Home: the Work page, the
-  site's home; Gallery, in VR; About; Contact); the room it takes is --dock
-  (styles.css), so pages keep room for it and the mini player sits above it.
-  Both carry `data-site-nav`, so the landing's way in can hide them.
+  landing; Work / About / Contact). Phones: a floating glass bar of icons
+  along the bottom, as an app's tab bar (Home: the landing; Work; About;
+  Contact); the room it takes is --dock (styles.css), so pages keep room for
+  it and the mini player sits above it. (The gallery is reached from its card
+  above every footer, "Step into the light".) Both carry `data-site-nav`, so
+  the landing's way in can hide them.
 */
 export function SiteNav() {
   // On the home page the bar floats over the black door, then the white gallery.
@@ -96,19 +95,16 @@ export function SiteNav() {
             : "border-white/70 bg-white/60 text-black ring-black/[0.05]",
         )}
       >
-        <TabLink to="/projects" label="Home" on={path.startsWith("/projects")} onDark={onDark}>
+        <TabLink to="/" label="Home" on={path === "/"} onDark={onDark}>
           <img
             src="/brand/mark-nav.webp"
             alt=""
             width={45}
             height={84}
-            className={cn(
-              "h-[22px] w-auto transition",
-              !path.startsWith("/projects") && "opacity-60 grayscale",
-            )}
+            className={cn("h-[22px] w-auto transition", path !== "/" && "opacity-60 grayscale")}
           />
         </TabLink>
-        {LINKS.filter((l) => l.to !== "/projects").map((l) => (
+        {LINKS.map((l) => (
           <TabLink key={l.to} to={l.to} label={l.label} on={path.startsWith(l.to)} onDark={onDark}>
             <svg
               aria-hidden
@@ -120,7 +116,7 @@ export function SiteNav() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d={ICONS[l.to as keyof typeof ICONS]} />
+              <path d={ICONS[l.to]} />
             </svg>
           </TabLink>
         ))}

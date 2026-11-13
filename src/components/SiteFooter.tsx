@@ -47,9 +47,6 @@ export function SiteFooter() {
             <Link to="/projects" className="hover:underline">
               Work
             </Link>
-            <Link to="/gallery" className="hover:underline">
-              Gallery
-            </Link>
             <Link to="/about" className="hover:underline">
               About
             </Link>

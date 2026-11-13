@@ -6,7 +6,7 @@ import { seo } from "@/lib/seo";
   The gallery: a 3D room with six films on its walls, to walk through on a
   screen or step inside in VR (a headset's browser: Meta Quest, Apple Vision
   Pro…; or a phone in a VR holder). Reached from the gallery card above every
-  page's footer, and the header. ?work=<slug> opens that film's page over the
+  page's footer ("Step into the light"). ?work=<slug> opens that film's page over the
   room (the address bar shows /projects/<slug> instead).
 */
 export const Route = createFileRoute("/gallery")({
