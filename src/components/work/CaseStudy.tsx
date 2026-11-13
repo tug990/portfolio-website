@@ -1,11 +1,20 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode, type Ref } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { Link } from "@tanstack/react-router";
 import { PROJECTS, type Project, type ThemeIcon } from "@/content/projects";
 import { WORK_CLIENTS, type WorkClient } from "@/content/site";
 import { Poster } from "@/components/Poster";
 import { CardMenu, Cover } from "@/components/work/WorkUI";
 import { UI, coverOf } from "@/lib/work";
-import { YT_HOST, youtubeId } from "@/lib/youtube";
+import { youtubeId } from "@/lib/youtube";
+import { usePlayer } from "@/lib/player";
 import { cn } from "@/lib/utils";
 
 /*
@@ -26,8 +35,10 @@ import { cn } from "@/lib/utils";
     In This Film: icon label │ icon label │ …
     Project Stills: ▢ ▢ ▢ ▢
 
-  Pressing play swaps the cover for the film: YouTube with sound and its own
-  controls (or a video file with the browser's), in a 16:9 frame. Phones and
+  Pressing play starts the film in the site's one player (lib/player.tsx,
+  drawn by MiniPlayer): it sits over the hero, 16:9, YouTube with sound and
+  its own controls (or a video file with the browser's). "Mini player" (next
+  to Share), or leaving the page, shrinks it to the corner, still playing. Phones and
   tablets: one column (the client card after the description; themes and
   stills in rows you swipe).
   Used on the page at /projects/<slug> and in the sheet over the gallery.
@@ -59,6 +70,8 @@ export function CaseStudy({
     return [...(theirs.length ? theirs : others)].sort((a, b) => b.year - a.year).slice(0, 3);
   }, [project.slug, project.client]);
   const moreAreTheirs = !!client && more.every((p) => p.client === client.name);
+  const player = usePlayer();
+  const playingHere = player.film?.slug === project.slug;
 
   return (
     <div style={{ ...UI, color: NAVY }}>
@@ -84,7 +97,10 @@ export function CaseStudy({
                   className="mt-2.5 text-[12px] tracking-[0.2em] sm:text-[14px]"
                 />
               </div>
-              <ShareOnWhatsApp project={project} />
+              <div className="flex shrink-0 gap-3 sm:mt-1">
+                {playingHere && <MiniPlayerButton onClick={player.minimise} />}
+                <ShareOnWhatsApp project={project} />
+              </div>
             </div>
             <Description project={project} />
           </div>
@@ -204,8 +220,8 @@ function Breadcrumb({ project, client }: { project: Project; client?: WorkClient
 /*
   The film. Before it plays: its cover, the words over its left side, a play
   button, and a control bar along the bottom (as in the design). Pressing
-  anywhere plays it: YouTube with its own controls, or a video file with the
-  browser's, in a 16:9 frame. Without a film (the stand-ins), no play button.
+  anywhere plays it in the site's player, which then sits over this box
+  (16:9 while it does). Without a film (the stand-ins), no play button.
 */
 function Hero({
   project,
@@ -216,42 +232,42 @@ function Hero({
   client?: WorkClient;
   heroRef?: Ref<HTMLDivElement>;
 }) {
-  const [playing, setPlaying] = useState(false);
+  const { film, play, setSlot } = usePlayer();
   const yt = project.youtube ? youtubeId(project.youtube) : undefined;
   const file = project.video ?? project.trailer;
   const playable = !!(yt || file);
   const cover = coverOf(project);
   const kind = project.format ?? project.tags[0];
+  const showing = film?.slug === project.slug;
+
+  // this box is where the player sits for this film (and the sheet's heroRef)
+  const slug = project.slug;
+  const slot = useCallback(
+    (el: HTMLDivElement | null) => {
+      setSlot(slug, el);
+      if (typeof heroRef === "function") heroRef(el);
+      else if (heroRef) heroRef.current = el;
+    },
+    [slug, heroRef, setSlot],
+  );
+
+  const start = () => {
+    if (!playable) return;
+    play({ slug, title: project.title, client: project.client, youtube: yt, file, cover });
+  };
 
   return (
     <div
-      ref={heroRef}
+      ref={slot}
       className={cn(
         "relative overflow-hidden rounded-xl bg-black shadow-[0_22px_44px_-26px_rgba(20,20,60,0.55)] sm:rounded-2xl",
-        playing ? "aspect-video" : "aspect-video lg:aspect-[2.75/1]",
+        showing ? "aspect-video" : "aspect-video lg:aspect-[2.75/1]",
       )}
     >
-      {playing && yt ? (
-        <iframe
-          src={`${YT_HOST}/embed/${yt}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
-          title={project.title}
-          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-          allowFullScreen
-          className="absolute inset-0 h-full w-full border-0"
-        />
-      ) : playing && file ? (
-        <video
-          src={file}
-          poster={cover}
-          controls
-          autoPlay
-          playsInline
-          className="absolute inset-0 h-full w-full bg-black object-contain"
-        />
-      ) : (
+      {!showing && (
         <button
           type="button"
-          onClick={() => playable && setPlaying(true)}
+          onClick={start}
           disabled={!playable}
           aria-label={playable ? `Play ${project.title}` : `${project.title} (no film yet)`}
           className="group absolute inset-0 block h-full w-full text-left disabled:cursor-default"
@@ -319,6 +335,39 @@ function Hero({
   );
 }
 
+/* A screen with a small one in its corner: the mini player. */
+function MiniIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/* "Mini player": to the Work page, the film carrying on in the corner. */
+function MiniPlayerButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={prismBorder()}
+      className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-medium shadow-[0_6px_18px_-8px_rgba(110,90,200,0.45)] transition hover:-translate-y-0.5 sm:text-[16px]"
+    >
+      <MiniIcon className="h-5 w-5" />
+      Mini player
+    </button>
+  );
+}
+
 /* The control bar on the cover (as in the design): a thin progress line, then the controls. */
 function ControlBar({ duration }: { duration?: string }) {
   const icon = "h-[18px] w-[18px] shrink-0 sm:h-5 sm:w-5";
@@ -378,7 +427,7 @@ function ShareOnWhatsApp({ project }: { project: Project }) {
       target="_blank"
       rel="noreferrer"
       style={prismBorder()}
-      className="flex h-12 w-full shrink-0 items-center justify-center gap-3 rounded-full px-6 text-[15px] font-medium shadow-[0_6px_18px_-8px_rgba(110,90,200,0.45)] transition hover:-translate-y-0.5 sm:mt-1 sm:w-auto sm:text-[16px]"
+      className="flex h-12 min-w-0 flex-1 items-center justify-center gap-3 rounded-full px-6 text-[15px] font-medium shadow-[0_6px_18px_-8px_rgba(110,90,200,0.45)] transition hover:-translate-y-0.5 sm:w-auto sm:flex-none sm:text-[16px]"
     >
       <svg aria-hidden viewBox="0 0 24 24" className="h-[26px] w-[26px]">
         <circle cx="12" cy="12" r="11.5" fill="#25D366" />

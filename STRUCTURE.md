@@ -88,7 +88,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | File | Used by |
 | --- | --- |
 | `favicon.png` | `routes/__root.tsx` |
-| `brand/work-header-1200.webp`, `brand/work-header-2000.webp`, `brand/work-header-phone.webp` | The Work page's header picture (`projects.index.tsx`): 1200 / 2000 px for wider screens, and for phones a full-resolution crop of the prism side (60 KB, was 200 KB) |
+| `brand/work-header-1400.webp`, `brand/work-header-2000.webp`, `brand/work-header-phone.webp` | The Work page's header picture (`projects.index.tsx` `HeaderPicture`): 1400 / 2000 px for wider screens (47 / 74 KB), and for phones a full-resolution crop of the prism side (45 KB); was 200 KB |
 | `clients/marks/*.webp` | Each client's emblem exactly as on their badge (cut out, background removed; MLINDA and Better World: their whole logo). Used in their glass pill on the Work page (`ClientBadge`) and their card on a film's page (`CaseStudy.tsx`) |
 | `brand/logo-stacked.webp` | The landing logo artwork (`Gallery.tsx`, `LogoDoor.tsx`) |
 | `brand/mark-transparent.webp` | The logo inlaid on the prism plinth (`GalleryScene.ts`, shown large) |
@@ -101,15 +101,15 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | --- | --- |
 | `router.tsx` | Creates the TanStack router (scroll restoration, not-found, errors). |
 | `routeTree.gen.ts` | **Generated** by TanStack from `routes/`. Never edit by hand. |
-| `styles.css` | Tailwind 4 theme tokens, fonts, global styles, `.tracked` letter-spacing, keyframes (e.g. `hint-line`), and the rule that hides the header during the way in (`html.journey [data-site-nav]`). |
+| `styles.css` | Tailwind 4 theme tokens, fonts, global styles, `.tracked` letter-spacing, keyframes (e.g. `hint-line`, `prism-glow`: the Work header's breathing glow, still under reduced motion), and the rule that hides the header during the way in (`html.journey [data-site-nav]`). |
 
 ### `src/routes/`: pages (one file = one URL)
 
 | File | URL | What it does |
 | --- | --- | --- |
-| `__root.tsx` | all | HTML shell, fonts (Jost, Inter, and Libre Caslon Text for a film page's titles), favicon, `SiteNav`, `SiteFooter`, `Toaster`, `NotFound`. |
+| `__root.tsx` | all | HTML shell, fonts (Jost, Inter, and Libre Caslon Text for a film page's titles), favicon, `SiteNav`, `SiteFooter`, `Toaster`, `NotFound`, and the site's film player (`PlayerProvider` round everything, `MiniPlayer` once), so a film keeps playing across pages. |
 | `index.tsx` | `/` | Renders `<Gallery />`; accepts `?work=<slug>` (open a case study over the gallery). |
-| `projects.index.tsx` | `/projects` (`?client=<name>` opens it filtered) | The Work page, a compact YouTube-like layout on one white panel (`WorkBackdrop`): a header picture (`brand/work-header.webp`: sunrise and a glass prism) with "Our work / Stories that create impact." over it (copy in `site.ts` `WORK_PAGE`; its height is the words plus padding), a slim featured-film banner, one line with "Projects (n)", "Initiatives of:" and "Sort by:" (`InitiativesFilter`: a glass button showing the chosen client's badge or All, opening "All films" and each client's glass pill (`ClientBadge`, from `site.ts` `WORK_CLIENTS`) in a glass dropdown hung from the whole line (so it fits the panel), or on phones a glass panel rising from the bottom; picking one filters the films), and the films as video cards, four across. On phones the labels hide and the buttons go compact so the line still fits at 320 px. |
+| `projects.index.tsx` | `/projects` (`?client=<name>` opens it filtered) | The Work page, a compact YouTube-like layout on one white panel (`WorkBackdrop`): a header picture (`HeaderPicture`: `brand/work-header-*.webp`, sunrise and a glass prism, phone crop below 640 px; a blurred copy on top in screen blend makes the prism's light glow and slowly breathe, masked to the prism side; a dark shade under the words, below them on phones, keeps them readable) with "Our work / Stories that create impact." over it (copy in `site.ts` `WORK_PAGE`; its height is the words plus padding), a slim featured-film banner, one line with "Projects (n)", "Initiatives of:" and "Sort by:" (`InitiativesFilter`: a glass button showing the chosen client's badge or All, opening "All films" and each client's glass pill (`ClientBadge`, from `site.ts` `WORK_CLIENTS`) in a glass dropdown hung from the whole line (so it fits the panel), or on phones a glass panel rising from the bottom; picking one filters the films), and the films as video cards, four across. On phones the labels hide and the buttons go compact so the line still fits at 320 px. |
 | `projects.$slug.tsx` | `/projects/<slug>` | A film's page reached directly: a normal page under the site header, on the Work page's panel (`WorkBackdrop wide`), holding `CaseStudy`. (From the gallery the same page opens as a sheet over the room: `ProjectSheet`.) |
 | `about.tsx` | `/about` | About page, built from `AboutSections`. |
 | `contact.tsx` | `/contact` | Contact page. |
@@ -128,6 +128,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | `seo.ts` | `seo(title, description)`: page meta tags. |
 | `youtube.ts` | YouTube helpers for the wall screens and the film page (and the unused `FilmPlayer`): `youtubeId` (id from a link), `youtubeCover` (the largest cover, as WebP), `youtubeCoverSet` (WebP sizes for srcset), `youtubeCoverFallback` (a JPEG every video has), `YT_HOST` (youtube-nocookie.com), `ytPlayerVars` (muted, no controls), `keepLooping` (restarts just before the end, so YouTube's own loop icons never show), `loadYouTubeApi` and the `YTPlayer` type. |
 | `work.ts` | Values the Work page shares with its components: `UI` (Inter for cards), `coverOf` (a film's image or YouTube cover), `coverSources` (the same with WebP sizes and a fallback), `hasFilm`, `SORTS` (each with a `label` and a phone-length `short`) / `sortFilms`. |
+| `player.tsx` | The site's one film player, like YouTube's: `PlayerProvider` and `usePlayer()` hold which film is playing (`Film`: slug, title, client, YouTube id or file, cover), the film page's hero box it sits over (`setSlot`), and whether it's there (`docked`) or in the corner; `play`, `close`, `minimise` (goes to the Work page, the film carrying on in the corner). Drawn by `components/MiniPlayer.tsx`. |
 | `menu.ts` | Dropdown menus (Sort by, Initiatives of): `useMenu` (focus, arrow keys, Escape, click outside, scroll lock) and the frosted-glass styles `GLASS_PANEL`, `GLASS_PILL`, `MENU_IN`. |
 | `stage.ts` | `setStageTone` / `useStageTone`: tells the nav and footer whether the page behind them is light or dark. |
 | `utils.ts` | `cn()`: Tailwind class merging. |
@@ -141,6 +142,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | `SiteNav.tsx` | Header bar: logo, Work / About / Contact. Carries `data-site-nav` so CSS can hide it during the way in. |
 | `SiteFooter.tsx` | Footer on every page except the gallery: call to action, studio name in huge type under lights that switch on as it scrolls in. |
 | `AboutSections.tsx` | About page sections: hanging headline, pinned expertise, rolling numbers, etc. Content from `content/site.ts`. |
+| `MiniPlayer.tsx` | The film player (state in `lib/player.tsx`), drawn once over every page. Docked: exactly over its film page's hero (placed every frame; in page coordinates on the page, cut to the sheet in the gallery's sheet), with YouTube's own controls or the browser's. Mini (after leaving the page, or minimising, which goes to the Work page): a glass card bottom-right, on phones a bar along the bottom (with room added under the page): the film, a red progress line, title and client (press either to open its page), play / pause, close. Like YouTube's on a phone: the film flies (shrinks into the corner, grows back over its page; FLIP), on phones a ⌄ on the playing film (tap or swipe down) minimises it to the Work page, and the bar swipes (up opens the film, down or sideways closes it). The video element is never moved, only placed, so it never reloads. |
 | `NotFound.tsx` | 404 page. |
 | `Poster.tsx` | Stand-in poster artwork for projects without an image. |
 | `ProjectCard.tsx` | Editorial list row (year, title, tags). **Unused.** |
@@ -151,7 +153,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | File | What it does |
 | --- | --- |
 | `ProjectSheet.tsx` | The sheet a film opens in over the gallery: the film flies from its wall position into place (FLIP), paper fades up, close (a white × in the corner) / Escape / Back fade it away. Lavender-white, scrolls as a whole, holds `CaseStudy`. |
-| `CaseStudy.tsx` | A film's page, after the studio's design: breadcrumb (Back to Work › client › title); the film (wide 2.75:1 cover with format / title / "A <client> initiative", ▶ and a control bar; playing swaps in YouTube with its own controls, or a video file, in 16:9); serif title (Libre Caslon), "CLIENT \| YEAR \| DURATION", Share on WhatsApp; the description with Read More (adds story, quote, credits); In This Film (`themes`); Project Stills (`stills`, else YouTube's own frames); right column: client card (emblem │ name in the client's colour, `about`, Year / Duration / Initiative) and More Projects (the client's other films, View All → `/projects?client=`). Phones and tablets: one column, the client card after the description, themes and stills in rows you swipe. |
+| `CaseStudy.tsx` | A film's page, after the studio's design: breadcrumb (Back to Work › client › title); the film (wide 2.75:1 cover with format / title / "A <client> initiative", ▶ and a control bar; pressing play starts it in the site's player (`usePlayer`), which sits over this box, 16:9; the film page's "Mini player" button goes to the Work page with it playing in the corner); serif title (Libre Caslon), "CLIENT \| YEAR \| DURATION", "Mini player" (while it plays here) and Share on WhatsApp; the description with Read More (adds story, quote, credits); In This Film (`themes`); Project Stills (`stills`, else YouTube's own frames); right column: client card (emblem │ name in the client's colour, `about`, Year / Duration / Initiative) and More Projects (the client's other films, View All → `/projects?client=`). Phones and tablets: one column, the client card after the description, themes and stills in rows you swipe. |
 | `FilmPlayer.tsx` | **Unused** since the film page plays YouTube with its own controls: the old case-study player (YouTube through the IFrame API behind custom controls, a video file, or a stand-in film, with an 8-frame filmstrip). |
 | `WorkUI.tsx` | The Work page's components: `WorkBackdrop` (lavender page, white panel, not clipping so menus can hang below it; `wide` for a film's page), `VideoCard` (thumbnail, play button, duration badge, title, "series \| year", ⋮ menu), `Cover` (a film's picture: WebP sizes, lazy, JPEG fallback), `PlayButton`, `CardMenu` (also in a film's More Projects), `SortMenu` (a glass button opening a glass menu with ✓), `ClientBadge` (a client in an iPhone-style glass pill: exact emblem │ their words and rule; `inline` for the Initiatives button), `Chevron`, `Check`. |
 
@@ -182,6 +184,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | Floor stone | `src/components/gallery3d/marble.ts` |
 | A film's page (layout) | `src/components/work/CaseStudy.tsx` |
 | Case-study open/close animation | `src/components/work/ProjectSheet.tsx` |
+| The mini player (look, size, corner) | `src/components/MiniPlayer.tsx`; what's playing: `src/lib/player.tsx` |
 | Header | `src/components/SiteNav.tsx` |
 | Colours, fonts, global CSS | `src/styles.css` |
 | A new page | a new file in `src/routes/` (then add it to this map) |

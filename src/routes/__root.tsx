@@ -10,6 +10,8 @@ import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SITE } from "@/content/site";
 import { NotFound } from "@/components/NotFound";
+import { MiniPlayer } from "@/components/MiniPlayer";
+import { PlayerProvider } from "@/lib/player";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -53,14 +55,18 @@ function RootShell({ children }: { children: React.ReactNode }) {
 function RootComponent() {
   // The home page is the full-screen gallery, so it has no footer.
   const isHome = useRouterState({ select: (s) => s.location.pathname === "/" });
+  // PlayerProvider and MiniPlayer: a film keeps playing, in the corner, across pages
   return (
-    <div className="flex min-h-screen flex-col">
-      <SiteNav />
-      <main className="flex-1">
-        <Outlet />
-      </main>
-      {!isHome && <SiteFooter />}
-      <Toaster richColors position="top-center" />
-    </div>
+    <PlayerProvider>
+      <div className="flex min-h-screen flex-col">
+        <SiteNav />
+        <main className="flex-1">
+          <Outlet />
+        </main>
+        {!isHome && <SiteFooter />}
+        <Toaster richColors position="top-center" />
+      </div>
+      <MiniPlayer />
+    </PlayerProvider>
   );
 }
