@@ -73,6 +73,7 @@ export type YTPlayer = {
   setPlaybackRate: (r: number) => void;
   mute: () => void;
   unMute: () => void;
+  isMuted: () => boolean;
   getIframe: () => HTMLIFrameElement;
   destroy: () => void;
 };

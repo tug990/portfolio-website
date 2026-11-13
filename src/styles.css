@@ -37,6 +37,57 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
+  /*
+    Feeling like an app: no grey flash when something is tapped, no wait for
+    a double-tap zoom, and no long-press menu on pictures.
+  */
+  a,
+  button,
+  [role="button"],
+  [role="option"],
+  [role="tab"] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  img {
+    -webkit-touch-callout: none;
+  }
+}
+
+/* Added to the home screen (it opens as its own app): the page doesn't bounce past its ends */
+@media (display-mode: standalone) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+/*
+  Phones: the site's header is a floating glass bar of icons along the
+  bottom (SiteNav: 60 px tall, 10 px above the screen's edge). --dock is the
+  room it takes: the page keeps that much at its end, and the mini player and
+  the gallery's controls sit above it.
+*/
+@media (max-width: 639px) {
+  :root {
+    --dock: calc(70px + env(safe-area-inset-bottom));
+  }
+  body {
+    padding-bottom: var(--dock);
+  }
+}
+
+/* A tap you can feel: buttons and cards give a little as they're pressed */
+.press {
+  transition: transform 0.15s ease;
+}
+.press:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .press:active {
+    transform: none;
+  }
 }
 
 /* About page: headline cards swaying on their strings */

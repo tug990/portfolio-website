@@ -9,9 +9,6 @@ import {
   CompactCard,
   FilmBox,
   MUTED,
-  MiniIcon,
-  SERIF,
-  Scroller,
   VideoCard,
   shortName,
 } from "@/components/work/WorkUI";
@@ -27,7 +24,7 @@ import { cn } from "@/lib/utils";
     ┌──────── the film ────────┐ ┌ Up next ┐     the film, edge to edge
     │                          │ │ [All][From…] title
     └──────────────────────────┘ │ ▢ title  │     client · Their films
-    Title (Libre Caslon)         │ ▢ title  │     [Mini player][Share]… (swipe)
+    TITLE (light capitals)       │ ▢ title  │     [Mini player][Share]… (swipe)
     (avatar) Client  [Their films]  [Mini player][Share][WhatsApp][YouTube]
     ┌ 2026 · Impact film · 7:32  #Theme #Theme ┐   description box
     │ the description… …more                    │   Up next: full cards
@@ -55,17 +52,17 @@ export function CaseStudy({
   const client = clientOf(project);
   const player = usePlayer();
   const film = filmOf(project);
-  const playingHere = player.film?.slug === project.slug && player.docked;
   const kind = kindOf(project);
 
-  // i: the mini player, as on YouTube
+  // i with nothing playing yet: start this film in the mini player (once a
+  // film plays, the player's own keys take over: MiniPlayer.tsx)
   useEffect(() => {
-    if (!film) return;
+    if (!film || player.film) return;
     const key = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (e.key !== "i" || e.metaKey || e.ctrlKey || e.altKey) return;
       if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-      if (player.film?.slug !== project.slug) player.play(film);
+      player.play(film);
       player.minimise();
     };
     window.addEventListener("keydown", key);
@@ -92,10 +89,7 @@ export function CaseStudy({
                     {kind}
                   </span>
                 )}
-                <span
-                  className="mt-1 block text-[22px] leading-[1.08] [text-shadow:0_2px_18px_rgba(0,0,0,0.4)] sm:mt-2 sm:text-[36px] lg:text-[44px]"
-                  style={{ fontFamily: SERIF }}
-                >
+                <span className="tracked mt-1.5 block text-[18px] font-light leading-[1.3] [text-shadow:0_2px_18px_rgba(0,0,0,0.4)] sm:mt-2.5 sm:text-[28px] lg:text-[34px]">
                   {project.title}
                 </span>
               </span>
@@ -103,27 +97,23 @@ export function CaseStudy({
           </FilmBox>
 
           <div data-sheet-fade>
+            {/* the title as the site sets its titles: light, wide-spaced capitals, a line of prism light */}
+            {kind && kind.toLowerCase() !== project.title.toLowerCase() && (
+              <p className="eyebrow mt-4" style={{ fontSize: 10.5 }}>
+                {kind}
+              </p>
+            )}
             <h1
               id="case-title"
-              className="mt-3.5 text-[22px] font-bold leading-[1.2] sm:text-[26px] lg:text-[28px]"
-              style={{ fontFamily: SERIF }}
+              className="tracked mt-4 text-[20px] font-light leading-[1.3] sm:text-[26px] lg:text-[30px] [p+&]:mt-1.5"
             >
               {project.title}
             </h1>
+            <span aria-hidden className="prism-rule mt-3 block w-24" />
 
             <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <Owner project={project} />
-              <Actions
-                project={project}
-                onMini={
-                  film
-                    ? () => {
-                        if (!playingHere) player.play(film);
-                        player.minimise();
-                      }
-                    : undefined
-                }
-              />
+              <Actions project={project} />
             </div>
 
             <Description project={project} />
@@ -146,7 +136,7 @@ function Owner({ project }: { project: Project }) {
     <div className="flex min-w-0 items-center gap-3">
       <Avatar client={client} size={40} />
       <div className="min-w-0">
-        <p className="truncate text-[15px] font-semibold leading-tight">
+        <p className="truncate text-[15px] font-medium leading-tight">
           {project.client ?? SITE.name}
         </p>
         <p className="mt-0.5 text-[12px]" style={{ color: MUTED }}>
@@ -157,7 +147,7 @@ function Owner({ project }: { project: Project }) {
         <Link
           to="/projects"
           search={{ client: client.name }}
-          className="ml-1 flex h-9 shrink-0 items-center rounded-full bg-[#14172e] px-4 text-[14px] font-medium text-white transition hover:bg-[#262a4d]"
+          className="press ml-1 flex h-9 shrink-0 items-center rounded-md bg-[#0a0a0a] px-4 text-[14px] text-white transition hover:bg-[#2a2a2a]"
         >
           Their films
         </Link>
@@ -166,8 +156,11 @@ function Owner({ project }: { project: Project }) {
   );
 }
 
-/* The row of pills under the title: Mini player, Share, WhatsApp, YouTube (a row you swipe on phones). */
-function Actions({ project, onMini }: { project: Project; onMini?: () => void }) {
+/*
+  Share and WhatsApp, under the title. (The mini player, full screen and the
+  keyboard list are on the film itself: MiniPlayer.tsx Controls.)
+*/
+function Actions({ project }: { project: Project }) {
   const [url, setUrl] = useState(`/projects/${project.slug}`);
   useEffect(() => setUrl(`${window.location.origin}/projects/${project.slug}`), [project.slug]);
   const share = async () => {
@@ -180,7 +173,7 @@ function Actions({ project, onMini }: { project: Project; onMini?: () => void })
     }
   };
   const pill =
-    "flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[#14172e]/[0.06] px-4 text-[14px] font-medium transition hover:bg-[#14172e]/[0.11]";
+    "press flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-black/[0.05] px-3.5 text-[14px] transition hover:bg-black/[0.09]";
   const icon = (d: string) => (
     <svg
       aria-hidden
@@ -196,18 +189,7 @@ function Actions({ project, onMini }: { project: Project; onMini?: () => void })
     </svg>
   );
   return (
-    <Scroller label="Actions" gap="gap-2" step={0.6} className="-mx-4 px-4 sm:mx-0 sm:px-0">
-      {onMini && (
-        <li>
-          <button type="button" onClick={onMini} className={pill} title="Mini player (i)">
-            <MiniIcon className="h-[18px] w-[18px]" />
-            Mini player
-            <kbd className="hidden rounded border border-[#14172e]/20 px-1 font-sans text-[11px] leading-4 opacity-60 lg:inline">
-              i
-            </kbd>
-          </button>
-        </li>
-      )}
+    <ul aria-label="Share" className="flex gap-2">
       <li>
         <button type="button" onClick={share} className={pill}>
           {icon("M14 5l6 6-6 6M20 11h-9a6 6 0 00-6 6v2")}
@@ -231,56 +213,61 @@ function Actions({ project, onMini }: { project: Project; onMini?: () => void })
           WhatsApp
         </a>
       </li>
-      {project.youtube && (
-        <li>
-          <a href={project.youtube} target="_blank" rel="noreferrer" className={pill}>
-            {icon("M14 5h5v5M19 5l-8 8M18 14v5H5V6h5")}
-            YouTube
-          </a>
-        </li>
-      )}
-    </Scroller>
+    </ul>
   );
 }
 
 /*
-  The description, in a soft box as YouTube's: a first line (year, kind,
-  length, the themes as #tags), three lines of the summary and opening, and
-  "…more" for the rest: the story, a quote, In this film, stills, credits,
-  about the client.
+  The description, in a white box: a first line (year, kind, length,
+  series), the themes it addresses as pill buttons (each shows the Work page
+  searched for it), three lines of the summary and opening, and "Read more"
+  for the rest: the story, a quote, stills, credits, about the client.
 */
 function Description({ project }: { project: Project }) {
   const [open, setOpen] = useState(false);
   const client = clientOf(project);
   const intro = [project.summary, ...project.body].filter(Boolean);
-  const tags = (project.themes ?? []).map((t) => `#${t.label.replace(/[^A-Za-z0-9]+/g, "")}`);
   const yt = project.youtube ? youtubeId(project.youtube) : undefined;
   const stills = project.stills?.length
     ? project.stills
     : yt
       ? [1, 2, 3].map((n) => `https://i.ytimg.com/vi/${yt}/hq${n}.jpg`)
       : [];
-  const head = "text-[15px] font-bold";
+  const head = "eyebrow";
 
   return (
     <div
       onClick={() => !open && setOpen(true)}
       className={cn(
-        "mt-3 rounded-xl bg-[#14172e]/[0.045] p-3 text-[14px] leading-[1.6] sm:p-4",
-        !open && "cursor-pointer transition hover:bg-[#14172e]/[0.075]",
+        "mt-5 rounded-2xl border border-black/[0.08] bg-white p-4 text-[15px] leading-[1.65] sm:p-5",
+        !open && "cursor-pointer transition hover:border-black/20",
       )}
     >
-      <p className="font-semibold">
-        {[project.year, kindOf(project), project.duration, project.series]
-          .filter(Boolean)
-          .join(" · ")}
-        {tags.length > 0 && (
-          <span className="ml-2 font-medium text-[#4a50c4]">
-            {tags.slice(0, open ? undefined : 3).join(" ")}
-          </span>
-        )}
+      <p className="text-[13px]" style={{ color: MUTED }}>
+        <span className="font-medium text-[#0a0a0a]">
+          {[project.year, kindOf(project), project.duration, project.series]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
       </p>
-      <div className={cn("mt-1 space-y-2", !open && "line-clamp-3")}>
+      {project.themes && project.themes.length > 0 && (
+        <ul aria-label="What it addresses" className="mt-3 flex flex-wrap gap-2">
+          {project.themes.map((t) => (
+            <li key={t.label}>
+              <Link
+                to="/projects"
+                search={{ q: t.label }}
+                onClick={(e) => e.stopPropagation()}
+                className="press flex h-8 items-center gap-1.5 rounded-full border border-black/[0.12] bg-white px-3 text-[13px] transition hover:border-black/30 hover:bg-black/[0.03]"
+              >
+                <ThemeGlyph icon={t.icon} />
+                {t.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className={cn("mt-3 space-y-2", !open && "line-clamp-3")}>
         {(open ? intro : [intro.join(" ")]).map((t, i) => (
           <p key={i}>{t}</p>
         ))}
@@ -299,34 +286,13 @@ function Description({ project }: { project: Project }) {
             </div>
           ))}
           {project.quote && (
-            <blockquote
-              className="border-l-2 pl-4"
-              style={{ borderImage: "linear-gradient(#7b6dff, #ffd08f) 1" }}
-            >
-              <p className="text-[18px] leading-snug" style={{ fontFamily: SERIF }}>
-                “{project.quote.text}”
-              </p>
+            <blockquote className="border-l-2 pl-4" style={{ borderImage: "var(--prism) 1" }}>
+              <p className="text-[19px] font-light leading-snug">“{project.quote.text}”</p>
               <footer className="mt-2 text-[13px]" style={{ color: MUTED }}>
                 {project.quote.name}
                 {project.quote.role && `, ${project.quote.role}`}
               </footer>
             </blockquote>
-          )}
-          {project.themes && project.themes.length > 0 && (
-            <div>
-              <h3 className={head}>In this film</h3>
-              <ul className="mt-2 flex flex-wrap gap-2">
-                {project.themes.map((t) => (
-                  <li
-                    key={t.label}
-                    className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-[13px] font-medium ring-1 ring-[#14172e]/10"
-                  >
-                    <ThemeGlyph icon={t.icon} />
-                    {t.label}
-                  </li>
-                ))}
-              </ul>
-            </div>
           )}
           {stills.length > 0 && (
             <div>
@@ -354,17 +320,17 @@ function Description({ project }: { project: Project }) {
                     <dt className="text-[12px]" style={{ color: MUTED }}>
                       {c.role}
                     </dt>
-                    <dd className="font-semibold">{c.name}</dd>
+                    <dd className="font-medium">{c.name}</dd>
                   </div>
                 ))}
               </dl>
             </div>
           )}
           {client && (
-            <div className="flex items-center gap-3 border-t border-[#14172e]/10 pt-4">
+            <div className="flex items-center gap-3 border-t border-[#0a0a0a]/10 pt-4">
               <Avatar client={client} size={48} />
               <div className="min-w-0">
-                <p className="font-semibold" style={{ color: client.color }}>
+                <p className="font-medium" style={{ color: client.color }}>
                   {client.name}
                 </p>
                 {client.about && <p style={{ color: MUTED }}>{client.about}</p>}
@@ -381,9 +347,19 @@ function Description({ project }: { project: Project }) {
           setOpen((o) => !o);
         }}
         aria-expanded={open}
-        className="mt-1.5 font-semibold hover:underline"
+        className="press mt-4 inline-flex h-10 items-center gap-2 rounded-md bg-[#0a0a0a] px-4 text-[14px] text-white transition hover:bg-[#2a2a2a]"
       >
-        {open ? "Show less" : "…more"}
+        {open ? "Show less" : "Read more"}
+        <svg
+          aria-hidden
+          viewBox="0 0 24 24"
+          className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
       </button>
     </div>
   );
@@ -413,8 +389,11 @@ function UpNext({ project, onOpen }: { project: Project; onOpen?: (slug: string)
 
   return (
     <div>
+      <p className="eyebrow mb-3" style={{ fontSize: 10.5 }}>
+        Up next
+      </p>
       {client && theirs.length > 0 && (
-        <div className="mb-3 flex gap-2">
+        <div className="mb-4 flex gap-2">
           <Chip active={!only} onClick={() => setOnly(false)}>
             All
           </Chip>

@@ -10,37 +10,30 @@ import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 
 /*
-  The pieces of the Work page (our YouTube channel) and a film's page (our
-  watch page), after YouTube's own, in the studio's dress: Inter for the
-  working type, Libre Caslon for titles, ink and soft lavender greys instead
-  of YouTube's black and red, and the prism's colours as the one accent.
+  The pieces of the Work page and a film's page: laid out after YouTube's,
+  in the studio's own language (as the About and Contact pages): Jost
+  throughout, light wide-spaced capitals for titles and small labels, ink on
+  near-white, soft grey for what's secondary, and the prism's light (the
+  site's --prism) as the one accent.
 */
 
-export const INK = "#14172e";
-export const MUTED = "#5f6382";
-export const SERIF = '"Libre Caslon Text", "Iowan Old Style", Georgia, serif';
-/* the prism's light: the accent (the chosen tab, a card's hover line, progress) */
-export const PRISM = "linear-gradient(90deg, #7b6dff, #8fd3ff 40%, #ffd08f 70%, #ff8f6b)";
+export const INK = "#0a0a0a";
+export const MUTED = "#6b6b6b";
+/* the prism's light: the accent (a card's hover line, progress, rules) */
+export const PRISM = "var(--prism)";
 
 /*
-  The page both sit on: near-white, with a faint wash of the prism's colours
-  at the top. `wide`: a film's page (YouTube's watch page runs wider). Phones
-  keep a 16 px edge, which films and cards run out over (edge to edge).
+  The page both sit on: the site's near-white. `wide`: a film's page
+  (YouTube's watch page runs wider). Phones keep a 16 px edge, which films
+  and cards run out over (edge to edge).
 */
 export function WorkBackdrop({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return (
-    <div className="relative overflow-x-clip bg-[#fcfbfe]" style={{ ...UI, color: INK }}>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[520px]"
-        style={{
-          background:
-            "radial-gradient(50% 60% at 85% 0%, rgba(196,186,255,0.38), transparent 70%), radial-gradient(40% 50% at 8% 10%, rgba(255,214,236,0.35), transparent 70%)",
-        }}
-      />
+    <div className="relative overflow-x-clip bg-[#fcfcfc]" style={{ ...UI, color: INK }}>
       <div
         className={cn(
-          "relative mx-auto px-4 pb-16 pt-[84px] sm:px-6 sm:pt-[92px] lg:px-8",
+          // phones: the header is at the bottom (SiteNav), so the page starts at the top
+          "relative mx-auto px-4 pb-16 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6 sm:pt-[92px] lg:px-8",
           wide ? "max-w-[1720px]" : "max-w-[1320px]",
         )}
       >
@@ -71,7 +64,7 @@ export function Avatar({
     <span
       aria-hidden
       className={cn(
-        "grid shrink-0 place-items-center overflow-hidden rounded-full bg-white shadow-[0_1px_3px_rgba(20,23,46,0.12)] ring-1 ring-[#14172e]/10",
+        "grid shrink-0 place-items-center overflow-hidden rounded-full bg-white shadow-[0_1px_3px_rgba(20,23,46,0.12)] ring-1 ring-[#0a0a0a]/10",
         className,
       )}
       style={{ width: size, height: size }}
@@ -110,10 +103,10 @@ export function Chip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[14px] font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[#7b6dff]/60",
+        "press flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] outline-none transition focus-visible:ring-2 focus-visible:ring-black/30",
         active
-          ? "bg-[#14172e] text-white"
-          : "bg-[#14172e]/[0.06] text-[#14172e] hover:bg-[#14172e]/[0.11]",
+          ? "bg-[#0a0a0a] text-white"
+          : "bg-[#0a0a0a]/[0.06] text-[#0a0a0a] hover:bg-[#0a0a0a]/[0.11]",
       )}
     >
       {children}
@@ -166,7 +159,7 @@ export function Scroller({
       aria-label={dir > 0 ? "More" : "Back"}
       onClick={() => go(dir)}
       className={cn(
-        "absolute top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white text-[#14172e] shadow-[0_2px_10px_rgba(20,23,46,0.18)] ring-1 ring-black/5 transition hover:bg-[#f4f3fa] sm:grid",
+        "absolute top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white text-[#0a0a0a] shadow-[0_2px_10px_rgba(20,23,46,0.18)] ring-1 ring-black/5 transition hover:bg-[#f4f3fa] sm:grid",
         dir > 0 ? "-right-2" : "-left-2",
       )}
     >
@@ -354,22 +347,25 @@ export function VideoCard({
         project={project}
         onOpen={onOpen}
         label={project.title}
-        className={cn("block w-full", bleed ? "-mx-4 w-[calc(100%+2rem)] sm:mx-0 sm:w-full" : "")}
+        className={cn(
+          "press block w-full",
+          bleed ? "-mx-4 w-[calc(100%+2rem)] sm:mx-0 sm:w-full" : "",
+        )}
       >
         <Thumb project={project} sizes={sizes} className={bleed ? "sm:rounded-xl" : "rounded-xl"} />
       </ToFilm>
       <div className="mt-3 flex items-start gap-3">
         {avatar && <Avatar client={client} size={36} className="mt-0.5" />}
         <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-[15px] font-semibold leading-[1.35]">
+          <h3 className="line-clamp-2 text-[16px] font-medium leading-[1.3] tracking-tight">
             <ToFilm project={project} onOpen={onOpen} tabIndex={-1}>
               {project.title}
             </ToFilm>
           </h3>
-          <p className="mt-1 truncate text-[13px] leading-[1.45]" style={{ color: MUTED }}>
+          <p className="tracked mt-1.5 truncate text-[10px] leading-[1.6]" style={{ color: MUTED }}>
             {project.client ?? "Insight Lab"}
           </p>
-          <p className="truncate text-[13px] leading-[1.45]" style={{ color: MUTED }}>
+          <p className="truncate text-[13px] leading-[1.5]" style={{ color: MUTED }}>
             {[kindOf(project), project.year].filter(Boolean).join(" · ")}
           </p>
         </div>
@@ -393,17 +389,17 @@ export function CompactCard({
         project={project}
         onOpen={onOpen}
         label={project.title}
-        className="block w-[168px] shrink-0"
+        className="press block w-[168px] shrink-0"
       >
         <Thumb project={project} sizes="168px" className="rounded-lg" />
       </ToFilm>
       <div className="min-w-0 flex-1 pt-0.5">
-        <h3 className="line-clamp-2 text-[14px] font-semibold leading-[1.35]">
+        <h3 className="line-clamp-2 text-[15px] font-medium leading-[1.3] tracking-tight">
           <ToFilm project={project} onOpen={onOpen} tabIndex={-1}>
             {project.title}
           </ToFilm>
         </h3>
-        <p className="mt-1 truncate text-[12px] leading-[1.5]" style={{ color: MUTED }}>
+        <p className="tracked mt-1.5 truncate text-[9.5px] leading-[1.6]" style={{ color: MUTED }}>
           {project.client ?? "Insight Lab"}
         </p>
         <p className="truncate text-[12px] leading-[1.5]" style={{ color: MUTED }}>
@@ -415,7 +411,7 @@ export function CompactCard({
   );
 }
 
-/* ⋮ on a card: play it in the mini player (and keep browsing), open its page, watch it on YouTube, copy its link. */
+/* ⋮ on a card: play it in the mini player (and keep browsing), open its page, copy its link. */
 export function CardMenu({ project }: { project: Project }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -436,7 +432,6 @@ export function CardMenu({ project }: { project: Project }) {
     };
   }, [open]);
 
-  const watch = project.youtube ?? project.link;
   const copy = async () => {
     setOpen(false);
     const url = `${window.location.origin}/projects/${project.slug}`;
@@ -449,7 +444,7 @@ export function CardMenu({ project }: { project: Project }) {
   };
 
   const item =
-    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[14px] hover:bg-[#14172e]/[0.06]";
+    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[14px] hover:bg-[#0a0a0a]/[0.06]";
   return (
     <div ref={root} className="relative -mr-2 -mt-1 shrink-0">
       <button
@@ -458,7 +453,7 @@ export function CardMenu({ project }: { project: Project }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="grid h-8 w-8 place-items-center rounded-full opacity-80 transition hover:bg-[#14172e]/[0.07] hover:opacity-100"
+        className="grid h-8 w-8 place-items-center rounded-full opacity-80 transition hover:bg-[#0a0a0a]/[0.07] hover:opacity-100"
       >
         <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="currentColor" aria-hidden>
           <circle cx="12" cy="5" r="1.8" />
@@ -498,12 +493,6 @@ export function CardMenu({ project }: { project: Project }) {
             <MenuIcon d="M5 5h14v14H5zM10 9.5v5l4-2.5z" />
             Open the film
           </Link>
-          {watch && (
-            <a role="menuitem" href={watch} target="_blank" rel="noreferrer" className={item}>
-              <MenuIcon d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5" />
-              {project.youtube ? "Watch on YouTube" : "Watch the film"}
-            </a>
-          )}
           <button role="menuitem" type="button" onClick={copy} className={item}>
             <MenuIcon d="M9 15l6-6M10.5 6.5l1.8-1.8a4 4 0 015.7 5.7l-1.8 1.8M13.5 17.5l-1.8 1.8a4 4 0 01-5.7-5.7l1.8-1.8" />
             Copy link
@@ -573,15 +562,35 @@ export function FilmBox({
   sizes: string;
   children?: ReactNode;
 }) {
-  const { film, docked, play, setSlot } = usePlayer();
+  const { film, docked, play, setSlot, setOffscreen } = usePlayer();
   const playable = filmOf(project);
   const here = film?.slug === project.slug;
   const showing = here && docked;
+
+  // Scrolled past while its film plays: it floats to the corner (and back).
+  // Out once less than a quarter is left above the top; back at half.
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!box || !here) return;
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e.boundingClientRect.top < 0 && e.intersectionRatio < 0.25) setOffscreen(true);
+        else if (e.intersectionRatio >= 0.5 || e.boundingClientRect.top >= 0) setOffscreen(false);
+      },
+      { threshold: [0, 0.25, 0.5, 1] },
+    );
+    io.observe(box);
+    return () => {
+      io.disconnect();
+      setOffscreen(false);
+    };
+  }, [box, here, setOffscreen]);
 
   const slug = project.slug;
   const slot = useCallback(
     (el: HTMLDivElement | null) => {
       setSlot(slug, el);
+      setBox(el);
       if (typeof heroRef === "function") heroRef(el);
       else if (heroRef) heroRef.current = el;
     },
@@ -589,7 +598,13 @@ export function FilmBox({
   );
 
   return (
-    <div ref={slot} className={cn("relative aspect-video overflow-hidden bg-[#0d0d16]", className)}>
+    <div
+      ref={slot}
+      className={cn(
+        "relative aspect-video scroll-mt-3 overflow-hidden bg-[#0d0d16] sm:scroll-mt-24",
+        className,
+      )}
+    >
       {!showing && (
         <button
           type="button"
@@ -641,7 +656,8 @@ export function PlayButton({ className }: { className?: string }) {
       <span
         className="absolute inset-[-3px] rounded-full opacity-0 blur-[2px] transition-opacity duration-500 group-hover:opacity-100"
         style={{
-          background: "conic-gradient(from 200deg, #7b6dff, #8fd3ff, #ffd08f, #ff8f6b, #7b6dff)",
+          background:
+            "conic-gradient(from 200deg, #1f2cff, #2bb8ff, #ffffff, #ff8a1f, #ff3d1f, #1f2cff)",
         }}
       />
       <span className="absolute inset-0 rounded-full border border-white/60 bg-white/20 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md transition-transform duration-300 group-hover:scale-105" />
@@ -778,10 +794,10 @@ export function ClientBadge({
       ) : (
         <>
           <img src={client.mark} alt="" className="relative h-7 w-auto shrink-0 sm:h-8" />
-          <span aria-hidden className="relative h-6 w-px shrink-0 bg-[#1b2350]/40 sm:h-7" />
+          <span aria-hidden className="relative h-6 w-px shrink-0 bg-[#0a0a0a]/40 sm:h-7" />
           <span className="relative min-w-0 text-left">
             {client.small && (
-              <span className="line-clamp-3 text-[7px] font-medium uppercase leading-[1.15] tracking-[0.05em] text-[#1b2350]/85 sm:text-[7.5px]">
+              <span className="line-clamp-3 text-[7px] font-medium uppercase leading-[1.15] tracking-[0.05em] text-[#0a0a0a]/85 sm:text-[7.5px]">
                 {client.small}
               </span>
             )}
