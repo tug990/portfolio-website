@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
-import { SITE } from "@/content/site";
-import { GALLERY_FILMS, getProject } from "@/content/projects";
+import { SITE, WORK_CLIENTS } from "@/content/site";
+import { PROJECTS, getProject } from "@/content/projects";
 import { ProjectSheet } from "@/components/work/ProjectSheet";
 import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
@@ -34,7 +34,26 @@ import type { PrismTunnel } from "@/components/gallery3d/PrismTunnel";
   through it. (Leave goes back to the Work page.)
 */
 
-type Mode = "intro" | "free" | "visit";
+type Mode = "intro" | "free" | "visit" | "walk";
+
+/*
+  Every film, in the order you walk past them: the studio's own first, then
+  each initiative's together (in WORK_CLIENTS order), so each client has a
+  section of the hall, titled on the wall (GalleryScene.addSections).
+*/
+const FILMS = [
+  ...PROJECTS.filter((p) => !WORK_CLIENTS.some((c) => c.name === p.client)),
+  ...WORK_CLIENTS.flatMap((c) => PROJECTS.filter((p) => p.client === c.name)),
+];
+
+/* Walking round the room (start="room"): your position, which way you face, how high your eyes are */
+type Me = { x: number; z: number; yaw: number; pitch: number; y: number };
+const WALK = 1.7; // m/s
+const RUN = 3.3; // with Shift
+const TURN = 1.9; // rad/s with ← →
+const PRISM_R = 1.3; // you walk round the prism's plinth
+const shortYaw = (from: number, to: number) =>
+  from + Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
 /* ---------- timing ---------- */
 
@@ -96,6 +115,17 @@ const smooth = (t: number) => {
 const band = (t: number, [a, b]: [number, number]) => smooth((t - a) / (b - a));
 const damp = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+/* Walking a route: speed up over the first moments, a steady pace, slow to a stop (`a`: the share for each) */
+const walkEase = (t: number, a: number) =>
+  t < a
+    ? (t * t) / (2 * a * (1 - a))
+    : t > 1 - a
+      ? 1 - (1 - t) ** 2 / (2 * a * (1 - a))
+      : (t - a / 2) / (1 - a);
+type RoutePt = { x: number; z: number; floor: number };
+const pathLength = (p: RoutePt[]) =>
+  p.reduce((n, q, i) => (i ? n + Math.hypot(q.x - p[i - 1].x, q.z - p[i - 1].z) : 0), 0);
 
 /*
   A glide from `from` to `to`, starting at velocity m0 (in path units over the
@@ -122,9 +152,38 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
   // What "VR view" can do here: a headset's own VR, a phone in a holder, or neither (explain)
   const [vrKind, setVrKind] = useState<"headset" | "phone" | "none">("none");
   const [vrOn, setVrOn] = useState<"" | "headset" | "phone">("");
+  const vrRef = useRef(vrOn); // (for the frame loop)
+  vrRef.current = vrOn;
   const [vrHelp, setVrHelp] = useState(false);
   const [motion, setMotion] = useState(false);
   const sceneMod = useRef<typeof import("@/components/gallery3d/GalleryScene") | null>(null);
+  // What's in front of you, for the prompt: the film you face (and whether it
+  // plays), a bench you can sit on, whether you're sitting
+  const [hud, setHud] = useState({
+    focus: -1,
+    playing: false,
+    sound: false,
+    real: false,
+    bench: -1,
+    seated: false,
+    door: -1, // the world's door you're at (2: About, 3: Contact)
+    journey: { leg: 0, end: 0, to: 0, walking: false, name: "" },
+  });
+  // the journey bar's arrow (which way the next stop is) and distance, set every frame
+  const journeyArrow = useRef<HTMLSpanElement>(null);
+  const journeyDist = useRef<HTMLSpanElement>(null);
+  const [joy, setJoy] = useState<null | { x0: number; y0: number; dx: number; dy: number }>(null);
+  const [map, setMap] = useState(false);
+  const mapMe = useRef<HTMLDivElement>(null);
+  // the hall's plan, for the map (set once the room is built)
+  const [plan, setPlan] = useState<null | {
+    B: { minX: number; maxX: number; minZ: number; maxZ: number };
+    works: { x: number; z: number; stop: number }[];
+    benches: { x: number; z: number; along: boolean }[];
+    prism: { x: number; z: number } | null;
+    areas: { minX: number; maxX: number; minZ: number; maxZ: number; level: number }[];
+    places: { name: string; x: number; z: number; stop: number }[];
+  }>(null);
   // The case study open over the gallery, if any
   const [sheet, setSheet] = useState<null | {
     slug: string;
@@ -162,8 +221,44 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     insideFlag: false,
     left: false, // the landing has handed over to the Work page
     // looking round (radians): where it's heading, and where it is
-    // (gy, gp: keys and the phone; mx, my: the mouse, a little on top)
+    // (gy, gp: the phone's motion; mx, my: unused)
     look: { yaw: 0, pitch: 0, gy: 0, gp: 0, mx: 0, my: 0 },
+    // walking (the room)
+    me: { x: 0, z: 0, yaw: 0, pitch: 0, y: EYE } as Me,
+    floor: 0, // the height of the floor you're on (upstairs: 6)
+    vel: { x: 0, z: 0 },
+    bob: 0,
+    tween: null as null | { from: Me; to: Me; t0: number; dur: number; then?: () => void },
+    // walking the journey's way to a stop by yourself (round walls, up the stairs: GalleryScene.findPath)
+    route: null as null | {
+      pts: RoutePt[];
+      cum: number[]; // distance along, at each point
+      len: number;
+      t0: number;
+      dur: number;
+      endYaw: number; // facing the stop, at the end
+      to: number; // the stop
+    },
+    leg: 0, // where you are on the journey: the last of its stops you reached
+    guideAt: 0, // when the floor guide was last laid
+    guideFrom: { x: 0, z: 0, to: -1 },
+    guideLen: 0, // how far it is along the guide
+    seated: null as null | { bench: number; seat: number },
+    keys: new Set<string>(),
+    joy: null as null | { id: number; x0: number; y0: number; dx: number; dy: number },
+    lookDrag: null as null | {
+      id: number;
+      x: number;
+      y: number;
+      dist: number;
+      // where and when it began, and the view then (a quick flick up / down is a step, not a look)
+      sx: number;
+      sy: number;
+      t0: number;
+      yaw0: number;
+      pitch0: number;
+    },
+    hudAt: 0, // when the prompt was last updated
     journeyFlag: false, // the header steps aside while this is true
     settleFrom: 0, // when the room appeared (ms), while the arrival move is still easing out
     pose: { x: 0, z: -0.5, yaw: 0, y: EYE },
@@ -230,13 +325,35 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
         });
         const coarse = window.matchMedia("(pointer: coarse)").matches;
         const s = new mod.GalleryScene(roomCanvas.current, {
-          projects: GALLERY_FILMS,
+          projects: FILMS,
           aspect: window.innerWidth / window.innerHeight,
           // Phones and tablets skip the floor mirror and shadows to stay smooth.
           hq: !coarse && window.innerWidth >= 700,
+          world: room, // the gallery page: the atrium, the stairs, the rooms upstairs
         });
         s.setSize(window.innerWidth, window.innerHeight);
         gs.current = s;
+        // the hall's plan, for the map
+        setPlan({
+          B: s.bounds,
+          works: s.layout.works.map((w, i) => ({
+            x: w.x,
+            z: w.z,
+            stop: s.layout.stops.findIndex((st) => st.kind === "work" && st.index === i),
+          })),
+          benches: s.benches.map((b) => ({ x: b.x, z: b.z, along: b.seats.length > 1 })),
+          prism: s.prism,
+          areas: s.areas,
+          places: s.layout.stops
+            .map((st, i) => ({ st, i }))
+            .filter(({ st }) => st.kind === "place")
+            .map(({ st, i }) => ({
+              name: s.world?.places[st.index]?.name ?? "",
+              x: st.x,
+              z: st.z,
+              stop: i,
+            })),
+        });
         // Draw the room once now, hidden under the logo, so every shader is
         // ready and the way in never stalls when the room first appears
         const st = s.layout.stops[0];
@@ -268,11 +385,12 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
         {
           const c = cam.current;
           const stops = s.layout.stops;
-          c.mode = "free";
+          c.mode = "walk";
           c.p = c.pGoal = 1;
           c.at = Math.min(saved, stops.length - 1);
-          c.q = c.goal = stops[c.at].s;
-          c.lean = stops[c.at].kind === "work" ? 1 : 0;
+          c.leg = c.at <= s.layout.end ? c.at : 0;
+          const st = stops[c.at];
+          c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: 0, y: EYE };
           c.insideFlag = true;
           drawIntro(1);
           setInside(true);
@@ -395,6 +513,10 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
           exposure = 1 + GLOW * Math.pow(1 - k, 2);
           if (k >= 1) c.settleFrom = 0;
         }
+      } else if (c.mode === "walk" && L && s) {
+        walkFrame(c, s, L, dt, now);
+        const me = c.me;
+        pose = { x: me.x, z: me.z, yaw: me.yaw, y: me.y };
       } else if (c.mode === "visit" && c.visit) {
         const v = c.visit;
         const t = clamp((now - v.t0) / v.dur, 0, 1);
@@ -420,8 +542,11 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
 
       if (s && L) {
         // The doors: ajar when you arrive, wider under the mouse, wide open when clicked.
-        const end = L.stops[L.stops.length - 1];
-        const parked = c.mode !== "intro" && Math.abs(c.q - end.s) < L.span * 0.3;
+        const end = L.stops.find((st) => st.kind === "doors") ?? L.stops[L.stops.length - 1];
+        const parked =
+          c.mode === "walk"
+            ? Math.hypot(c.me.x - end.x, c.me.z - end.z) < 3.2
+            : c.mode !== "intro" && Math.abs(c.q - end.s) < L.span * 0.3;
         if (parked && c.parkedAt < 0) c.parkedAt = now;
         if (!parked) c.parkedAt = -1;
         for (let i = 0; i < 2; i++) {
@@ -453,7 +578,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
               pose.y,
               pose.z,
               pose.yaw + (looking ? lk.yaw : 0),
-              looking ? lk.pitch : 0,
+              (looking ? lk.pitch : 0) + (c.mode === "walk" ? c.me.pitch : 0),
             );
           s.setExposure(exposure);
           s.render((now - t0) / 1000);
@@ -522,6 +647,372 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
       s.hint.style.opacity = String(1 - band(p, tunnel.current ? [0, 0.05] : [0.45, 0.85]));
   }
 
+  /* ---------- walking round the room ---------- */
+
+  const SEATED = 1.18; // eye height on a bench
+
+  // One frame of walking: a tween (to a film, a seat), or keys / the joystick,
+  // kept inside the walls and round the prism and the benches.
+  function walkFrame(c: typeof cam.current, s: GalleryScene, L: Layout, dt: number, now: number) {
+    const me = c.me;
+    // a movement key or the joystick takes over from walking by yourself (you stop where you are)
+    const steering =
+      ["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].some((k) =>
+        c.keys.has(k),
+      ) ||
+      (!!c.joy && Math.hypot(c.joy.dx, c.joy.dy) > 8);
+    if (steering && c.route) {
+      c.route = null;
+      updateHud();
+    }
+    // a look round while walking a route eases back to straight ahead once you let go
+    if (!c.lookDrag) {
+      c.look.mx += (0 - c.look.mx) * damp(1.6, dt);
+      c.look.my += (0 - c.look.my) * damp(1.6, dt);
+    }
+    if (c.route) {
+      const r = c.route;
+      const t = clamp((now - r.t0) / r.dur, 0, 1);
+      const d = r.len * walkEase(t, Math.min(0.3, 750 / r.dur));
+      const at = routePoint(r, d);
+      const px = me.x;
+      const pz = me.z;
+      me.x = at.x;
+      me.z = at.z;
+      c.floor = s.floorAt(me.x, me.z, c.floor) ?? c.floor;
+      // look where you're going; over the last few metres, turn to face the stop
+      const ahead = routePoint(r, Math.min(r.len, d + 1.8));
+      const goingYaw =
+        Math.hypot(ahead.x - me.x, ahead.z - me.z) > 0.05
+          ? Math.atan2(-(ahead.x - me.x), -(ahead.z - me.z))
+          : r.endYaw;
+      const settle = r.len < 2.5 ? t : clamp(1 - (r.len - d - 0.3) / 2.6, 0, 1);
+      const goal = goingYaw + wrapAngle(r.endYaw - goingYaw) * smooth(settle);
+      me.yaw += wrapAngle(goal - me.yaw) * damp(5.5, dt);
+      me.pitch += (0 - me.pitch) * damp(4, dt);
+      const v = Math.hypot(me.x - px, me.z - pz) / Math.max(dt, 1e-3);
+      if (v > 0.15) c.bob += dt * v * 5.2;
+      const bob = v > 0.15 ? Math.sin(c.bob) * 0.018 * Math.min(1, v / WALK) : 0;
+      me.y += (c.floor + EYE + bob - me.y) * damp(12, dt);
+      c.vel.x = c.vel.z = 0;
+      if (t >= 1) {
+        c.route = null;
+        if (r.to <= L.end) c.leg = r.to;
+        // finish facing the stop squarely
+        if (Math.abs(wrapAngle(r.endYaw - me.yaw)) > 0.01)
+          tweenTo({ x: me.x, z: me.z, yaw: r.endYaw, y: c.floor + EYE }, updateHud, 260);
+        else updateHud();
+      }
+    } else if (c.tween) {
+      const tw = c.tween;
+      const t = clamp((now - tw.t0) / tw.dur, 0, 1);
+      const e = easeInOut(t);
+      me.x = tw.from.x + (tw.to.x - tw.from.x) * e;
+      me.z = tw.from.z + (tw.to.z - tw.from.z) * e;
+      me.y = tw.from.y + (tw.to.y - tw.from.y) * e;
+      me.yaw = tw.from.yaw + (tw.to.yaw - tw.from.yaw) * e;
+      me.pitch = tw.from.pitch + (tw.to.pitch - tw.from.pitch) * e;
+      c.vel.x = c.vel.z = 0;
+      if (t >= 1) {
+        c.tween = null;
+        c.floor = s.floorAt(me.x, me.z, me.y - EYE) ?? c.floor;
+        tw.then?.();
+      }
+    } else {
+      const k = c.keys;
+      let fwd = 0;
+      let side = 0;
+      let turn = 0;
+      if (k.has("w") || k.has("ArrowUp")) fwd += 1;
+      if (k.has("s") || k.has("ArrowDown")) fwd -= 1;
+      if (k.has("a")) side -= 1;
+      if (k.has("d")) side += 1;
+      if (k.has("ArrowLeft")) turn += 1;
+      if (k.has("ArrowRight")) turn -= 1;
+      if (c.joy) {
+        fwd += clamp(-c.joy.dy / 55, -1, 1);
+        side += clamp(c.joy.dx / 55, -1, 1);
+      }
+      const amount = Math.min(1, Math.hypot(fwd, side));
+      if (amount > 0.08 && c.seated) return standUp();
+      const speed = (k.has("Shift") ? RUN : WALK) * amount;
+      const n = Math.hypot(fwd, side) || 1;
+      const fx = -Math.sin(me.yaw);
+      const fz = -Math.cos(me.yaw);
+      const rx = Math.cos(me.yaw);
+      const rz = -Math.sin(me.yaw);
+      c.vel.x += (((fx * fwd + rx * side) / n) * speed - c.vel.x) * damp(9, dt);
+      c.vel.z += (((fz * fwd + rz * side) / n) * speed - c.vel.z) * damp(9, dt);
+      // walls, the prism, benches, sculptures; up and down the stairs (GalleryScene.move)
+      const step = s.move(me.x, me.z, c.floor, me.x + c.vel.x * dt, me.z + c.vel.z * dt);
+      const nx = step.x;
+      const nz = step.z;
+      c.floor = step.floor;
+      me.x = nx;
+      me.z = nz;
+      me.yaw += turn * TURN * dt;
+      const v = Math.hypot(c.vel.x, c.vel.z);
+      if (v > 0.15) c.bob += dt * v * 5.2;
+      const bob = v > 0.15 ? Math.sin(c.bob) * 0.02 * Math.min(1, v / WALK) : 0;
+      me.y += (c.floor + (c.seated ? SEATED : EYE) + bob - me.y) * damp(12, dt);
+    }
+    // the nearest stop (on your floor): which films play, whether the doors open
+    let best = 0;
+    const d2 = (st: Stop) =>
+      (st.x - me.x) ** 2 + (st.z - me.z) ** 2 + (Math.abs((st.y ?? 0) - c.floor) > 2 ? 1e6 : 0);
+    L.stops.forEach((st, i) => {
+      if (d2(st) < d2(L.stops[best])) best = i;
+    });
+    // (while walking to a stop by itself, the tour's place stays the stop you're going to)
+    if (!c.tween && !c.route) c.at = best;
+    // walking about freely and reaching one of the journey's stops: you're there on the journey
+    if (!c.route && best <= L.end && d2(L.stops[best]) < 1.8 * 1.8) c.leg = best;
+    guideFrame(c, s, L, now);
+    if (now - c.hudAt > 140) {
+      c.hudAt = now;
+      updateHud();
+    }
+    // where you are on the map
+    const el = mapMe.current;
+    if (el) {
+      const B = s.bounds;
+      // the map lies on its side: the entrance at the left, the far wall at the right
+      el.style.left = `${((B.maxZ + 0.6 - me.z) / (B.maxZ - B.minZ + 1.2)) * 100}%`;
+      el.style.top = `${((me.x - (B.minX - 0.55)) / (B.maxX - B.minX + 1.1)) * 100}%`;
+      el.style.transform = `translate(-50%, -50%) rotate(${-(me.yaw + c.look.yaw)}rad)`;
+    }
+  }
+
+  /* Where a route is, `d` metres along it */
+  function routePoint(r: { pts: RoutePt[]; cum: number[] }, d: number) {
+    let i = 1;
+    while (i < r.cum.length - 1 && r.cum[i] < d) i++;
+    const a = r.pts[i - 1];
+    const b = r.pts[i];
+    const seg = r.cum[i] - r.cum[i - 1];
+    const t = seg > 0 ? clamp((d - r.cum[i - 1]) / seg, 0, 1) : 1;
+    return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+  }
+
+  /*
+    The way on, while you walk about yourself: a line of light on the floor
+    to the journey's next stop (laid again as you move), and on the journey
+    bar, which way it is and how far. Hidden while you walk a route, sit, or
+    look through a phone in a holder.
+  */
+  function guideFrame(c: typeof cam.current, s: GalleryScene, L: Layout, now: number) {
+    const next = Math.min(L.end, c.leg + 1);
+    const st = L.stops[next];
+    const me = c.me;
+    const show = !c.route && !c.tween && !c.seated && !vrRef.current && next !== c.leg;
+    // which way, and how far (every frame: it turns as you look round)
+    const target = c.route ? L.stops[c.route.to] : st;
+    if (journeyArrow.current && target) {
+      const yaw = Math.atan2(-(target.x - me.x), -(target.z - me.z));
+      const rel = wrapAngle(yaw - (me.yaw + c.look.yaw));
+      journeyArrow.current.style.transform = `rotate(${-rel}rad)`;
+    }
+    if (journeyDist.current && target) {
+      const left = c.route
+        ? c.route.len * (1 - clamp((now - c.route.t0) / c.route.dur, 0, 1))
+        : show && c.guideFrom.to === next
+          ? c.guideLen
+          : Math.hypot(target.x - me.x, target.z - me.z);
+      journeyDist.current.textContent = left < 1.2 ? "here" : `${Math.round(left)} m`;
+    }
+    if (now - c.guideAt < 280) return;
+    if (!show) {
+      if (c.guideFrom.to !== -1) {
+        s.setGuide(null);
+        c.guideFrom.to = -1;
+      }
+      return;
+    }
+    const moved = Math.hypot(me.x - c.guideFrom.x, me.z - c.guideFrom.z);
+    if (c.guideFrom.to === next && moved < 0.7) return;
+    c.guideAt = now;
+    const path = s.findPath({ x: me.x, z: me.z, floor: c.floor }, { ...st, floor: st.y ?? 0 });
+    s.setGuide(path);
+    c.guideFrom = { x: me.x, z: me.z, to: next };
+    c.guideLen = path ? pathLength(path) : Math.hypot(st.x - me.x, st.z - me.z);
+  }
+
+  function updateHud() {
+    const c = cam.current;
+    const s = gs.current;
+    if (!s) return;
+    const me = c.me;
+    const focus = c.mode === "walk" ? s.facing(me.x, me.z, me.yaw + c.look.yaw, c.floor) : -1;
+    // the nearest bench within reach (from a film's viewing spot, the one in front of it)
+    let bench = -1;
+    let bestD = 4.2;
+    if (!c.seated)
+      s.benches.forEach((b, i) => {
+        if (Math.abs((b.floor ?? 0) - c.floor) > 1) return; // another floor
+        const d = Math.hypot(b.x - me.x, b.z - me.z);
+        if (d < bestD) {
+          bestD = d;
+          bench = i;
+        }
+      });
+    const st = focus >= 0 ? s.workState(focus) : { playing: false, sound: false, real: false };
+    // a door out (About, Contact) you're looking at, near enough, on its floor
+    let door = -1;
+    let bestAhead = 0.94;
+    s.worldDoors.forEach((d, j) => {
+      const dx = d.x - me.x;
+      const dz = d.z - me.z;
+      const dist = Math.hypot(dx, dz);
+      const yaw = me.yaw + c.look.yaw;
+      const ahead = (-Math.sin(yaw) * dx - Math.cos(yaw) * dz) / (dist || 1);
+      if (c.floor > 3 && dist < 9.5 && ahead > bestAhead) {
+        bestAhead = ahead;
+        door = 2 + j;
+      }
+    });
+    // the journey: where you are on it, and the stop you're making for (walking there, or next)
+    const L = s.layout;
+    const leg = Math.min(c.leg, L.end);
+    const to = c.route ? c.route.to : Math.min(L.end, leg + 1);
+    const journey = {
+      leg,
+      end: L.end,
+      to,
+      walking: !!c.route,
+      name: stopName(s, L.stops[to]),
+    };
+    const next = {
+      focus: door >= 0 ? -1 : focus,
+      ...st,
+      bench,
+      seated: !!c.seated,
+      door,
+      journey,
+    };
+    setHud((h) => (JSON.stringify(h) === JSON.stringify(next) ? h : next));
+  }
+
+  /* Walk (smoothly, by itself) to a pose; then `then`. */
+  const tweenTo = (to: Omit<Me, "pitch"> & { pitch?: number }, then?: () => void, minMs = 450) => {
+    const c = cam.current;
+    const from = { ...c.me };
+    const yaw = shortYaw(from.yaw, to.yaw);
+    const dist = Math.hypot(to.x - from.x, to.z - from.z);
+    const dur = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? 1
+      : clamp((dist / 2.4) * 1000 + Math.abs(yaw - from.yaw) * 320, minMs, 2600);
+    c.tween = { from, to: { ...to, yaw, pitch: to.pitch ?? 0 }, t0: performance.now(), dur, then };
+  };
+
+  /* The guided tour: walk to stop i (a film, the overview, the doors) */
+  const tourTo = (i: number) => {
+    const c = cam.current;
+    const L = gs.current?.layout;
+    if (!L || !L.stops[i] || c.mode !== "walk") return;
+    c.seated = null;
+    c.at = i;
+    const st = L.stops[i];
+    c.look.gy = c.look.gp = 0;
+    const s = gs.current!;
+    const f = s.floorAt(st.x, st.z, st.y ?? c.floor) ?? 0;
+    setHint(false);
+    c.lastStep = performance.now();
+    c.tween = null;
+    // walk there, as a person would (round walls, through doorways, up the stairs)
+    const path = s.findPath({ x: c.me.x, z: c.me.z, floor: c.floor }, { ...st, floor: st.y ?? 0 });
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const len = path ? pathLength(path) : Infinity;
+    if (path && len < 0.4) {
+      c.route = null;
+      if (i <= L.end) c.leg = i;
+      tweenTo({ x: st.x, z: st.z, yaw: st.yaw, y: f + EYE }, updateHud, 350);
+      return;
+    }
+    if (path && len < 75 && !reduced) {
+      const cum = [0];
+      for (let k = 1; k < path.length; k++)
+        cum.push(cum[k - 1] + Math.hypot(path[k].x - path[k - 1].x, path[k].z - path[k - 1].z));
+      // a brisk walk; a long way a little quicker, so no walk takes much over ten seconds
+      const speed = Math.max(2.3, len / 9.5);
+      c.route = {
+        pts: path,
+        cum,
+        len,
+        t0: performance.now(),
+        dur: (len / speed) * 1000 + 700,
+        endYaw: st.yaw,
+        to: i,
+      };
+      s.setGuide(null);
+      c.guideFrom.to = -1;
+      updateHud();
+      return;
+    }
+    // no walk there (or a long way, from the map; or reduced motion): fade across, as a game's fast travel
+    c.route = null;
+    const veil = makeVeil("radial-gradient(circle at 50% 50%, #fff 0 45%, #f6f2ea 100%)");
+    veil.style.transition = "opacity 260ms ease";
+    requestAnimationFrame(() => (veil.style.opacity = "1"));
+    window.setTimeout(() => {
+      c.tween = null;
+      c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: 0, y: f + EYE };
+      c.floor = f;
+      c.vel.x = c.vel.z = 0;
+      if (i <= L.end) c.leg = i;
+      updateHud();
+      fadeVeil(veil);
+    }, 300);
+  };
+
+  /* Sit on bench i, facing the wall you're nearer facing */
+  const sitDown = (i: number) => {
+    const c = cam.current;
+    const b = gs.current?.benches[i];
+    if (!b || c.mode !== "walk") return;
+    const seat = b.seats.reduce((a, x) =>
+      Math.abs(Math.atan2(Math.sin(x.yaw - c.me.yaw), Math.cos(x.yaw - c.me.yaw))) <
+      Math.abs(Math.atan2(Math.sin(a.yaw - c.me.yaw), Math.cos(a.yaw - c.me.yaw)))
+        ? x
+        : a,
+    );
+    c.seated = null;
+    tweenTo(
+      { x: seat.x, z: seat.z, yaw: seat.yaw, y: (b.floor ?? 0) + SEATED, pitch: 0.02 },
+      () => {
+        c.seated = { bench: i, seat: b.seats.indexOf(seat) };
+        updateHud();
+      },
+      800,
+    );
+  };
+  function standUp() {
+    const c = cam.current;
+    if (!c.seated) return;
+    const me = c.me;
+    c.seated = null;
+    tweenTo(
+      {
+        x: me.x - Math.sin(me.yaw) * 0.6,
+        z: me.z - Math.cos(me.yaw) * 0.6,
+        yaw: me.yaw,
+        y: c.floor + EYE,
+      },
+      updateHud,
+      420,
+    );
+  }
+
+  /* Play / pause the film in front of you (with sound the first time) */
+  const playFocus = () => {
+    const s = gs.current;
+    const i = hudRef.current.focus;
+    if (!s || i < 0) return;
+    s.toggleWork(i);
+    updateHud();
+  };
+  const hudRef = useRef(hud);
+  hudRef.current = hud;
+
   /* ---------- moving ---------- */
 
   const stepTo = (i: number) => {
@@ -555,6 +1046,13 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
   const step = (dir: 1 | -1) => {
     const c = cam.current;
     const L = gs.current?.layout;
+    if (c.mode === "walk" && L) {
+      // along the journey, from where you are on it (or from where you're walking to)
+      const from = c.route ? c.route.to : c.leg;
+      const to = clamp(from + dir, 0, L.end);
+      if (to === from && !c.route) return;
+      return tourTo(to);
+    }
     if (c.mode !== "free" || !L) return;
     if (dir < 0 && c.at === 0) return room ? undefined : goOut(false);
     stepTo(clamp(c.at + dir, 0, L.stops.length - 1));
@@ -612,10 +1110,10 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     const cam3 = s.camera;
     const hfov = 2 * Math.atan(Math.tan((cam3.fov * Math.PI) / 360) * cam3.aspect);
     const d = (0.88 * w.scale) / Math.tan(hfov / 2) / 0.8;
-    return { x: w.x + w.nx * d, z: w.z + w.nz * d, yaw: w.yaw, y: 1.62 };
+    return { x: w.x + w.nx * d, z: w.z + w.nz * d, yaw: w.yaw, y: w.y + 1.62 };
   };
 
-  const workSlug = (i: number) => GALLERY_FILMS[i]?.slug;
+  const workSlug = (i: number) => FILMS[i]?.slug;
   const showWork = (slug: string, replace = false) =>
     navigate({
       to: "/gallery",
@@ -629,8 +1127,10 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     const c = cam.current;
     const s = gs.current;
     const slug = workSlug(i);
-    if (!s || !slug || c.mode !== "free") return;
+    if (!s || !slug || (c.mode !== "free" && c.mode !== "walk")) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    c.tween = null;
+    c.seated = null;
     c.mode = "visit";
     c.visit = {
       t0: performance.now(),
@@ -652,7 +1152,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
   useEffect(() => {
     const c = cam.current;
     const s = gs.current;
-    const i = work ? GALLERY_FILMS.findIndex((p) => p.slug === work) : -1;
+    const i = work ? FILMS.findIndex((p) => p.slug === work) : -1;
     if (work && i >= 0) {
       if (sheet && !sheet.closing) {
         if (sheet.slug === work) return;
@@ -674,7 +1174,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
       // Closed (×, Escape or Back): fade the sheet, step back from the film
       covered.current = false;
       setSheet({ ...sheet, closing: true });
-      const i2 = GALLERY_FILMS.findIndex((p) => p.slug === sheet.slug);
+      const i2 = FILMS.findIndex((p) => p.slug === sheet.slug);
       if (s && c.mode === "visit" && i2 >= 0) {
         const L = s.layout;
         const k = L.stops.findIndex((st) => st.kind === "work" && st.index === i2);
@@ -683,15 +1183,24 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
           t0: performance.now(),
           dur: RETURN_MS,
           from: { ...c.pose },
-          to: { ...leaned(L, poseAt(L.stops, stop.s), 1), y: EYE },
+          to: room
+            ? {
+                x: stop.x,
+                z: stop.z,
+                yaw: stop.yaw,
+                y: (s.floorAt(stop.x, stop.z, c.floor) ?? 0) + EYE,
+              }
+            : { ...leaned(L, poseAt(L.stops, stop.s), 1), y: EYE },
           door: -1,
           go: () => {
-            c.mode = "free";
+            c.mode = room ? "walk" : "free";
             c.visit = null;
             c.at = k;
             c.q = c.goal = stop.s;
             c.glide = null;
             c.lean = 1;
+            c.floor = s.floorAt(stop.x, stop.z, c.floor) ?? 0;
+            c.me = { x: stop.x, z: stop.z, yaw: stop.yaw, pitch: 0, y: c.floor + EYE };
           },
           gone: false,
         };
@@ -710,8 +1219,14 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
   const openDoor = (i: number) => {
     const c = cam.current;
     const s = gs.current;
-    if (!s || c.mode !== "free") return;
-    writeSaved(s.layout.stops.length - 1);
+    if (!s || (c.mode !== "free" && c.mode !== "walk")) return;
+    c.tween = null;
+    writeSaved(
+      Math.max(
+        0,
+        s.layout.stops.findIndex((st) => st.kind === "doors"),
+      ),
+    );
     const to = i === 0 ? "/projects" : "/about";
     const go = () => navigate({ to });
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
@@ -740,15 +1255,60 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     const L = gs.current?.layout;
     if (!L) return;
     const k = L.stops.findIndex((st) => st.kind === "work" && st.index === i);
+    if (c.mode === "walk") {
+      // far: walk up to it; there: play / pause it
+      const st = L.stops[k];
+      if (keyboard) return openWork(i);
+      if (Math.hypot(st.x - c.me.x, st.z - c.me.z) > 2.6) return tourTo(k);
+      gs.current?.toggleWork(i);
+      return updateHud();
+    }
     const settled = c.at === k && !c.glide;
     if (settled || keyboard) openWork(i);
     else stepTo(k);
+  };
+  /*
+    The world's doors, at its end (About, Contact): from afar, walk to them;
+    there, step up to the door and through it, into its page.
+  */
+  const openWorldDoor = (i: number) => {
+    const c = cam.current;
+    const s = gs.current;
+    const d = s?.worldDoors[i - 2];
+    if (!s || !d || c.mode !== "walk") return;
+    c.seated = null;
+    const go = () => navigate({ to: d.to });
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return go();
+    tweenTo({ x: d.x, z: d.z + 1.1, yaw: 0, y: c.floor + EYE }, undefined, 700);
+    const veil = makeVeil("radial-gradient(circle at 50% 50%, #fff 0 45%, #fbfbfa 100%)");
+    veil.style.transition = "opacity 650ms ease";
+    window.setTimeout(() => (veil.style.opacity = "1"), 350);
+    window.setTimeout(() => {
+      go();
+      fadeVeil(veil);
+    }, 1050);
   };
   const clickDoor = (i: number, keyboard = false) => {
     const c = cam.current;
     const L = gs.current?.layout;
     if (!L) return;
-    const last = L.stops.length - 1;
+    if (i >= 2) {
+      const d = gs.current!.worldDoors[i - 2];
+      if (!d) return;
+      const near = c.floor > 3 && Math.hypot(d.x - c.me.x, d.z - c.me.z) < 9.5;
+      if (keyboard || near) return openWorldDoor(i);
+      const k = gs.current!.worldDoorStop();
+      return k >= 0 ? tourTo(k) : undefined;
+    }
+    const last = Math.max(
+      0,
+      L.stops.findIndex((st) => st.kind === "doors"),
+    );
+    if (c.mode === "walk") {
+      const st = L.stops[last];
+      if (keyboard || Math.hypot(st.x - c.me.x, st.z - c.me.z) < 3.4) return openDoor(i);
+      return tourTo(last);
+    }
     if ((c.at === last && !c.glide) || keyboard) openDoor(i);
     else stepTo(last);
   };
@@ -801,17 +1361,30 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
   const enterVR = async () => {
     const s = gs.current;
     const c = cam.current;
-    if (!s || c.mode !== "free") return;
+    if (!s || (c.mode !== "free" && c.mode !== "walk")) return;
     if (vrKind === "headset") {
       try {
         await s.enterVR(
           c.pose,
           c.at,
-          (_pick, stop) => {
+          (pick, stop) => {
+            // pointing at a door out (About, Contact) from in front of it: take
+            // the headset off into its page (from afar, it walks you there)
+            const there = c.at === stop;
             // keep the screen's place in step with where you are in VR
             c.at = stop;
+            if (stop <= s.layout.end) c.leg = stop;
             c.q = c.goal = s.layout.stops[stop].s;
             c.glide = null;
+            const st = s.layout.stops[stop];
+            c.floor = s.floorAt(st.x, st.z, c.floor) ?? 0;
+            c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: 0, y: c.floor + EYE };
+            const d =
+              pick?.kind === "door" && pick.index >= 2 ? s.worldDoors[pick.index - 2] : null;
+            if (d && there) {
+              s.exitVR();
+              navigate({ to: d.to });
+            }
           },
           () => setVrOn(""),
         );
@@ -858,6 +1431,64 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
 
   const handlers = useRef({ step, goIn, goOut, clickWork, enterVR });
   handlers.current = { step, goIn, goOut, clickWork, enterVR };
+  const walkers = useRef({ playFocus, sitDown, standUp, openWork, step, openWorldDoor });
+  walkers.current = { playFocus, sitDown, standUp, openWork, step, openWorldDoor };
+
+  /*
+    Walking keys (the room): WASD or ↑ ↓ to walk, ← → to turn, Shift to run;
+    Space plays / pauses the film in front of you, E sits on (or gets up
+    from) a bench, Enter opens the film's page, N / P walk the tour, M the
+    map, V VR. Heard before anything else on the page (so the mini player's
+    keys don't also act), and only those it uses.
+  */
+  useEffect(() => {
+    if (!room) return;
+    const MOVE = ["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Shift"];
+    const down = (e: KeyboardEvent) => {
+      const c = cam.current;
+      if (c.mode !== "walk" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("input, textarea, select, [contenteditable]")) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const w = walkers.current;
+      const hu = hudRef.current;
+      let used = true;
+      if (MOVE.includes(k)) c.keys.add(k);
+      else if (k === " ") {
+        if (t?.closest?.("button, a")) return;
+        w.playFocus();
+      } else if (k === "e") {
+        if (c.seated) w.standUp();
+        else if (hu.bench >= 0) w.sitDown(hu.bench);
+      } else if (k === "Escape" && c.seated) w.standUp();
+      else if (k === "Enter" && hu.door >= 2 && !t?.closest?.("button, a"))
+        w.openWorldDoor(hu.door);
+      else if (k === "Enter" && hu.focus >= 0 && !t?.closest?.("button, a")) w.openWork(hu.focus);
+      else if (k === "n" || k === "PageDown") w.step(1);
+      else if (k === "p" || k === "PageUp") w.step(-1);
+      else if (k === "m") setMap((m) => !m);
+      else if (k === "v") void handlers.current.enterVR();
+      else used = false;
+      if (used) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      cam.current.keys.delete(k);
+    };
+    const clear = () => cam.current.keys.clear();
+    window.addEventListener("keydown", down, true);
+    window.addEventListener("keyup", up, true);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", down, true);
+      window.removeEventListener("keyup", up, true);
+      window.removeEventListener("blur", clear);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ---------- input ---------- */
 
@@ -882,9 +1513,9 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
         } else c.pGoal = next;
         return;
       }
-      if (c.mode !== "free") return;
+      if (c.mode !== "free" && c.mode !== "walk") return;
       /*
-        One scroll gesture = one stop. A trackpad keeps sending events after a
+        One scroll gesture = one stop (in the gallery: on along the journey). A trackpad keeps sending events after a
         flick (momentum), fading steadily; those must not move you again, but a
         new flick or wheel notch must move you at once, even mid-momentum. A new
         gesture is: a pause in the events, a change of direction, the scroll
@@ -962,6 +1593,32 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button > 0) return;
+    const c = cam.current;
+    if (c.mode === "walk") {
+      // touch: the left of the screen is a joystick, the right looks round; a mouse drags to look
+      const left = e.pointerType !== "mouse" && e.clientX < window.innerWidth * 0.42 && !vrOn;
+      if (left && !c.joy) {
+        c.joy = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 };
+        setJoy({ x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 });
+      } else if (!c.lookDrag)
+        c.lookDrag = {
+          id: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          dist: 0,
+          sx: e.clientX,
+          sy: e.clientY,
+          t0: performance.now(),
+          yaw0: c.me.yaw,
+          pitch0: c.me.pitch,
+        };
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        // (a synthetic pointer has nothing to capture)
+      }
+      return;
+    }
     Object.assign(cam.current.drag, {
       on: true,
       x0: e.clientX,
@@ -974,6 +1631,38 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const c = cam.current;
+    if (c.mode === "walk") {
+      if (c.joy?.id === e.pointerId) {
+        const dx = e.clientX - c.joy.x0;
+        const dy = e.clientY - c.joy.y0;
+        const r = Math.hypot(dx, dy);
+        const k = r > 60 ? 60 / r : 1;
+        c.joy.dx = dx * k;
+        c.joy.dy = dy * k;
+        setJoy({ x0: c.joy.x0, y0: c.joy.y0, dx: c.joy.dx, dy: c.joy.dy });
+        return;
+      }
+      const L = c.lookDrag;
+      if (L?.id === e.pointerId) {
+        const dx = e.clientX - L.x;
+        const dy = e.clientY - L.y;
+        L.dist += Math.abs(dx) + Math.abs(dy);
+        L.x = e.clientX;
+        L.y = e.clientY;
+        if (L.dist > 6 && c.route) {
+          // walking a route: look round as you go
+          const k = e.pointerType === "mouse" ? 0.0032 : 0.0048;
+          c.look.mx = clamp(c.look.mx + dx * k, -1.6, 1.6);
+          c.look.my = clamp(c.look.my + dy * k * 0.8, -0.6, 0.5);
+        } else if (L.dist > 6 && !c.tween) {
+          const k = e.pointerType === "mouse" ? 0.0032 : 0.0048;
+          c.me.yaw += dx * k;
+          c.me.pitch = clamp(c.me.pitch + dy * k * 0.8, -0.6, 0.5);
+          if (stageRef.current) stageRef.current.style.cursor = "grabbing";
+        }
+        return;
+      }
+    }
     const d = c.drag;
     if (d.on) {
       const dy = e.clientY - d.y;
@@ -993,27 +1682,53 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
       }
       return;
     }
-    // A mouse looks round a little, as if you turned your head towards it
-    if (
-      c.mode === "free" &&
-      e.pointerType === "mouse" &&
-      !motionRef.current.on &&
-      stageRef.current
-    ) {
-      const r = stageRef.current.getBoundingClientRect();
-      const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
-      const ny = ((e.clientY - r.top) / r.height) * 2 - 1;
-      c.look.mx = -nx * 0.16;
-      c.look.my = -ny * 0.08;
-    }
     // Hover: point at a film or door to show it can be clicked; doors open a little more.
-    if (c.mode !== "free" || e.pointerType !== "mouse" || !gs.current || !stageRef.current) return;
+    if (
+      (c.mode !== "free" && c.mode !== "walk") ||
+      e.pointerType !== "mouse" ||
+      !gs.current ||
+      !stageRef.current
+    )
+      return;
     const hit = gs.current.pick(e.clientX, e.clientY, stageRef.current.getBoundingClientRect());
     c.hover = hit?.kind === "door" ? hit.index : -1;
     stageRef.current.style.cursor = hit ? "pointer" : "";
   };
   const onPointerUp = (e: React.PointerEvent) => {
     const c = cam.current;
+    if (c.mode === "walk") {
+      if (c.joy?.id === e.pointerId) {
+        c.joy = null;
+        setJoy(null);
+        return;
+      }
+      const L = c.lookDrag;
+      if (L?.id === e.pointerId) {
+        c.lookDrag = null;
+        if (stageRef.current) stageRef.current.style.cursor = "";
+        // a touch screen's quick flick up or down: on along the journey, or back (as scrolling a page)
+        const fx = e.clientX - L.sx;
+        const fy = e.clientY - L.sy;
+        if (
+          e.pointerType !== "mouse" &&
+          performance.now() - L.t0 < 420 &&
+          Math.abs(fy) > 60 &&
+          Math.abs(fy) > Math.abs(fx) * 1.6
+        ) {
+          c.me.yaw = L.yaw0; // (a flick isn't a look)
+          c.me.pitch = L.pitch0;
+          return step(fy < 0 ? 1 : -1);
+        }
+        if (L.dist > 6 || !gs.current || !stageRef.current) return;
+        if (vrOn === "phone") return step(1); // in a holder: a tap walks on
+        // a click or tap: a film (walk to it, or play / pause it there), a door, a bench
+        const hit = gs.current.pick(e.clientX, e.clientY, stageRef.current.getBoundingClientRect());
+        if (hit?.kind === "work") clickWork(hit.index);
+        else if (hit?.kind === "door") clickDoor(hit.index);
+        else if (hit?.kind === "bench") sitDown(hit.index);
+      }
+      return;
+    }
     const d = c.drag;
     if (!d.on) return;
     d.on = false;
@@ -1044,7 +1759,13 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={() => (cam.current.drag.on = false)}
+        onPointerCancel={() => {
+          const c = cam.current;
+          c.drag.on = false;
+          c.lookDrag = null;
+          c.joy = null;
+          setJoy(null);
+        }}
       >
         <h1 className="sr-only">{SITE.tagline}</h1>
 
@@ -1078,7 +1799,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
         {/* For keyboards and screen readers: every film and both doors */}
         <nav aria-label="Works in the gallery" className="sr-only">
           <ul>
-            {GALLERY_FILMS.map((p, i) => (
+            {FILMS.map((p, i) => (
               <li key={p.slug}>
                 <button
                   type="button"
@@ -1095,7 +1816,12 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
                 </button>
               </li>
             ))}
-            {["All work", "About us"].map((label, i) => (
+            {[
+              "All work",
+              "About us",
+              // the world's doors, at its end
+              ...(start === "room" ? ["About", "Contact"] : []),
+            ].map((label, i) => (
               <li key={label}>
                 <button
                   type="button"
@@ -1117,7 +1843,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
         <div
           className={cn(
             // above the phone's bottom bar (--dock, SiteNav)
-            "pointer-events-none absolute inset-x-0 bottom-[calc(1.5rem+var(--dock,0px))] z-10 flex items-center justify-between gap-4 px-6 transition-opacity duration-700",
+            "pointer-events-none absolute inset-x-0 bottom-[calc(1.5rem+var(--dock,0px))] z-10 flex items-center justify-between gap-2 px-3 transition-opacity duration-700 sm:gap-4 sm:px-6",
             inside && !vrOn ? "opacity-100" : "pointer-events-none opacity-0",
           )}
         >
@@ -1125,9 +1851,10 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
             type="button"
             onClick={() => navigate({ to: "/projects" })}
             tabIndex={inside ? 0 : -1}
-            className="tracked press pointer-events-auto whitespace-nowrap rounded-full border border-white/70 bg-white/60 px-4 py-2.5 text-[10px] text-black/75 shadow-sm backdrop-blur-md transition-colors hover:text-black"
+            aria-label="Leave the gallery"
+            className="tracked press pointer-events-auto whitespace-nowrap rounded-full border border-white/70 bg-white/60 px-3.5 py-2.5 text-[10px] text-black/75 shadow-sm backdrop-blur-md transition-colors hover:text-black sm:px-4"
           >
-            ← Leave
+            ←<span className="hidden sm:inline"> Leave</span>
           </button>
           <p
             className={cn(
@@ -1135,9 +1862,35 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
               !hint && "opacity-0",
             )}
           >
-            Scroll or ← → to walk · A D or the mouse to look · V for VR
+            Scroll or N for next · WASD to walk · drag to look · Space play · E sit · M map · V VR
           </p>
           <span className="flex items-center gap-2">
+            {/* the map of the hall */}
+            <button
+              type="button"
+              tabIndex={inside ? 0 : -1}
+              onClick={() => setMap((m) => !m)}
+              aria-pressed={map}
+              aria-label="Map"
+              className={cn(
+                "press pointer-events-auto grid h-[38px] w-[38px] place-items-center rounded-full border shadow-sm backdrop-blur-md transition-colors",
+                map
+                  ? "border-black bg-black text-white"
+                  : "border-white/70 bg-white/60 text-black/75",
+              )}
+            >
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                className="h-[18px] w-[18px]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinejoin="round"
+              >
+                <path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5zM9 4v13.5M15 6.5V20" />
+              </svg>
+            </button>
             {/* phones: look round by moving the phone */}
             {vrKind === "phone" && !vrOn && (
               <button
@@ -1195,6 +1948,61 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
           />
         )}
 
+        {/* walking: a thumb joystick (phones) */}
+        {joy && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute z-10 grid h-[120px] w-[120px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/60 bg-white/20 backdrop-blur-md"
+            style={{ left: joy.x0, top: joy.y0 }}
+          >
+            <span
+              className="h-12 w-12 rounded-full bg-white/80 shadow-[0_4px_14px_rgba(0,0,0,0.3)]"
+              style={{ transform: `translate(${joy.dx}px, ${joy.dy}px)` }}
+            />
+          </span>
+        )}
+
+        {/* the journey: how far through you are, the stop you're making for, and the way back or on */}
+        {room && inside && !vrOn && !map && hud.journey.end > 0 && (
+          <JourneyBar
+            journey={hud.journey}
+            arrowRef={journeyArrow}
+            distRef={journeyDist}
+            onNext={() => step(1)}
+            onBack={() => step(-1)}
+          />
+        )}
+
+        {/* what's in front of you: the film (play / pause it, open its page), a bench (sit) */}
+        {room &&
+          inside &&
+          !vrOn &&
+          (hud.focus >= 0 || hud.bench >= 0 || hud.seated || hud.door >= 2) && (
+            <Prompt
+              film={hud.focus >= 0 ? FILMS[hud.focus] : undefined}
+              door={hud.door >= 2 ? gs.current?.worldDoors[hud.door - 2]?.label : undefined}
+              onDoor={() => openWorldDoor(hud.door)}
+              playing={hud.playing}
+              sound={hud.sound}
+              real={hud.real}
+              canSit={hud.bench >= 0}
+              seated={hud.seated}
+              onPlay={playFocus}
+              onOpen={() => hud.focus >= 0 && openWork(hud.focus)}
+              onSit={() => (hud.seated ? standUp() : hud.bench >= 0 && sitDown(hud.bench))}
+            />
+          )}
+
+        {/* the map of the hall: where you are, every film (press one to walk there) */}
+        {room && inside && !vrOn && map && plan && (
+          <HallMap
+            plan={plan}
+            meRef={mapMe}
+            onWalk={(stop) => tourTo(stop)}
+            onClose={() => setMap(false)}
+          />
+        )}
+
         {/* a computer without a headset: how to step inside */}
         {vrHelp && <VRHelp onClose={() => setVrHelp(false)} />}
       </div>
@@ -1209,13 +2017,384 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
           onClosed={() => setSheet(null)}
           // On the walls: swap it in. Not on the walls: go to its own page
           onNext={(slug) =>
-            GALLERY_FILMS.some((p) => p.slug === slug)
+            FILMS.some((p) => p.slug === slug)
               ? showWork(slug, true)
               : navigate({ to: "/projects/$slug", params: { slug } })
           }
         />
       )}
     </>
+  );
+}
+
+/* ---------- walking: the journey, the prompt, the map ---------- */
+
+/* What a stop is called, on the journey bar */
+function stopName(s: GalleryScene, st?: Stop) {
+  if (!st) return "";
+  if (st.kind === "work") return FILMS[st.index]?.title ?? "A film";
+  if (st.kind === "place") return s.world?.places[st.index]?.name ?? "";
+  if (st.kind === "centre") return "The entrance";
+  return "The way out";
+}
+
+/*
+  The journey bar, as a game shows your objective: how far through the
+  gallery you are (a line of prism light, and on larger screens "4 / 27"),
+  the stop you're making for (its name, which way it is from where you're
+  looking, how far along the way), and ‹ and Next to walk the route back or
+  on. It's the same journey a scroll, N / P, a flick up or down on a phone,
+  a click on a far film and the VR stick all follow, from the entrance to
+  the doors to About and Contact.
+*/
+function JourneyBar({
+  journey,
+  arrowRef,
+  distRef,
+  onNext,
+  onBack,
+}: {
+  journey: { leg: number; end: number; to: number; walking: boolean; name: string };
+  arrowRef: React.RefObject<HTMLSpanElement | null>;
+  distRef: React.RefObject<HTMLSpanElement | null>;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const atEnd = journey.leg >= journey.end && !journey.walking;
+  const progress = journey.end ? (journey.walking ? journey.to : journey.leg) / journey.end : 0;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-10 flex justify-center px-3 sm:top-[5.6rem]">
+      <div
+        className="pointer-events-auto flex max-w-full items-center gap-2 rounded-[22px] border border-white/70 bg-white/70 p-1.5 text-black shadow-[0_18px_40px_-14px_rgba(0,0,0,0.35)] backdrop-blur-xl"
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          aria-label="Back along the way"
+          onClick={onBack}
+          disabled={journey.leg === 0 && !journey.walking}
+          className="press grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/[0.06] transition hover:bg-black/[0.1] disabled:opacity-30"
+        >
+          <svg
+            aria-hidden
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M14.5 6l-6 6 6 6" />
+          </svg>
+        </button>
+        <div className="min-w-0 px-1">
+          <p className="tracked flex items-center gap-1.5 whitespace-nowrap text-[9px] text-black/55">
+            <span>{atEnd ? "You've arrived" : journey.walking ? "On the way to" : "Next"}</span>
+            {!atEnd && (
+              <>
+                {/* which way: straight up is straight ahead */}
+                <span ref={arrowRef} aria-hidden className="inline-grid h-3 w-3 place-items-center">
+                  <svg viewBox="0 0 12 12" className="h-3 w-3" fill="currentColor">
+                    <path d="M6 1l3.6 6.2H7v3.8H5V7.2H2.4z" />
+                  </svg>
+                </span>
+                <span ref={distRef} />
+              </>
+            )}
+          </p>
+          <p className="max-w-[44vw] truncate text-[13px] font-medium leading-tight sm:max-w-[260px]">
+            {journey.name}
+          </p>
+          <div className="mt-1.5 h-[2px] w-full min-w-[120px] overflow-hidden rounded-full bg-black/10">
+            <div
+              className="h-full rounded-full transition-[width] duration-700"
+              style={{ width: `${progress * 100}%`, background: "var(--prism)" }}
+            />
+          </div>
+        </div>
+        <span className="tracked hidden whitespace-nowrap text-[9px] text-black/45 sm:inline">
+          {journey.leg + 1} / {journey.end + 1}
+        </span>
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={atEnd}
+          className="press flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-black px-3.5 text-[13px] text-white transition hover:bg-black/85 disabled:opacity-30"
+        >
+          Next
+          <kbd className="hidden rounded border border-current/30 px-1 text-[10px] leading-4 opacity-60 sm:inline">
+            N
+          </kbd>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/*
+  The prompt for what's in front of you, as a game shows what you can do:
+  the film you face (its title, for whom, its year) with Play / Pause (sound
+  the first time), Open (its page), and Sit when a bench is near. Keys on
+  computers: Space, Enter, E.
+*/
+function Prompt({
+  film,
+  door,
+  onDoor,
+  playing,
+  sound,
+  real,
+  canSit,
+  seated,
+  onPlay,
+  onOpen,
+  onSit,
+}: {
+  film?: (typeof FILMS)[number];
+  door?: string;
+  onDoor: () => void;
+  playing: boolean;
+  sound: boolean;
+  real: boolean;
+  canSit: boolean;
+  seated: boolean;
+  onPlay: () => void;
+  onOpen: () => void;
+  onSit: () => void;
+}) {
+  const btn =
+    "press flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] transition";
+  const key = (k: string) => (
+    <kbd className="hidden rounded border border-current/30 px-1 text-[10px] leading-4 opacity-60 sm:inline">
+      {k}
+    </kbd>
+  );
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-[calc(5rem+var(--dock,0px))] z-10 flex justify-center px-3 duration-300 animate-in fade-in slide-in-from-bottom-2">
+      <div
+        className="pointer-events-auto flex max-w-full items-center gap-3 rounded-[22px] border border-white/70 bg-white/70 p-2 pl-4 text-black shadow-[0_18px_40px_-14px_rgba(0,0,0,0.35)] backdrop-blur-xl"
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+      >
+        {door && (
+          <div className="min-w-0">
+            <p className="text-[14px] font-medium leading-tight">{door}</p>
+            <p className="tracked mt-1 text-[9px] text-black/55">Through this door</p>
+          </div>
+        )}
+        {film && (
+          <div className="min-w-0 max-w-[200px] sm:max-w-[260px]">
+            <p className="truncate text-[14px] font-medium leading-tight">{film.title}</p>
+            <p className="tracked mt-1 truncate text-[9px] text-black/55">
+              {[film.client ?? SITE.name, film.year].join(" · ")}
+            </p>
+          </div>
+        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {door && (
+            <button
+              type="button"
+              onClick={onDoor}
+              className={cn(btn, "bg-black text-white hover:bg-black/85")}
+            >
+              Go in
+              {key("↵")}
+            </button>
+          )}
+          {film && (
+            <button
+              type="button"
+              onClick={onPlay}
+              className={cn(btn, "bg-black text-white hover:bg-black/85")}
+            >
+              <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                {playing && (sound || !real) ? (
+                  <>
+                    <rect x="6.5" y="5" width="3.6" height="14" rx="1" />
+                    <rect x="13.9" y="5" width="3.6" height="14" rx="1" />
+                  </>
+                ) : (
+                  <path d="M8 5v14l11-7z" />
+                )}
+              </svg>
+              {playing && (sound || !real) ? "Pause" : real ? "Play" : "Play"}
+              {key("Space")}
+            </button>
+          )}
+          {film && (
+            <button
+              type="button"
+              onClick={onOpen}
+              className={cn(btn, "bg-black/[0.06] hover:bg-black/[0.1]")}
+            >
+              Open
+              {key("↵")}
+            </button>
+          )}
+          {(canSit || seated) && (
+            <button
+              type="button"
+              onClick={onSit}
+              className={cn(btn, "bg-black/[0.06] hover:bg-black/[0.1]")}
+            >
+              {seated ? "Stand" : "Sit"}
+              {key("E")}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/*
+  The hall from above, on its side (the entrance at the left): the walls,
+  the prism, the benches, a mark for every film (in its client's colour;
+  press one to walk there) and you, an arrow turning as you look round.
+*/
+function HallMap({
+  plan,
+  meRef,
+  onWalk,
+  onClose,
+}: {
+  plan: {
+    B: { minX: number; maxX: number; minZ: number; maxZ: number };
+    works: { x: number; z: number; stop: number }[];
+    benches: { x: number; z: number; along: boolean }[];
+    prism: { x: number; z: number } | null;
+    areas: { minX: number; maxX: number; minZ: number; maxZ: number; level: number }[];
+    places: { name: string; x: number; z: number; stop: number }[];
+  };
+  meRef: React.RefObject<HTMLDivElement | null>;
+  onWalk: (stop: number) => void;
+  onClose: () => void;
+}) {
+  const { B } = plan;
+  const len = B.maxZ - B.minZ + 1.2;
+  const wid = B.maxX - B.minX + 1.1;
+  const at = (x: number, z: number) => ({
+    left: `${((B.maxZ + 0.6 - z) / len) * 100}%`,
+    top: `${((x - (B.minX - 0.55)) / wid) * 100}%`,
+  });
+  return (
+    <div
+      className="pointer-events-auto absolute right-3 top-[calc(env(safe-area-inset-top)+12px)] z-20 w-[min(340px,calc(100%-24px))] rounded-2xl border border-white/70 bg-white/70 p-3 shadow-[0_18px_40px_-14px_rgba(0,0,0,0.35)] backdrop-blur-xl duration-200 animate-in fade-in sm:top-[88px]"
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <p className="tracked text-[9.5px] text-black/60">The gallery · upstairs tinted</p>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close the map"
+          className="grid h-6 w-6 place-items-center rounded-full hover:bg-black/[0.06]"
+        >
+          <svg
+            aria-hidden
+            viewBox="0 0 24 24"
+            className="h-3.5 w-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+          >
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+      <div
+        className="relative w-full rounded-md border border-black/15 bg-[#f3efe8]"
+        style={{ aspectRatio: `${len} / ${wid}` }}
+      >
+        {/* the spaces: the hall and the atrium (ground floor), the upper floor (tinted) */}
+        {plan.areas.map((a, i) => {
+          const tl = at(a.minX, a.maxZ);
+          const br = at(a.maxX, a.minZ);
+          return (
+            <span
+              key={i}
+              aria-hidden
+              className={cn(
+                "absolute rounded-[3px] border",
+                a.level ? "border-[#9c5a26]/35 bg-[#9c5a26]/10" : "border-black/15 bg-white/60",
+              )}
+              style={{
+                left: tl.left,
+                top: tl.top,
+                width: `calc(${br.left} - ${tl.left})`,
+                height: `calc(${br.top} - ${tl.top})`,
+              }}
+            />
+          );
+        })}
+        {/* the entrance (the doors) */}
+        <span
+          aria-hidden
+          className="absolute inset-y-[30%] left-0 w-[3px] -translate-x-1/2 rounded-full"
+          style={{ background: "var(--prism)" }}
+        />
+        {plan.prism && (
+          <span
+            aria-hidden
+            className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-white ring-1 ring-black/30"
+            style={at(plan.prism.x, plan.prism.z)}
+          />
+        )}
+        {plan.benches.map((b, i) => (
+          <span
+            key={i}
+            aria-hidden
+            className={cn(
+              "absolute -translate-x-1/2 -translate-y-1/2 rounded-[2px] bg-[#9c5a26]/70",
+              b.along ? "h-[5px] w-[14px]" : "h-[14px] w-[5px]",
+            )}
+            style={at(b.x, b.z)}
+          />
+        ))}
+        {plan.works.map((w, i) => {
+          const f = FILMS[i];
+          const c = WORK_CLIENTS.find((x) => x.name === f?.client);
+          return (
+            <button
+              key={i}
+              type="button"
+              title={f?.title}
+              aria-label={`Walk to ${f?.title}`}
+              onClick={() => onWalk(w.stop)}
+              className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white transition hover:scale-125"
+              style={{ ...at(w.x, w.z), background: c?.color ?? "#0a0a0a" }}
+            />
+          );
+        })}
+        {/* the world's places: the Threshold, the Lens, the stairs… (press one to go there) */}
+        {plan.places.map((p) => (
+          <button
+            key={p.stop}
+            type="button"
+            title={p.name}
+            aria-label={`Go to ${p.name}`}
+            onClick={() => onWalk(p.stop)}
+            className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-white transition hover:scale-125"
+            style={{ ...at(p.x, p.z), background: "var(--prism)" }}
+          />
+        ))}
+        {/* you */}
+        <div ref={meRef} aria-label="You" className="absolute h-4 w-4">
+          <svg viewBox="0 0 16 16" className="h-4 w-4 drop-shadow">
+            <path
+              d="M15 8L2 2.5 5 8 2 13.5z"
+              fill="#ff3d1f"
+              stroke="#fff"
+              strokeWidth="1"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+      </div>
+    </div>
   );
 }
 

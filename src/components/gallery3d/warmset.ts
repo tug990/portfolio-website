@@ -562,12 +562,13 @@ export function addPrismPlinth(ctx: SetCtx, at: THREE.Vector3, logoUrl: string) 
 /*
   A gallery bench, as in the art direction: four plump caramel leather
   cushions with soft rounded edges and a seam between each, on a slim brass
-  frame with sled legs at both ends. A lamp above lights its top.
+  frame with sled legs at both ends. Returns it (to pick it, to sit on).
 */
-export function addBench(ctx: SetCtx, at: THREE.Vector3) {
+export function addBench(ctx: SetCtx, at: THREE.Vector3, turn = 0) {
   const { scene, keep, hq } = ctx;
   const g = new THREE.Group();
   g.position.copy(at);
+  g.rotation.y = turn; // 0: its length across the room; π/2: along it
   const L = 2.3;
   const D = 0.56;
   const seatTop = 0.47;
@@ -629,6 +630,7 @@ export function addBench(ctx: SetCtx, at: THREE.Vector3) {
   }
 
   scene.add(g);
+  return g;
 }
 
 /* ---------- the exhibition title ---------- */

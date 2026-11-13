@@ -9,7 +9,10 @@ import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLigh
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { CSS3DObject, CSS3DRenderer } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 import { StereoEffect } from "three/examples/jsm/effects/StereoEffect.js";
+import { buildWorld, roomSpots, UPPER, type Collider, type World, type Zone } from "./world";
+import { makeSurfaces, type Surfaces } from "./surfaces";
 import type { Project } from "@/content/projects";
+import { WORK_CLIENTS } from "@/content/site";
 import {
   YT_HOST,
   keepLooping,
@@ -29,6 +32,7 @@ import {
 } from "./textures";
 import { marbleFloorMaterial } from "./marble";
 import {
+  addBench,
   addFloorReflection,
   addFramedPicture,
   addPrismPlinth,
@@ -76,13 +80,14 @@ const DOOR = { w: 1.15, h: 2.45, x: 1.35 };
 const LABEL = { w: 0.34, h: 0.21 };
 
 export type Pose = { x: number; z: number; yaw: number }; // yaw: 0 looks down the room (-z)
-export type StopKind = "centre" | "work" | "doors";
-export type Stop = Pose & { s: number; kind: StopKind; index: number };
-export type Pick = { kind: "work" | "door"; index: number } | null;
+export type StopKind = "centre" | "work" | "doors" | "place";
+export type Stop = Pose & { s: number; kind: StopKind; index: number; y?: number }; // y: its floor (0 if not given)
+export type Pick = { kind: "work" | "door" | "bench"; index: number } | null;
 
 type WorkSpot = {
   scale: number; // the far wall's films hang larger
   x: number;
+  y?: number; // the floor it hangs on (upstairs: 6), 0 if not given
   z: number;
   yaw: number;
   face: number;
@@ -110,7 +115,8 @@ export function overviewZ(aspect: number) {
   Where everything goes, and the path the camera takes.
 
   Films hang on the three walls you face when you arrive: the left wall, the
-  far wall and the right wall (two each for six). The doors are on the wall
+  far wall (two at most) and the right wall: two each for six; for more, the
+  side walls run on into a long hall. The doors are on the wall
   behind you, at z = front. The walk: the overview, the left wall (front to
   back), the far wall (left to right), the right wall (back to front), then
   you turn round to the doors.
@@ -121,8 +127,11 @@ export function overviewZ(aspect: number) {
 */
 export function buildLayout(count: number, aspect: number, front: number) {
   const W = ROOM.W;
-  const nLeft = Math.ceil(count / 3);
-  const nCentre = Math.ceil((count - nLeft) / 2);
+  // The far wall holds two films at most (the room's main pieces); the rest
+  // hang down the side walls, so more films make a longer hall, as a
+  // museum's long gallery: six make the original room; twenty, a 33 m hall.
+  const nCentre = Math.min(2, Math.ceil(count / 3));
+  const nLeft = Math.ceil((count - nCentre) / 2);
   const nRight = count - nLeft - nCentre;
   const sideN = Math.max(nLeft, nRight, 1);
   const D = Math.max(10.6, WORK_START + (sideN - 1) * WORK_GAP + 3.4);
@@ -199,7 +208,8 @@ export function buildLayout(count: number, aspect: number, front: number) {
     b.s = a.s + Math.max(0.9, Math.hypot(b.x - a.x, b.z - a.z) + Math.abs(b.yaw - a.yaw) * 1.6);
   }
   const span = stops[stops.length - 1].s / (stops.length - 1);
-  return { W, D, near, far, works, stops, span, stacked, front };
+  // `end`: the journey's last stop (in the world, the doors out; the entrance doors come after it)
+  return { W, D, near, far, works, stops, span, stacked, front, end: stops.length - 1 };
 }
 export type Layout = ReturnType<typeof buildLayout>;
 
@@ -226,6 +236,41 @@ class HalfResAO extends GTAOPass {
     });
   }
 }
+
+/*
+  Sharpening, last of all (after tone mapping): contrast-adaptive, as AMD's
+  CAS: each pixel is pushed away from its four neighbours, less where the
+  contrast is already strong, so edges and fine grain read crisp without halos.
+*/
+const SharpenShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uRes: { value: new THREE.Vector2(1, 1) },
+    uAmount: { value: 0.16 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uRes;
+    uniform float uAmount;
+    varying vec2 vUv;
+    void main() {
+      vec2 px = 1.0 / uRes;
+      vec4 c4 = texture2D(tDiffuse, vUv);
+      vec3 c = c4.rgb;
+      vec3 n = texture2D(tDiffuse, vUv + vec2(0.0, px.y)).rgb;
+      vec3 s = texture2D(tDiffuse, vUv - vec2(0.0, px.y)).rgb;
+      vec3 e = texture2D(tDiffuse, vUv + vec2(px.x, 0.0)).rgb;
+      vec3 w = texture2D(tDiffuse, vUv - vec2(px.x, 0.0)).rgb;
+      vec3 mn = min(c, min(min(n, s), min(e, w)));
+      vec3 mx = max(c, max(max(n, s), max(e, w)));
+      vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+      vec3 wt = -amp * uAmount;
+      gl_FragColor = vec4(clamp((c + (n + s + e + w) * wt) / (1.0 + 4.0 * wt), 0.0, 1.0), c4.a);
+    }`,
+};
 
 /* Finishing: just a gentle vignette. (No grain or lens fringing: the room stays smooth.) */
 const FilmShader = {
@@ -295,7 +340,18 @@ type WorkMesh = {
   shader?: THREE.ShaderMaterial;
   screen: THREE.Mesh;
   yt?: WallYouTube;
+  /* a stand-in's light, held still (paused in the room) */
+  paused?: boolean;
 };
+
+/* A bench down the middle of the hall, and the places to sit on it (eye height, facing a wall). */
+export type Bench = {
+  x: number;
+  z: number;
+  floor?: number; // its floor's height (upstairs: 6)
+  seats: { x: number; z: number; yaw: number }[];
+};
+export const SEATED_EYE = 1.18;
 
 /*
   A YouTube video on a wall screen. WebGL can't draw another site's player, so
@@ -356,6 +412,9 @@ export class GalleryScene {
   private composer: EffectComposer;
   private bloom: UnrealBloomPass;
   private film: ShaderPass;
+  private sharpen: ShaderPass;
+  /* the building's surfaces (the gallery page): shared by the hall and the world */
+  surfaces?: Surfaces;
   private works: WorkMesh[] = [];
   private doors: DoorMesh[] = [];
   private pickables: THREE.Object3D[] = [];
@@ -378,6 +437,117 @@ export class GalleryScene {
   private prismPoints: THREE.Vector3[] = []; // the glass pyramid's outline, for the hole in the YouTube layer
   private prismAt?: THREE.Vector3; // where the prism stands, for the camera to walk round it
   private tall = false; // a phone-shaped window when the room was built
+  /* many films (a long hall): smaller textures for each, so memory stays modest */
+  private many = false;
+  /* the projects on the walls, in order */
+  private projects: Project[] = [];
+  /* benches down the middle of the hall, to sit on */
+  benches: Bench[] = [];
+  /* the film playing with sound in the room, if any */
+  private sounding = -1;
+  /* the world beyond the hall (the gallery page) */
+  private worldOn = false;
+  private hallCount = 0;
+  private roomClients: typeof WORK_CLIENTS = [];
+  private perRoom: number[] = [];
+  world?: World;
+  private static BACK = 7; // the side gallery behind the far wall
+  /* the room's warm evening fill (softer in the daylit world, where the probes light it) */
+  private hemi!: THREE.HemisphereLight;
+  /*
+    Reflection probes for the world: the scene, caught from a point (a cube of
+    six views), blurred for each roughness (PMREM) and used as the light
+    all round you. So steel and glass reflect the real atrium round them, and
+    the white walls and pale stone light everything else softly, as bounced
+    light does (a step towards baked light). Caught twice after building
+    (once the pictures have loaded); the hall keeps its studio light.
+  */
+  private probe?: {
+    cam: THREE.CubeCamera;
+    rt: THREE.WebGLCubeRenderTarget;
+    pmrem: THREE.PMREMGenerator;
+    spots: { at: THREE.Vector3; rt: THREE.WebGLRenderTarget | null }[];
+    hallEnv: THREE.Texture;
+    due: number[]; // when to (re)catch, in ms after building
+    t0: number;
+  };
+  private static WORLD_ENV = 0.9; // how strongly the caught light lights the world
+  private static DAY_SKY = new THREE.Color(0xf6f7fb);
+  private static DAY_GROUND = new THREE.Color(0x9a9288);
+  /* where the hall ends and the atrium begins */
+  get zA() {
+    return -(this.layout.D + GalleryScene.BACK);
+  }
+
+  /*
+    The layout: the hall's (buildLayout, for its films), and in the world the
+    rooms' films after them, and the tour's stops: the hall's, the doors, the
+    atrium's pieces, the balcony, each room's films, then the doors out.
+  */
+  private makeLayout(aspect: number) {
+    const L = buildLayout(this.hallCount, aspect, this.front);
+    if (!this.worldOn) return L;
+    const zA = -(L.D + GalleryScene.BACK);
+    const spots = roomSpots(zA, this.perRoom);
+    const works = [...L.works, ...spots];
+    const along = L.stacked ? 0 : (LABEL.w + 0.14) / 2;
+    const places: Stop[] = (this.world?.places ?? []).map((p, k) => ({
+      x: p.x,
+      y: p.y,
+      z: p.z,
+      yaw: p.yaw,
+      s: 0,
+      kind: "place" as const,
+      index: k,
+    }));
+    const roomStops: Stop[] = spots.map((w, j) => ({
+      x: w.x + (w.nx * L.far * 1.15 + w.tx * along) * w.scale,
+      y: w.y,
+      z: w.z + (w.nz * L.far * 1.15 + w.tz * along) * w.scale,
+      yaw: w.yaw,
+      s: 0,
+      kind: "work" as const,
+      index: L.works.length + j,
+    }));
+    /*
+      The journey, start to end, as one person walks it (a scroll, N, a tap on
+      Next, the VR stick all follow it): the entrance; the hall's films down
+      the hall a pair at a time, across and back (so you cross once a pair);
+      the far wall's; through the portal to the atrium's pieces; up the
+      stairs; the balcony; each room's films; and last the doors out (About,
+      Contact): `end`. The hall's entrance doors (behind you at the start)
+      stay a stop, after the end.
+    */
+    const [centre, ...hallRest] = L.stops;
+    const hallDoors = hallRest.pop()!;
+    const wallOf = (st: Stop) => L.works[st.index].nx; // 1: the left wall, -1: the right, 0: the far wall
+    const left = hallRest.filter((st) => wallOf(st) > 0).sort((a, b) => b.z - a.z);
+    const right = hallRest.filter((st) => wallOf(st) < 0).sort((a, b) => b.z - a.z);
+    const hall: Stop[] = [];
+    for (let r = 0; r < Math.max(left.length, right.length); r++) {
+      const pair = [left[r], right[r]].filter(Boolean);
+      hall.push(...(r % 2 ? pair.reverse() : pair));
+    }
+    const endX = hall[hall.length - 1]?.x ?? 0;
+    const farWall = hallRest
+      .filter((st) => wallOf(st) === 0)
+      .sort((a, b) => (endX > 0 ? b.x - a.x : a.x - b.x));
+    const isLast = (p: Stop) => this.world?.places[p.index]?.name === "About & Contact";
+    const stops: Stop[] = [
+      centre,
+      ...hall,
+      ...farWall,
+      ...places.filter((p) => !isLast(p)),
+      ...roomStops,
+      ...places.filter(isLast),
+      hallDoors,
+    ].map((st) => ({ ...st, s: 0 }));
+    for (let i = 1; i < stops.length; i++) {
+      const a = stops[i - 1];
+      stops[i].s = a.s + Math.max(0.9, Math.hypot(stops[i].x - a.x, stops[i].z - a.z));
+    }
+    return { ...L, works, stops, end: stops.length - 2 };
+  }
   private clipKey = "";
   /* the floor, for teleporting onto in VR, and its material (opaque in VR, where there's no mirror) */
   private floor!: THREE.Mesh;
@@ -401,14 +571,29 @@ export class GalleryScene {
 
   constructor(
     canvas: HTMLCanvasElement,
-    opts: { projects: Project[]; aspect: number; hq: boolean },
+    opts: { projects: Project[]; aspect: number; hq: boolean; world?: boolean },
   ) {
     this.hq = opts.hq;
     this.tall = opts.aspect < 1;
     this.count = opts.projects.length;
+    this.many = this.count > 8;
+    this.projects = opts.projects;
+    // The world (the gallery page): the hall holds the studio's own films; each
+    // initiative's are in its room upstairs (world.ts)
+    if (opts.world) {
+      this.worldOn = true;
+      this.hallCount = opts.projects.filter(
+        (p) => !WORK_CLIENTS.some((c) => c.name === p.client),
+      ).length;
+      this.roomClients = WORK_CLIENTS.filter((c) => opts.projects.some((p) => p.client === c.name));
+      this.perRoom = this.roomClients.map(
+        (c) => opts.projects.filter((p) => p.client === c.name).length,
+      );
+      this.many = this.hallCount > 8;
+    } else this.hallCount = this.count;
     // Deep enough behind the overview spot to stand back and see the doors.
     this.front = Math.max(7.5, overviewZ(opts.aspect) + 4.5);
-    this.layout = buildLayout(opts.projects.length, opts.aspect, this.front);
+    this.layout = this.makeLayout(opts.aspect);
     const { W, D } = this.layout;
     const H = ROOM.H;
 
@@ -428,7 +613,7 @@ export class GalleryScene {
     this.canvas = canvas;
     const aniso = renderer.capabilities.getMaxAnisotropy();
 
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
+    this.camera = new THREE.PerspectiveCamera(50, 1, 0.05, opts.world ? 200 : 80);
     this.camera.rotation.order = "YXZ";
     this.camera.layers.enable(1); // lamp halos and beams: seen, but not reflected in the floor
     this.rig.add(this.camera);
@@ -446,6 +631,7 @@ export class GalleryScene {
     // An evening exhibition: a low warm fill; the spotlights and the skylight do the drama.
     const hemi = new THREE.HemisphereLight(0xffcf98, 0x3a2a1c, 0.55);
     this.scene.add(hemi);
+    this.hemi = hemi;
 
     /* ---------- the room: smooth, seamless surfaces ---------- */
 
@@ -462,6 +648,15 @@ export class GalleryScene {
       return m;
     };
 
+    // The gallery page: one set of surfaces for the whole building (surfaces.ts)
+    const set: SetCtx = {
+      scene: this.scene,
+      keep: (...things) => this.disposables.push(...things),
+      hq: this.hq,
+    };
+    const S = this.worldOn ? makeSurfaces(set, aniso) : null;
+    if (S) this.surfaces = S;
+
     /*
       Walls: left, right, far, and the door wall. The room runs from z = front
       back to -D. In the far corners, openings lead into a side gallery
@@ -469,15 +664,18 @@ export class GalleryScene {
     */
     const FRONT = this.front;
     const BACK = 7; // the passages behind the far wall run well back: open ways, not alcoves
-    const OPEN = 1.0; // width of each opening
+    const OPEN = this.worldOn ? 1.6 : 1.0; // width of each opening (wider in the world: a way through)
     const OPEN_H = 3.0;
     const len = D + FRONT; // the main room
     const mid = (FRONT - D) / 2;
     const allLen = len + BACK; // with the side gallery
     const allMid = (FRONT - D - BACK) / 2;
-    const wallMat = matte(0xddc6a8, 0.9); // warm beige microcement
-    microcement(wallMat);
-    wallMat.emissive.set(0x1e130a); // the warm light the cove and skylight leave on the walls
+    // the building's white plaster (the gallery page), or warm beige microcement
+    const wallMat = S ? S.wall : matte(0xddc6a8, 0.9);
+    if (!S) {
+      microcement(wallMat);
+      wallMat.emissive.set(0x1e130a); // the warm light the cove and skylight leave on the walls
+    }
     const left = plane(allLen, H, wallMat);
     left.position.set(-W / 2, H / 2, allMid);
     left.rotation.y = Math.PI / 2;
@@ -487,9 +685,19 @@ export class GalleryScene {
     const entrance = plane(W, H, wallMat);
     entrance.position.set(0, H / 2, FRONT);
     entrance.rotation.y = Math.PI;
-    const galleryBack = plane(W, H, wallMat);
-    galleryBack.position.set(0, H / 2, -D - BACK);
-    this.scene.add(left, right, entrance, galleryBack);
+    this.scene.add(left, right, entrance);
+    if (this.worldOn) {
+      // the side gallery's back wall opens in the middle: a portal into the atrium (world.ts)
+      for (const sx of [-1, 1]) {
+        const seg = plane(W / 2 - 3, H, wallMat);
+        seg.position.set(sx * (3 + (W / 2 - 3) / 2), H / 2, -D - BACK);
+        this.scene.add(seg);
+      }
+    } else {
+      const galleryBack = plane(W, H, wallMat);
+      galleryBack.position.set(0, H / 2, -D - BACK);
+      this.scene.add(galleryBack);
+    }
     this.entranceParts.push(entrance);
     // The far wall: solid in the middle, openings at both ends with a lintel over each
     const block = (bw: number, bh: number, x: number, y: number) => {
@@ -505,27 +713,23 @@ export class GalleryScene {
     for (const sx of [-1, 1]) block(OPEN, H - OPEN_H, sx * (W / 2 - OPEN / 2), (H + OPEN_H) / 2);
 
     // Ceiling: darker, warm grey
-    const ceilMat = matte(0x8a7766, 0.95);
-    ceilMat.emissive.set(0x3d2b1e); // warm light bouncing up off the lit walls
+    const ceilMat = S ? S.ceil : matte(0x8a7766, 0.95);
+    if (!S) ceilMat.emissive.set(0x3d2b1e); // warm light bouncing up off the lit walls
     const ceiling = plane(W, allLen, ceilMat);
     ceiling.position.set(0, H, allMid);
     ceiling.rotation.x = Math.PI / 2;
     this.scene.add(ceiling);
 
     // Dark polished stone, in large slabs (see marble.ts), with a soft reflection on capable devices
-    const floorMat = marbleFloorMaterial({ dark: true });
-    this.disposables.push(floorMat);
+    // (the gallery page: the building's oak, as everywhere)
+    const floorMat = S ? S.oak : marbleFloorMaterial({ dark: true });
+    if (!S) this.disposables.push(floorMat);
     const floor = plane(W, allLen, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(0, 0, allMid);
     this.floor = floor;
     this.floorMat = floorMat;
-    const set: SetCtx = {
-      scene: this.scene,
-      keep: (...things) => this.disposables.push(...things),
-      hq: this.hq,
-    };
-    if (this.hq) {
+    if (this.hq && !S) {
       this.reflector = addFloorReflection(set, W, allLen, allMid);
       floorMat.transparent = true;
       floorMat.opacity = 0.84; // mostly stone, with a soft sheen of the room in it
@@ -554,7 +758,11 @@ export class GalleryScene {
       this.scene.add(deep);
     }
 
-    this.entranceParts.push(this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK));
+    this.entranceParts.push(
+      S
+        ? this.addShadowGaps(S, W, D, FRONT, len, mid, OPEN, BACK)
+        : this.addFloatingWalls(W, D, FRONT, len, mid, OPEN, BACK),
+    );
     // Concealed cove light along the top of the room's walls: the architecture lights itself
     const coves = addCoveLighting(set, H, [
       { len, x: -W / 2, z: mid, ry: Math.PI / 2 },
@@ -571,6 +779,42 @@ export class GalleryScene {
 
     /* ---------- the exhibition set ---------- */
     this.addExhibition(set, W, D, H, aniso);
+    /* ---------- the long hall: a wall text for each initiative, benches to sit on ---------- */
+    if (!this.worldOn) this.addSections(aniso);
+    this.addBenches(set);
+    /* ---------- the world beyond: the atrium, the stairs, the rooms upstairs ---------- */
+    if (this.worldOn) {
+      this.world = buildWorld(set, {
+        zA: -(D + GalleryScene.BACK),
+        hallW: W,
+        clients: this.roomClients,
+        aniso,
+        filmSpots: roomSpots(-(D + GalleryScene.BACK), this.perRoom),
+        surfaces: S!,
+      });
+      this.benches.push(...this.world.benches);
+      this.pickables.push(...this.world.pickDoors);
+      const rt = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
+      this.probe = {
+        cam: new THREE.CubeCamera(0.1, 200, rt),
+        rt,
+        pmrem: new THREE.PMREMGenerator(renderer),
+        // the hall's, then the world's (the atrium, the upper floor)
+        spots: [new THREE.Vector3(0, 1.8, allMid), ...this.world.probes].map((at) => ({
+          at,
+          rt: null,
+        })),
+        hallEnv: env,
+        due: [700, 3200],
+        t0: performance.now(),
+      };
+      S!.loaded.then(() => this.catchSoon());
+      // daylight everywhere in the building from the start (see worldLight)
+      this.hemi.color.copy(GalleryScene.DAY_SKY);
+      this.hemi.groundColor.copy(GalleryScene.DAY_GROUND);
+      this.hemi.intensity = 0.75;
+      this.layout = this.makeLayout(opts.aspect); // now with the world's places on the tour
+    }
 
     /* ---------- the doors, on the wall behind where you arrive ---------- */
     // Built as if on a wall facing +z, then turned round to face back into the room.
@@ -616,11 +860,20 @@ export class GalleryScene {
     }
     // Glow only on what truly emits light: the skylight, the light lines, the doors.
     // Glow on what emits light, and a little on the brightest light falling on things, as a lens sees it
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.6, 0.86);
+    // (in the daylit building only light sources glow, never a sunlit wall)
+    this.bloom = new UnrealBloomPass(
+      new THREE.Vector2(256, 256),
+      0.55,
+      0.6,
+      this.worldOn ? 1.5 : 0.86,
+    );
     this.composer.addPass(this.bloom);
     this.film = new ShaderPass(FilmShader);
     this.composer.addPass(this.film);
     this.composer.addPass(new OutputPass());
+    // and last a touch of sharpening, so walls, edges and the grain of things read crisp
+    this.sharpen = new ShaderPass(SharpenShader);
+    this.composer.addPass(this.sharpen);
 
     renderer.shadowMap.needsUpdate = true;
   }
@@ -660,6 +913,677 @@ export class GalleryScene {
     this.prismPoints = addPrismPlinth(set, prismAt, "/brand/mark-transparent.webp").pyramidPoints;
   }
 
+  /*
+    A wall text for each initiative, as a museum titles each section: on the
+    wall just before the first of a client's films (along the way you walk),
+    their emblem on a white plate, their name in spaced capitals under it, and
+    a line of prism light.
+  */
+  private addSections(aniso: number) {
+    const PLATE = { w: 0.5, h: 0.64 };
+    let prev: string | undefined;
+    this.projects.forEach((p, i) => {
+      const client = WORK_CLIENTS.find((c) => c.name === p.client);
+      if (!client || p.client === prev) {
+        prev = p.client;
+        return;
+      }
+      prev = p.client;
+      const spot = this.layout.works[i];
+      const along = 1.32 * spot.scale; // before the film, between it and the one before
+      const g = new THREE.Group();
+      g.position.set(
+        spot.x - spot.tx * along + spot.nx * 0.006,
+        SCREEN.y - 0.02,
+        spot.z - spot.tz * along + spot.nz * 0.006,
+      );
+      g.rotation.y = spot.face;
+      this.scene.add(g);
+
+      // the plate, its words drawn now and the emblem laid on when it loads
+      const canvas = document.createElement("canvas");
+      canvas.width = 500;
+      canvas.height = 640;
+      const ctx = canvas.getContext("2d")!;
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = aniso;
+      const draw = (img?: HTMLImageElement) => {
+        ctx.fillStyle = "#fbfaf7";
+        ctx.fillRect(0, 0, 500, 640);
+        if (img) {
+          const h = client.markIsLogo ? 120 : 210;
+          const w = (img.width / img.height) * h;
+          const fw = Math.min(w, 380);
+          const fh = (fw / w) * h;
+          ctx.drawImage(img, 250 - fw / 2, 80 + (210 - fh) / 2, fw, fh);
+        }
+        ctx.fillStyle = "#121212";
+        ctx.font = "300 30px Jost, ui-sans-serif, system-ui";
+        ctx.textAlign = "center";
+        // the name in wide-spaced capitals, on two lines if it's long
+        const words = client.name.toUpperCase().split(" ");
+        const lines: string[] = [];
+        for (const wd of words) {
+          const last = lines[lines.length - 1];
+          if (last && (last + " " + wd).length <= 16) lines[lines.length - 1] = last + " " + wd;
+          else lines.push(wd);
+        }
+        lines.slice(0, 3).forEach((ln, k) => {
+          const spaced = ln.split("").join("\u200a");
+          ctx.fillText(spaced, 250, 380 + k * 44, 440);
+        });
+        const grad = ctx.createLinearGradient(170, 0, 330, 0);
+        ["#1f2cff", "#2bb8ff", "#ffffff", "#ff8a1f", "#ff3d1f"].forEach((c, k) =>
+          grad.addColorStop(k / 4, c),
+        );
+        ctx.fillStyle = grad;
+        ctx.fillRect(170, 560, 160, 4);
+        tex.needsUpdate = true;
+      };
+      draw();
+      const img = new Image();
+      img.onload = () => !this.disposed && draw(img);
+      img.src = client.mark;
+
+      const front = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 });
+      const side = new THREE.MeshStandardMaterial({ color: 0xe9e6df, roughness: 0.9 });
+      const geo = new THREE.BoxGeometry(PLATE.w, PLATE.h, 0.012);
+      this.disposables.push(tex, front, side, geo);
+      const plate = new THREE.Mesh(geo, [side, side, side, side, front, side]);
+      plate.position.z = 0.006;
+      plate.castShadow = this.hq;
+      g.add(plate);
+    });
+  }
+
+  /*
+    Benches down the middle of the hall, every other pair of films (as
+    museums set them along the way, facing the work), clear of the prism and
+    of where you arrive; and one facing the far wall. Each has a seat facing
+    each wall it faces.
+  */
+  private addBenches(set: SetCtx) {
+    if (!this.many) return; // the original room keeps its open floor
+    const { works, D } = this.layout;
+    const left = works.filter((w) => w.nx === 1);
+    const prism = this.prismAt;
+    const clear = (z: number) => !prism || Math.abs(z - prism.z) > 3.4;
+    left.forEach((w, i) => {
+      if (i % 2 !== 0 || i === 0 || !clear(w.z) || w.z < -D + 5.5) return;
+      const g = addBench(set, new THREE.Vector3(0, 0, w.z), Math.PI / 2);
+      this.addBenchPick(g, this.benches.length);
+      this.benches.push({
+        x: 0,
+        z: w.z,
+        seats: [
+          { x: 0.06, z: w.z, yaw: Math.PI / 2 }, // facing the left wall
+          { x: -0.06, z: w.z, yaw: -Math.PI / 2 }, // facing the right wall
+        ],
+      });
+    });
+    // facing the far wall's films
+    const zf = -D + 4.8;
+    if (clear(zf)) {
+      const g = addBench(set, new THREE.Vector3(0, 0, zf), 0);
+      this.addBenchPick(g, this.benches.length);
+      this.benches.push({ x: 0, z: zf, seats: [{ x: 0, z: zf + 0.06, yaw: 0 }] });
+    }
+  }
+  private addBenchPick(g: THREE.Object3D, index: number) {
+    g.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) {
+        o.userData.pick = { kind: "bench", index };
+        this.pickables.push(o);
+      }
+    });
+  }
+
+  /* ---------- for walking round ---------- */
+
+  /* Where you can stand: inside the walls, with room to spare. */
+  get bounds() {
+    const { W, D } = this.layout;
+    if (this.world) {
+      const b = this.world.bounds;
+      return {
+        minX: b.minX + 0.55,
+        maxX: b.maxX - 0.55,
+        minZ: b.minZ + 0.6,
+        maxZ: this.front - 0.6,
+      };
+    }
+    return { minX: -W / 2 + 0.55, maxX: W / 2 - 0.55, minZ: -D + 0.6, maxZ: this.front - 0.6 };
+  }
+
+  /* The areas you can stand in, for the map: the hall, and the world's floors */
+  get areas() {
+    const { W } = this.layout;
+    const hall = { minX: -W / 2, maxX: W / 2, minZ: this.zA, maxZ: this.front, level: 0 };
+    if (!this.world) return [hall];
+    return [
+      hall,
+      ...this.world.zones.filter((z) => !z.over).map((z) => ({ ...z, level: z.level as number })),
+    ];
+  }
+
+  /* ---------- walking: floors, stairs, walls ---------- */
+
+  private walkZones(): Zone[] {
+    const { W, D } = this.layout;
+    const back = this.worldOn ? this.zA : -(D + GalleryScene.BACK) + 0.45;
+    const hall: Zone = {
+      minX: -W / 2 + 0.45,
+      maxX: W / 2 - 0.45,
+      minZ: back,
+      maxZ: this.front - 0.6,
+      floor: () => 0,
+      level: 0,
+    };
+    return this.world ? [hall, ...this.world.zones] : [hall];
+  }
+  private walkColliders(): Collider[] {
+    const { W, D } = this.layout;
+    const OPEN = this.worldOn ? 1.6 : 1.0;
+    const r = 0.3;
+    const c: Collider[] = [
+      // the far wall, between its openings
+      {
+        kind: "box",
+        minX: -(W / 2 - OPEN) - r,
+        maxX: W / 2 - OPEN + r,
+        minZ: -D - 0.2 - r,
+        maxZ: -D + r,
+        level: 0,
+      },
+    ];
+    if (this.worldOn) {
+      // the side gallery's back wall, either side of the portal
+      const zA = this.zA;
+      c.push({ kind: "box", minX: -W / 2, maxX: -3 + r, minZ: zA - r, maxZ: zA + r, level: 0 });
+      c.push({ kind: "box", minX: 3 - r, maxX: W / 2, minZ: zA - r, maxZ: zA + r, level: 0 });
+    }
+    if (this.prismAt)
+      c.push({ kind: "circle", x: this.prismAt.x, z: this.prismAt.z, r: 1.3, level: 0 });
+    // the hall's benches
+    this.benches.forEach((b) => {
+      if (b.floor !== undefined) return; // the world's: in its own colliders
+      const along = b.seats.length > 1;
+      const hx = along ? 0.45 : 1.35;
+      const hz = along ? 1.35 : 0.45;
+      c.push({
+        kind: "box",
+        minX: b.x - hx,
+        maxX: b.x + hx,
+        minZ: b.z - hz,
+        maxZ: b.z + hz,
+        level: 0,
+      });
+    });
+    return this.world ? [...c, ...this.world.colliders] : c;
+  }
+  private _zones?: Zone[];
+  private _colliders?: Collider[];
+  /* where you can stand on findPath's grid (kept: the building doesn't move) */
+  private grid?: { sig: string; floor: Map<number, number | null>; tight: Map<number, boolean> };
+
+  /*
+    The floor's height where you'd stand at (x, z), coming from a floor at
+    `from` (where floors overlap, the nearest; on the stairs, the stairs'), or
+    null if you can't stand there.
+  */
+  floorAt(x: number, z: number, from = 0) {
+    this._zones ??= this.walkZones();
+    let best: number | null = null;
+    for (const zn of this._zones) {
+      if (x < zn.minX || x > zn.maxX || z < zn.minZ || z > zn.maxZ) continue;
+      const f = zn.floor(x, z);
+      if (zn.over) return f;
+      if (best === null || Math.abs(f - from) < Math.abs(best - from)) best = f;
+    }
+    return best;
+  }
+  private blocked(x: number, z: number, floor: number) {
+    this._colliders ??= this.walkColliders();
+    const level = floor > 3 ? 1 : 0;
+    return this._colliders.some((c) =>
+      c.level !== level
+        ? false
+        : c.kind === "box"
+          ? x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ
+          : Math.hypot(x - c.x, z - c.z) < c.r,
+    );
+  }
+  /* Can you step from a floor at `from` to (x, z)? Then the floor there. */
+  private stepTo(x: number, z: number, from: number) {
+    const f = this.floorAt(x, z, from);
+    if (f === null || Math.abs(f - from) > 0.6 || this.blocked(x, z, f)) return null;
+    return f;
+  }
+  /*
+    One step of walking from (x, z) on a floor at `floor` towards (nx, nz):
+    where you end up (sliding along a wall rather than stopping dead).
+  */
+  move(x: number, z: number, floor: number, nx: number, nz: number) {
+    let f = this.stepTo(nx, nz, floor);
+    if (f !== null) return { x: nx, z: nz, floor: f };
+    f = this.stepTo(nx, z, floor);
+    if (f !== null) return { x: nx, z, floor: f };
+    f = this.stepTo(x, nz, floor);
+    if (f !== null) return { x, z: nz, floor: f };
+    return { x, z, floor };
+  }
+  /* Is there a clear walk in a straight line from a to b (no wall, no drop)? */
+  clearPath(a: { x: number; z: number; floor: number }, b: { x: number; z: number }) {
+    const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.35);
+    let f = a.floor;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      const g = this.stepTo(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, f);
+      if (g === null) return false;
+      f = g;
+    }
+    return true;
+  }
+  /*
+    The visible surface at (x, z) (on the stairs, the tread you'd stand on,
+    not the slope you walk), for things laid on the floor; null off the floor.
+  */
+  surfaceAt(x: number, z: number, from = 0) {
+    this._zones ??= this.walkZones();
+    let best: number | null = null;
+    for (const zn of this._zones) {
+      if (x < zn.minX || x > zn.maxX || z < zn.minZ || z > zn.maxZ) continue;
+      const f = (zn.surface ?? zn.floor)(x, z);
+      if (zn.over) return f;
+      if (best === null || Math.abs(f - from) < Math.abs(best - from)) best = f;
+    }
+    return best;
+  }
+
+  /*
+    The way a person would walk from a to b: round walls and sculpture,
+    through doorways, up or down the stairs. A search (A*) over a grid of
+    places you can stand (half a metre apart, each on a floor), keeping a
+    little clear of walls; then straightened wherever a straight walk is clear
+    (with room for your shoulders). Each point carries its floor. Null if
+    there's no way (or b isn't somewhere you can stand).
+  */
+  findPath(
+    a: { x: number; z: number; floor: number },
+    b: { x: number; z: number; floor?: number },
+  ) {
+    const G = 0.5;
+    const B = this.bounds;
+    const NX = Math.ceil((B.maxX - B.minX) / G) + 1;
+    const NZ = Math.ceil((B.maxZ - B.minZ) / G) + 1;
+    const cx = (i: number) => B.minX + i * G;
+    const cz = (j: number) => B.minZ + j * G;
+    const lvl = (f: number) => (f > 3 ? 1 : 0);
+    const key = (i: number, j: number, l: number) => (l * NZ + j) * NX + i;
+    // where you can stand on the grid (each point, on each level), worked out once and kept
+    const sig = `${NX}x${NZ}@${B.minX},${B.minZ}`;
+    if (this.grid?.sig !== sig) this.grid = { sig, floor: new Map(), tight: new Map() };
+    const grid = this.grid;
+    const at = (i: number, j: number, l: number): number | null => {
+      if (i < 0 || j < 0 || i >= NX || j >= NZ) return null;
+      const k = key(i, j, l);
+      let f = grid.floor.get(k);
+      if (f === undefined) {
+        const x = cx(i);
+        const z = cz(j);
+        const ff = this.floorAt(x, z, l ? UPPER.y : 0);
+        f = ff === null || lvl(ff) !== l || this.blocked(x, z, ff) ? null : ff;
+        grid.floor.set(k, f);
+      }
+      return f;
+    };
+    // a step from a floor at f onto grid point (i, j), on whichever level is there: its floor
+    const onto = (i: number, j: number, f: number) => {
+      const l = lvl(f);
+      let nf = at(i, j, l);
+      if (nf === null) nf = at(i, j, 1 - l);
+      return nf !== null && Math.abs(nf - f) <= 0.6 ? nf : null;
+    };
+    // close to a wall (a neighbour you can't stand on): walked only if need be
+    const tight = (i: number, j: number, l: number) => {
+      const k = key(i, j, l);
+      let t = grid.tight.get(k);
+      if (t === undefined) {
+        t = [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ].some(([di, dj]) => at(i + di, j + dj, l) === null && at(i + di, j + dj, 1 - l) === null);
+        grid.tight.set(k, t);
+      }
+      return t;
+    };
+    const goalF = this.floorAt(b.x, b.z, b.floor ?? a.floor);
+    if (goalF === null) return null;
+    const gi = Math.round((b.x - B.minX) / G);
+    const gj = Math.round((b.z - B.minZ) / G);
+    const gl = lvl(goalF);
+    // where we start: the nearest grid point you can step to (or the nearest one round it)
+    let si = Math.round((a.x - B.minX) / G);
+    let sj = Math.round((a.z - B.minZ) / G);
+    let startF = onto(si, sj, a.floor);
+    for (let r = 1; startF === null && r <= 2; r++)
+      for (let di = -r; di <= r && startF === null; di++)
+        for (let dj = -r; dj <= r && startF === null; dj++) {
+          const f = onto(si + di, sj + dj, a.floor);
+          if (f !== null) {
+            si += di;
+            sj += dj;
+            startF = f;
+          }
+        }
+    if (startF === null) return null;
+    const fOf = new Map<number, number>();
+    const g = new Map<number, number>();
+    const from = new Map<number, number>();
+    const open: { k: number; f: number }[] = []; // a binary heap on f
+    const push = (k: number, f: number) => {
+      open.push({ k, f });
+      let i = open.length - 1;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (open[p].f <= open[i].f) break;
+        [open[p], open[i]] = [open[i], open[p]];
+        i = p;
+      }
+    };
+    const pop = () => {
+      const top = open[0];
+      const last = open.pop()!;
+      if (open.length) {
+        open[0] = last;
+        let i = 0;
+        for (;;) {
+          const l = i * 2 + 1;
+          const r = l + 1;
+          let m = i;
+          if (l < open.length && open[l].f < open[m].f) m = l;
+          if (r < open.length && open[r].f < open[m].f) m = r;
+          if (m === i) break;
+          [open[m], open[i]] = [open[i], open[m]];
+          i = m;
+        }
+      }
+      return top;
+    };
+    const h = (i: number, j: number, f: number) =>
+      Math.hypot(cx(i) - b.x, cz(j) - b.z) + Math.abs(f - goalF) * 2;
+    const k0 = key(si, sj, lvl(startF));
+    fOf.set(k0, startF);
+    g.set(k0, 0);
+    push(k0, h(si, sj, startF));
+    const closed = new Set<number>();
+    let found = -1;
+    while (open.length && closed.size < 60000) {
+      const { k } = pop();
+      if (closed.has(k)) continue;
+      closed.add(k);
+      const i = k % NX;
+      const j = Math.floor(k / NX) % NZ;
+      const f = fOf.get(k)!;
+      if (Math.abs(i - gi) <= 1 && Math.abs(j - gj) <= 1 && lvl(f) === gl) {
+        found = k;
+        break;
+      }
+      const gk = g.get(k)!;
+      for (let di = -1; di <= 1; di++)
+        for (let dj = -1; dj <= 1; dj++) {
+          if (!di && !dj) continue;
+          const ni = i + di;
+          const nj = j + dj;
+          const nf = onto(ni, nj, f);
+          if (nf === null) continue;
+          if (di && dj && (onto(ni, j, f) === null || onto(i, nj, f) === null)) continue; // no cutting corners
+          const nl = lvl(nf);
+          const nk = key(ni, nj, nl);
+          if (closed.has(nk)) continue;
+          const cost = gk + (di && dj ? G * Math.SQRT2 : G) * (tight(ni, nj, nl) ? 2.5 : 1);
+          if (cost >= (g.get(nk) ?? Infinity)) continue;
+          g.set(nk, cost);
+          fOf.set(nk, nf);
+          from.set(nk, k);
+          push(nk, cost + h(ni, nj, nf));
+        }
+    }
+    if (found < 0) return null;
+    const cells: { x: number; z: number; floor: number }[] = [];
+    for (let k: number | undefined = found; k !== undefined; k = from.get(k))
+      cells.push({ x: cx(k % NX), z: cz(Math.floor(k / NX) % NZ), floor: fOf.get(k)! });
+    cells.reverse();
+    const pts = [{ ...a }, ...cells.slice(1), { x: b.x, z: b.z, floor: goalF }];
+    // straighten: from each point, on to the furthest one in a clear line (shoulders' room either side)
+    const wide = (p: { x: number; z: number; floor: number }, q: { x: number; z: number }) => {
+      if (!this.clearPath(p, q)) return false;
+      const len = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+      const ox = (-(q.z - p.z) / len) * 0.28;
+      const oz = ((q.x - p.x) / len) * 0.28;
+      for (const sgn of [-1, 1]) {
+        const p2 = { x: p.x + ox * sgn, z: p.z + oz * sgn, floor: p.floor };
+        if (this.stepTo(p2.x, p2.z, p.floor) === null) continue; // already at a wall: the line itself must do
+        if (!this.clearPath(p2, { x: q.x + ox * sgn, z: q.z + oz * sgn })) return false;
+      }
+      return true;
+    };
+    const out = [pts[0]];
+    let i = 0;
+    while (i < pts.length - 1) {
+      let j = i + 1;
+      while (j + 1 < pts.length && wide(pts[i], pts[j + 1])) j++;
+      out.push(pts[j]);
+      i = j;
+    }
+    return out;
+  }
+
+  /*
+    The route guide: a line of soft light along the floor to where you go
+    next (as a game marks the way), little dots every 55 cm with a pulse
+    running along them towards the stop; laid on the floor's surface (on the
+    stairs, each tread). Null clears it.
+  */
+  setGuide(path: { x: number; z: number; floor: number }[] | null) {
+    const MAX = 260;
+    if (!this.guide) {
+      const geo = new THREE.CircleGeometry(0.045, 20);
+      geo.rotateX(-Math.PI / 2);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const mesh = new THREE.InstancedMesh(geo, mat, MAX);
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 3), 3);
+      mesh.count = 0;
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 2;
+      this.scene.add(mesh);
+      this.disposables.push(geo, mat);
+      this.guide = { mesh, along: [], len: 0 };
+    }
+    const gd = this.guide;
+    const m4 = new THREE.Matrix4();
+    let n = 0;
+    gd.along = [];
+    if (path && path.length > 1) {
+      let total = 0;
+      for (let i = 1; i < path.length; i++)
+        total += Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z);
+      gd.len = total;
+      let walked = 0;
+      let next = 0.9; // the first dot a little ahead of you
+      let f = path[0].floor;
+      for (let i = 1; i < path.length && n < MAX; i++) {
+        const p = path[i - 1];
+        const q = path[i];
+        const l = Math.hypot(q.x - p.x, q.z - p.z);
+        while (next <= walked + l && next < total - 0.5 && n < MAX) {
+          const t = l ? (next - walked) / l : 0;
+          const x = p.x + (q.x - p.x) * t;
+          const z = p.z + (q.z - p.z) * t;
+          f = this.floorAt(x, z, f) ?? f;
+          const y = (this.surfaceAt(x, z, f) ?? f) + 0.012;
+          m4.makeTranslation(x, y, z);
+          gd.mesh.setMatrixAt(n, m4);
+          gd.along.push(next);
+          n++;
+          next += 0.55;
+        }
+        walked += l;
+      }
+    }
+    gd.mesh.count = n;
+    gd.mesh.instanceMatrix.needsUpdate = true;
+  }
+  private guide?: { mesh: THREE.InstancedMesh; along: number[]; len: number };
+  /* the guide's dots: dim, a pulse of light running along them to the stop, fading far ahead */
+  private glowGuide(time: number) {
+    const gd = this.guide;
+    if (!gd || !gd.mesh.count) return;
+    const col = gd.mesh.instanceColor!;
+    for (let k = 0; k < gd.mesh.count; k++) {
+      const d = gd.along[k];
+      const wave = (((time * 2.2 - d) % 4.4) + 4.4) % 4.4; // a pulse every 4.4 m, moving on
+      const pulse = Math.exp(-wave * wave * 2.2);
+      const near = Math.min(1, (d - 0.6) / 1.2); // fades in just ahead of you
+      const far = Math.max(0.25, 1 - d / 34);
+      const end = Math.min(1, (gd.len - d) / 1.2);
+      const v = (0.32 + 0.9 * pulse) * near * far * Math.max(0.3, end);
+      col.setXYZ(k, v, v * 0.93, v * 0.82);
+    }
+    col.needsUpdate = true;
+  }
+
+  /* The prism's plinth (you walk round it) */
+  get prism() {
+    return this.prismAt ? { x: this.prismAt.x, z: this.prismAt.z } : null;
+  }
+  /* The projects on the walls, in order */
+  get films() {
+    return this.projects;
+  }
+
+  /*
+    The film you're looking at, if one is near enough (within 6.5 m, roughly
+    straight ahead, and you're in front of it), else -1.
+  */
+  facing(x: number, z: number, yaw: number, floor = 0) {
+    let best = -1;
+    let bestScore = Infinity;
+    const fx = -Math.sin(yaw);
+    const fz = -Math.cos(yaw);
+    this.layout.works.forEach((w, i) => {
+      if (Math.abs((w.y ?? 0) - floor) > 2) return; // another floor
+      const dx = w.x - x;
+      const dz = w.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > 6.5 * w.scale || d < 0.3) return;
+      if (dx * w.nx + dz * w.nz > 0) return; // behind its wall
+      const cos = (dx * fx + dz * fz) / d;
+      if (cos < Math.cos(0.42)) return; // more than ~24° off
+      const score = d * (2 - cos);
+      // and nothing in between (a wall: the film in the next room doesn't count)
+      if (score < bestScore && this.worldOn) {
+        const front = { x: w.x + w.nx * 0.75, z: w.z + w.nz * 0.75 };
+        if (!this.clearPath({ x, z, floor }, front)) return;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    });
+    return best;
+  }
+
+  /*
+    Play or pause film i in the room. The first time, it plays with sound
+    from the start (YouTube or a video file; any other film playing with
+    sound goes quiet); after that, play / pause. A stand-in's light stops or
+    moves again. Returns whether it's now playing.
+  */
+  toggleWork(i: number) {
+    const w = this.works[i];
+    if (!w) return false;
+    if (w.yt) {
+      const yt = w.yt;
+      const p = yt.player;
+      if (!p) {
+        // not loaded yet: load it now, and it starts with sound once ready
+        yt.near = true;
+        window.clearTimeout(yt.pending);
+        yt.pending = undefined;
+        if (!yt.started) this.loadWallYouTube(yt);
+        this.quiet(i);
+        this.sounding = i;
+        return true;
+      }
+      if (this.sounding !== i) {
+        this.quiet(i);
+        this.sounding = i;
+        p.unMute();
+        p.seekTo(0, true);
+        p.playVideo();
+        return true;
+      }
+      if (p.getPlayerState() === 1) {
+        p.pauseVideo();
+        return false;
+      }
+      p.playVideo();
+      return true;
+    }
+    if (w.video) {
+      const v = w.video;
+      if (this.sounding !== i) {
+        this.quiet(i);
+        this.sounding = i;
+        v.muted = false;
+        v.currentTime = 0;
+        v.play().catch(() => {});
+        return true;
+      }
+      if (v.paused) v.play().catch(() => {});
+      else v.pause();
+      return !v.paused;
+    }
+    w.paused = !w.paused;
+    return !w.paused;
+  }
+
+  /* Is film i playing, and with sound? */
+  workState(i: number) {
+    const w = this.works[i];
+    if (!w) return { playing: false, sound: false, real: false };
+    const sound = this.sounding === i;
+    if (w.yt) {
+      const st = w.yt.player?.getPlayerState();
+      return { playing: st === 1 || st === 3 || (sound && !w.yt.player), sound, real: true };
+    }
+    if (w.video) return { playing: !w.video.paused, sound, real: true };
+    return { playing: !w.paused, sound: false, real: false };
+  }
+
+  /* Any film playing with sound goes back to playing quietly (but `except`). */
+  private quiet(except = -1) {
+    const i = this.sounding;
+    if (i < 0 || i === except) return;
+    const w = this.works[i];
+    if (w?.yt?.player) {
+      w.yt.player.mute();
+      w.yt.player.playVideo();
+    }
+    if (w?.video) w.video.muted = true;
+    this.sounding = -1;
+  }
+
   /* A film playing in a passage: a glimpse of more work, seen from the room. */
   private glimpses: THREE.ShaderMaterial[] = [];
   private addGlimpseFilm(at: THREE.Vector3, normal: THREE.Vector3, seed: number, aniso: number) {
@@ -697,6 +1621,48 @@ export class GalleryScene {
     g.add(bezel, screen);
     this.scene.add(g);
     this.glimpses.push(mat);
+  }
+
+  /*
+    The gallery page: a shadow gap at the foot of every wall (as in the world,
+    world.ts), the crisp dark line where a gallery wall stops short of the
+    floor. Returns the entrance wall's, which stands aside with it.
+  */
+  private addShadowGaps(
+    S: Surfaces,
+    W: number,
+    D: number,
+    front: number,
+    len: number,
+    mid: number,
+    open: number,
+    back: number,
+  ) {
+    const walls = [
+      { len, x: -W / 2, z: mid, ry: Math.PI / 2 },
+      { len, x: W / 2, z: mid, ry: -Math.PI / 2 },
+      { len: W - 2 * open, x: 0, z: -D, ry: 0 },
+      { len: W - 2 * open, x: 0, z: -D - 0.2, ry: Math.PI }, // the far wall's back
+      { len: back, x: -W / 2, z: -D - back / 2, ry: Math.PI / 2 },
+      { len: back, x: W / 2, z: -D - back / 2, ry: -Math.PI / 2 },
+      { len: W / 2 - 3, x: -(3 + (W / 2 - 3) / 2), z: -D - back, ry: 0 },
+      { len: W / 2 - 3, x: 3 + (W / 2 - 3) / 2, z: -D - back, ry: 0 },
+      { len: W, x: 0, z: front, ry: Math.PI },
+    ];
+    let entrance!: THREE.Group;
+    walls.forEach((w, i) => {
+      const g = new THREE.Group();
+      if (i === walls.length - 1) entrance = g;
+      g.position.set(w.x, 0, w.z);
+      g.rotation.y = w.ry;
+      const geo = new THREE.BoxGeometry(w.len, 0.035, 0.024);
+      this.disposables.push(geo);
+      const line = new THREE.Mesh(geo, S.gap);
+      line.position.set(0, 0.0175, 0.01);
+      g.add(line);
+      this.scene.add(g);
+    });
+    return entrance;
   }
 
   /*
@@ -792,7 +1758,11 @@ export class GalleryScene {
   private addWork(p: Project, i: number, aniso: number) {
     const spot = this.layout.works[i];
     const group = new THREE.Group();
-    group.position.set(spot.x + spot.nx * 0.004, SCREEN.y, spot.z + spot.nz * 0.004);
+    group.position.set(
+      spot.x + spot.nx * 0.004,
+      (spot.y ?? 0) + SCREEN.y,
+      spot.z + spot.nz * 0.004,
+    );
     group.rotation.y = spot.face;
     group.scale.setScalar(spot.scale);
     this.scene.add(group);
@@ -842,16 +1812,16 @@ export class GalleryScene {
         (ctx, cw, ch) => {
           ctx.clearRect(0, 0, cw, ch);
           ctx.fillStyle = "#fff";
-          ctx.font = "500 30px Jost, ui-sans-serif, system-ui";
+          ctx.font = `500 ${30 * (cw / 1600)}px Jost, ui-sans-serif, system-ui`;
           const text = p.title.toUpperCase();
-          let x = 54;
+          let x = 54 * (cw / 1600);
           for (const chr of text) {
-            ctx.fillText(chr, x, ch - 52);
-            x += ctx.measureText(chr).width + 9;
+            ctx.fillText(chr, x, ch - 52 * (ch / 900));
+            x += ctx.measureText(chr).width + 9 * (cw / 1600);
           }
         },
-        1600,
-        900,
+        this.many ? 800 : 1600,
+        this.many ? 450 : 900,
         aniso,
       );
       const sm = placeholderMaterial(title, i + 1);
@@ -887,20 +1857,22 @@ export class GalleryScene {
     // Museum label
     const label = textTexture(
       (ctx, cw, ch) => {
+        const k = cw / 1024; // drawn at 1024 wide, smaller when there are many
+        ctx.scale(k, k);
         ctx.fillStyle = "#fbfaf7";
-        ctx.fillRect(0, 0, cw, ch);
+        ctx.fillRect(0, 0, 1024, 634);
         ctx.fillStyle = "#121212";
         ctx.font = "500 74px Jost, ui-sans-serif, system-ui";
-        ctx.fillText(p.title, 70, 150, cw - 140);
+        ctx.fillText(p.title, 70, 150, 884);
         ctx.fillStyle = "#6f6f6f";
         ctx.font = "400 46px Jost, ui-sans-serif, system-ui";
-        ctx.fillText(`${p.year}${p.client ? `, for ${p.client}` : ""}`, 70, 230, cw - 140);
+        ctx.fillText(`${p.year}${p.client ? `, for ${p.client}` : ""}`, 70, 230, 884);
         ctx.fillStyle = "#9a9a9a";
         ctx.font = "400 40px Jost, ui-sans-serif, system-ui";
-        ctx.fillText(p.tags.join(", "), 70, ch - 90, cw - 140);
+        ctx.fillText(p.tags.join(", "), 70, 544, 884);
       },
-      1024,
-      634,
+      this.many ? 640 : 1024,
+      this.many ? 396 : 634,
       aniso,
     );
     const labelFront = new THREE.MeshStandardMaterial({ map: label, roughness: 0.85 });
@@ -1309,7 +2281,7 @@ export class GalleryScene {
 
   setSize(w: number, h: number) {
     // Re-fit the viewing distances (and label placement) to the window's shape.
-    this.layout = buildLayout(this.count, w / h, this.front);
+    this.layout = this.makeLayout(w / h);
     this.placeLabels();
     const dpr = Math.min(window.devicePixelRatio || 1, this.hq ? 2 : 1.75);
     this.renderer.setPixelRatio(dpr);
@@ -1319,6 +2291,7 @@ export class GalleryScene {
     this.composer.setSize(w, h);
     this.bloom.resolution.set((w * dpr) / 2, (h * dpr) / 2);
     this.film.uniforms.uRes.value.set(w * dpr, h * dpr);
+    this.sharpen.uniforms.uRes.value.set(w * dpr, h * dpr);
     if (this.reflector) sizeFloorReflection(this.reflector, w * dpr, h * dpr);
     this.camera.aspect = w / h;
     // Taller-than-wide screens get a wider view so the screens still fit
@@ -1419,6 +2392,11 @@ export class GalleryScene {
   /* Play only the films near the stop you're at. */
   playNear(stopIndex: number) {
     const stops = this.layout.stops;
+    // walked away from the film playing with sound: it goes quiet
+    if (this.sounding >= 0) {
+      const k = stops.findIndex((s) => s.kind === "work" && s.index === this.sounding);
+      if (stopIndex < 0 || Math.abs(k - stopIndex) > 2) this.quiet();
+    }
     this.works.forEach((w, i) => {
       if (!w.video && !w.yt) return;
       const k = stops.findIndex((s) => s.kind === "work" && s.index === i);
@@ -1484,6 +2462,7 @@ export class GalleryScene {
     const s = this.layout.works[i];
     return {
       x: s.x + s.nx * 0.05,
+      y: s.y ?? 0, // its floor
       z: s.z + s.nz * 0.05,
       yaw: s.yaw,
       nx: s.nx,
@@ -1500,6 +2479,7 @@ export class GalleryScene {
   render(time: number) {
     if (this.xr.session) return; // the headset draws (xrFrame)
     this.tick(time);
+    this.worldLight();
     if (this.stereo) {
       // side by side for a VR holder: straight to the screen (no finishing passes)
       this.stereo.render(this.scene, this.camera);
@@ -1509,9 +2489,70 @@ export class GalleryScene {
     this.updateWallYouTube();
   }
 
+  /* The world's doors out (About, Contact): picked as doors 2 and 3 */
+  get worldDoors() {
+    return this.world?.doors ?? [];
+  }
+  /* The tour's stop in front of the world's doors (-1 without the world) */
+  worldDoorStop() {
+    const places = this.world?.places ?? [];
+    return this.layout.stops.findIndex(
+      (st) => st.kind === "place" && places[st.index]?.name === "About & Contact",
+    );
+  }
+
+  /* Catch the world's light again in a moment (its photographed surfaces have loaded) */
+  private catchSoon() {
+    const p = this.probe;
+    if (!p || this.disposed) return;
+    p.due.unshift(performance.now() - p.t0 + 120);
+  }
+  /* Catch the world's light into its probes (see `probe`) */
+  private catchLight() {
+    const p = this.probe;
+    if (!p) return;
+    for (const sp of p.spots) {
+      p.cam.position.copy(sp.at);
+      p.cam.update(this.renderer, this.scene);
+      const next = p.pmrem.fromCubemap(p.rt.texture);
+      if (this.scene.environment === sp.rt?.texture) this.scene.environment = next.texture;
+      sp.rt?.dispose();
+      sp.rt = next;
+    }
+  }
+  /*
+    Light by where you are: in the hall its studio light; in the world the
+    light caught there (the atrium's, or the upper floor's), and a softer warm
+    fill, easing across as you go through the portal or up the stairs.
+  */
+  private worldLight() {
+    const p = this.probe;
+    if (!p) return;
+    const since = performance.now() - p.t0;
+    if (p.due.length && since > p.due[0]) {
+      p.due.shift();
+      this.catchLight();
+    }
+    const at = this.camera.getWorldPosition(this.tmpV);
+    const inWorld = at.z < this.zA - 0.6;
+    const up = at.y > UPPER.y + 0.6;
+    // the light caught where you are: the hall's, the atrium's, the upper floor's
+    const sp = p.spots[inWorld ? (up ? 2 : 1) : 0];
+    const env = sp.rt?.texture ?? p.hallEnv;
+    if (this.scene.environment !== env) this.scene.environment = env;
+    const k = 0.08;
+    const goal = sp.rt ? GalleryScene.WORLD_ENV : 0.16;
+    this.scene.environmentIntensity += (goal - this.scene.environmentIntensity) * k;
+    // the same daylight everywhere; upstairs, under the rooms' laylights, even and bright, as a laylight's is
+    this.hemi.intensity += ((up ? 1.25 : 0.75) - this.hemi.intensity) * k;
+  }
+  private tmpV = new THREE.Vector3();
+
   private tick(time: number) {
+    this.world?.update(time);
+    this.glowGuide(time);
     this.works.forEach((w) => {
-      if (w.shader) w.shader.uniforms.uTime.value = time;
+      if (w.shader && !w.paused) w.shader.uniforms.uTime.value = time;
     });
     this.glimpses.forEach((m) => (m.uniforms.uTime.value = time));
     this.film.uniforms.uTime.value = time;
@@ -1567,7 +2608,9 @@ export class GalleryScene {
     this.xr = { ...this.xr, session, onPick, onEnd, stick: 0, time0: performance.now() };
     this.camera.position.set(0, 0, 0);
     this.camera.rotation.set(0, 0, 0);
-    this.rig.position.set(at.x, floorLevel ? 0 : ROOM.eye, at.z);
+    this.xrFloorLevel = floorLevel;
+    const f0 = this.floorAt(at.x, at.z, 0) ?? 0;
+    this.rig.position.set(at.x, f0 + (floorLevel ? 0 : ROOM.eye), at.z);
     this.rig.rotation.set(0, at.yaw, 0);
     this.stopIndex = stopIndex;
     // no mirror in VR: the floor is solid stone
@@ -1612,6 +2655,11 @@ export class GalleryScene {
   }
 
   private stopIndex = 0;
+  private xrFloorLevel = true;
+  /* every floor you can point at to go there */
+  private get floorMeshes() {
+    return this.world ? [this.floor, ...this.world.floors] : [this.floor];
+  }
 
   private leaveVR() {
     if (!this.xr.session) return;
@@ -1655,8 +2703,14 @@ export class GalleryScene {
   }
 
   /* Move the rig so your head ends up standing at `to`, facing its yaw. */
-  private teleport(frame: XRFrame, to: Pose, keepFacing = false) {
+  private teleport(frame: XRFrame, to: Pose, keepFacing = false, floor?: number) {
     const head = this.headInRig(frame);
+    // stand on the floor there (upstairs, on the stairs)
+    const f =
+      floor ??
+      this.floorAt(to.x, to.z, this.rig.position.y - (this.xrFloorLevel ? 0 : ROOM.eye)) ??
+      0;
+    this.rig.position.y = f + (this.xrFloorLevel ? 0 : ROOM.eye);
     const yaw = keepFacing ? this.rig.rotation.y : to.yaw - head.yaw;
     const c = Math.cos(yaw);
     const sn = Math.sin(yaw);
@@ -1689,31 +2743,45 @@ export class GalleryScene {
     const origin = new THREE.Vector3().setFromMatrixPosition(m);
     const dir = new THREE.Vector3(0, 0, -1).transformDirection(m);
     this.raycaster.set(origin, dir);
-    const hit = this.raycaster.intersectObjects([...this.pickables, this.floor], false)[0];
+    const hit = this.raycaster.intersectObjects([...this.pickables, ...this.floorMeshes], false)[0];
     if (!hit) return;
     const pick = hit.object.userData.pick as Pick | undefined;
     const stops = this.layout.stops;
-    if (pick) {
+    if (pick?.kind === "bench") {
+      // stand by the bench, facing the wall on the side you pointed from
+      const b = this.benches[pick.index];
+      const seat = b.seats.reduce((a, c) =>
+        Math.hypot(c.x - origin.x, c.z - origin.z) < Math.hypot(a.x - origin.x, a.z - origin.z)
+          ? c
+          : a,
+      );
+      this.teleport(e.frame, {
+        x: seat.x - Math.sin(seat.yaw) * -0.5,
+        z: seat.z - Math.cos(seat.yaw) * -0.5,
+        yaw: seat.yaw,
+      });
+    } else if (pick) {
       const k =
         pick.kind === "work"
           ? stops.findIndex((s) => s.kind === "work" && s.index === pick.index)
-          : stops.length - 1;
+          : pick.index >= 2
+            ? this.worldDoorStop() // the world's doors (About, Contact)
+            : stops.findIndex((s) => s.kind === "doors");
       const i = this.goToStop(e.frame, k);
       this.xr.onPick?.(pick, i);
     } else {
-      // the floor: stand there, inside the walls and clear of the prism
-      const { W, D } = this.layout;
-      const x = Math.max(-W / 2 + 0.6, Math.min(W / 2 - 0.6, hit.point.x));
-      const z = Math.max(-D + 0.6, Math.min(this.front - 0.6, hit.point.z));
-      const p = this.prismAt;
-      if (p && Math.hypot(x - p.x, z - p.z) < 1.2) return;
-      this.teleport(e.frame, { x, z, yaw: 0 }, true);
+      // the floor (any floor): stand there, if you can stand there
+      const { x, z } = hit.point;
+      const f = this.floorAt(x, z, hit.point.y);
+      if (f === null || Math.abs(f - hit.point.y) > 0.3 || this.blocked(x, z, f)) return;
+      this.teleport(e.frame, { x, z, yaw: 0 }, true, f);
     }
   }
 
   private xrFrame(time: number, frame?: XRFrame) {
     if (!frame || !this.xr.session) return;
     this.tick((performance.now() - this.xr.time0) / 1000);
+    this.worldLight();
     // thumbsticks: turn and walk, one notch at a time
     let sx = 0;
     let sy = 0;
@@ -1739,7 +2807,8 @@ export class GalleryScene {
         this.rig.position.x += before.x - after.x;
         this.rig.position.z += before.z - after.z;
       } else {
-        const i = this.goToStop(frame, this.stopIndex + (sy < 0 ? 1 : -1));
+        const cur = this.stopIndex > this.layout.end ? 0 : this.stopIndex;
+        const i = this.goToStop(frame, Math.min(this.layout.end, cur + (sy < 0 ? 1 : -1)));
         const st = this.layout.stops[i];
         this.xr.onPick?.(st.kind === "work" ? { kind: "work", index: st.index } : null, i);
       }
@@ -1751,7 +2820,10 @@ export class GalleryScene {
       const o = new THREE.Vector3().setFromMatrixPosition(ray.parent.matrixWorld);
       const d = new THREE.Vector3(0, 0, -1).transformDirection(ray.parent.matrixWorld);
       this.raycaster.set(o, d);
-      const hit = this.raycaster.intersectObjects([...this.pickables, this.floor], false)[0];
+      const hit = this.raycaster.intersectObjects(
+        [...this.pickables, ...this.floorMeshes],
+        false,
+      )[0];
       ray.scale.z = hit ? hit.distance : 4;
     });
     this.renderer.render(this.scene, this.camera);
@@ -1817,6 +2889,11 @@ export class GalleryScene {
       w.yt.player?.destroy();
     });
     this.css?.domElement.remove(); // and the YouTube players in it
+    if (this.probe) {
+      this.probe.rt.dispose();
+      this.probe.spots.forEach((sp) => sp.rt?.dispose());
+      this.probe.pmrem.dispose();
+    }
     this.disposables.forEach((d) => d.dispose());
     this.composer.dispose();
     this.renderer.dispose();
