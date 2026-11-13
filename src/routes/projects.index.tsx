@@ -30,7 +30,7 @@ export const Route = createFileRoute("/projects/")({
 
 /*
   The Work page, a compact YouTube-like layout on one white panel:
-    the header picture (brand/work-header.webp), OUR WORK / Stories that create impact. over it
+    the header picture (HeaderPicture: brand/work-header-*.webp, with a glow), OUR WORK / Stories that create impact. over it
     the featured film: a slim banner with a play button
     one line: PROJECTS (n) | Initiatives of: [a client's badge, or All] | Sort by: [...]
       (Initiatives of opens the client badges, site.ts WORK_CLIENTS; picking one shows only their films)
@@ -274,7 +274,7 @@ function InitiativesFilter({
 /* ---------- the header: the picture, with the words over its left side ---------- */
 
 /*
-  public/brand/work-header-{1200,2000,phone}.webp (2000 x 667 at full size): sunrise over forested hills on
+  public/brand/work-header-{1400,2000,phone}.webp (2000 x 667 at full size): sunrise over forested hills on
   the left, a glass prism splitting the light on the right. The words sit over
   the sunrise on a soft shade; on phones the picture is cropped taller and
   shifted right, so the prism stays in view, with the words along the bottom.
@@ -286,32 +286,40 @@ function Hero() {
     // pleasing strip of the picture), so the words always fit with space around
     <header className="relative flex min-h-[300px] items-end overflow-hidden rounded-2xl bg-[#1d1b2a] sm:min-h-[260px] sm:items-center lg:min-h-[330px]">
       {/*
-        Light, and as sharp as before: phones (where it's cropped tall) get a
-        full-resolution crop of the prism side (60 KB); wider screens the
-        1200 or 2000 px picture as the screen needs (55 / 106 KB). Was 200 KB
-        everywhere.
+        The picture, light: phones (where it's cropped tall) get a
+        full-resolution crop of the prism side (45 KB); wider screens the 1400
+        or 2000 px picture as the screen needs (47 / 74 KB).
       */}
-      <picture>
-        <source media="(max-width: 639px)" srcSet="/brand/work-header-phone.webp" />
-        <img
-          src="/brand/work-header-1200.webp"
-          srcSet="/brand/work-header-1200.webp 1200w, /brand/work-header-2000.webp 2000w"
-          sizes="(min-width: 1152px) 1100px, 960px"
-          width={2000}
-          height={667}
-          fetchPriority="high"
-          decoding="async"
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover object-[70%_50%] sm:object-[70%_50%] lg:object-center"
-        />
-      </picture>
-      {/* shade under the words: from below on phones, from the left on wider screens */}
+      <HeaderPicture
+        eager
+        className="absolute inset-0 h-full w-full object-cover object-[70%_50%] lg:object-center"
+      />
+      {/*
+        The prism's glow, like a lens's bloom: the same picture again (already
+        loaded), blurred, with its mid-tones pushed down so only the bright
+        parts (the prism, its rays) remain, laid over in "screen", breathing
+        slowly. Kept to the prism's side, away from the words.
+      */}
+      <HeaderPicture
+        aria-hidden
+        className="prism-glow pointer-events-none absolute inset-0 h-full w-full object-cover object-[70%_50%] [mask-image:linear-gradient(180deg,#000_25%,transparent_70%)] sm:[mask-image:linear-gradient(90deg,transparent_40%,#000_62%)] lg:object-center"
+        style={{
+          filter: "blur(16px) brightness(0.72) contrast(2.3) saturate(1.7)",
+          mixBlendMode: "screen",
+          animation: "prism-glow 5s ease-in-out infinite",
+        }}
+      />
+      {/*
+        Shade for the words, kept to where they are so the rest stays bright:
+        from below on phones; on wider screens, soft from the left and a little
+        deeper right behind the words.
+      */}
       <span
         aria-hidden
         className="absolute inset-0 sm:hidden"
         style={{
           background:
-            "linear-gradient(0deg, rgba(8,6,18,0.88), rgba(8,6,18,0.62) 50%, rgba(8,6,18,0.15) 85%)",
+            "linear-gradient(0deg, rgba(8,6,18,0.86), rgba(8,6,18,0.55) 42%, rgba(8,6,18,0.06) 78%)",
         }}
       />
       <span
@@ -319,14 +327,14 @@ function Hero() {
         className="absolute inset-0 hidden sm:block"
         style={{
           background:
-            "linear-gradient(90deg, rgba(8,6,18,0.82), rgba(8,6,18,0.66) 34%, rgba(8,6,18,0.3) 56%, transparent 72%)",
+            "radial-gradient(48% 78% at 22% 54%, rgba(8,6,18,0.5), transparent 78%), linear-gradient(90deg, rgba(8,6,18,0.5), rgba(8,6,18,0.26) 38%, transparent 60%)",
         }}
       />
       <div className="relative w-full px-5 pb-6 pt-16 text-white sm:max-w-[58%] sm:px-9 sm:py-10 lg:max-w-[50%] lg:px-11 lg:py-12">
-        <p className="tracked text-[11px] font-semibold text-white/95 sm:text-[13px]">
+        <p className="tracked text-[11px] font-semibold text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] sm:text-[13px]">
           {WORK_PAGE.eyebrow}
         </p>
-        <h1 className="mt-2 text-[21px] font-normal uppercase leading-[1.3] tracking-[0.2em] [text-shadow:0_2px_14px_rgba(0,0,0,0.55)] sm:mt-3 sm:text-[28px] lg:text-[34px]">
+        <h1 className="mt-2 text-[21px] font-normal uppercase leading-[1.3] tracking-[0.2em] [text-shadow:0_1px_2px_rgba(0,0,0,0.45),0_2px_18px_rgba(0,0,0,0.55)] sm:mt-3 sm:text-[28px] lg:text-[34px]">
           {first}
           {rest.length > 0 && (
             <>
@@ -340,13 +348,44 @@ function Hero() {
           style={{ background: "linear-gradient(90deg, #8f9bff, #c9bfff 55%, #fff)" }}
         />
         <p
-          className="mt-3 max-w-sm text-[14px] leading-snug text-white [text-shadow:0_1px_8px_rgba(0,0,0,0.6)] sm:text-[15px]"
+          className="mt-3 max-w-sm text-[14px] leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.5),0_1px_10px_rgba(0,0,0,0.55)] sm:text-[15px]"
           style={UI}
         >
           {WORK_PAGE.intro}
         </p>
       </div>
     </header>
+  );
+}
+
+/* The header picture: the phone crop on phones, else 1400 or 2000 px as the screen needs. */
+function HeaderPicture({
+  eager,
+  className,
+  style,
+  ...rest
+}: {
+  eager?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+  "aria-hidden"?: boolean;
+}) {
+  return (
+    <picture {...rest}>
+      <source media="(max-width: 639px)" srcSet="/brand/work-header-phone.webp" />
+      <img
+        src="/brand/work-header-1400.webp"
+        srcSet="/brand/work-header-1400.webp 1400w, /brand/work-header-2000.webp 2000w"
+        sizes="(min-width: 1152px) 1100px, 960px"
+        width={2000}
+        height={667}
+        fetchPriority={eager ? "high" : undefined}
+        decoding="async"
+        alt=""
+        className={className}
+        style={style}
+      />
+    </picture>
   );
 }
 

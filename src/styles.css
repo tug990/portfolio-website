@@ -72,6 +72,23 @@
   }
 }
 
+/* Work page header (projects.index.tsx): the prism's glow breathing, slowly */
+@keyframes prism-glow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prism-glow {
+    animation: none !important;
+    opacity: 0.65 !important;
+  }
+}
+
 /* 404 (NotFound.tsx): light flickering in a shut door's gap */
 @keyframes seam-flicker {
   0%,

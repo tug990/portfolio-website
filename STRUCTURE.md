@@ -88,7 +88,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | File | Used by |
 | --- | --- |
 | `favicon.png` | `routes/__root.tsx` |
-| `brand/work-header-1200.webp`, `brand/work-header-2000.webp`, `brand/work-header-phone.webp` | The Work page's header picture (`projects.index.tsx`): 1200 / 2000 px for wider screens, and for phones a full-resolution crop of the prism side (60 KB, was 200 KB) |
+| `brand/work-header-1400.webp`, `brand/work-header-2000.webp`, `brand/work-header-phone.webp` | The Work page's header picture (`projects.index.tsx` `HeaderPicture`): 1400 / 2000 px for wider screens (47 / 74 KB), and for phones a full-resolution crop of the prism side (45 KB); was 200 KB |
 | `clients/marks/*.webp` | Each client's emblem exactly as on their badge (cut out, background removed; MLINDA and Better World: their whole logo). Used in their glass pill on the Work page (`ClientBadge`) and their card on a film's page (`CaseStudy.tsx`) |
 | `brand/logo-stacked.webp` | The landing logo artwork (`Gallery.tsx`, `LogoDoor.tsx`) |
 | `brand/mark-transparent.webp` | The logo inlaid on the prism plinth (`GalleryScene.ts`, shown large) |
@@ -101,7 +101,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | --- | --- |
 | `router.tsx` | Creates the TanStack router (scroll restoration, not-found, errors). |
 | `routeTree.gen.ts` | **Generated** by TanStack from `routes/`. Never edit by hand. |
-| `styles.css` | Tailwind 4 theme tokens, fonts, global styles, `.tracked` letter-spacing, keyframes (e.g. `hint-line`), and the rule that hides the header during the way in (`html.journey [data-site-nav]`). |
+| `styles.css` | Tailwind 4 theme tokens, fonts, global styles, `.tracked` letter-spacing, keyframes (e.g. `hint-line`, `prism-glow`: the Work header's breathing glow, still under reduced motion), and the rule that hides the header during the way in (`html.journey [data-site-nav]`). |
 
 ### `src/routes/`: pages (one file = one URL)
 
@@ -109,7 +109,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | --- | --- | --- |
 | `__root.tsx` | all | HTML shell, fonts (Jost, Inter, and Libre Caslon Text for a film page's titles), favicon, `SiteNav`, `SiteFooter`, `Toaster`, `NotFound`. |
 | `index.tsx` | `/` | Renders `<Gallery />`; accepts `?work=<slug>` (open a case study over the gallery). |
-| `projects.index.tsx` | `/projects` (`?client=<name>` opens it filtered) | The Work page, a compact YouTube-like layout on one white panel (`WorkBackdrop`): a header picture (`brand/work-header.webp`: sunrise and a glass prism) with "Our work / Stories that create impact." over it (copy in `site.ts` `WORK_PAGE`; its height is the words plus padding), a slim featured-film banner, one line with "Projects (n)", "Initiatives of:" and "Sort by:" (`InitiativesFilter`: a glass button showing the chosen client's badge or All, opening "All films" and each client's glass pill (`ClientBadge`, from `site.ts` `WORK_CLIENTS`) in a glass dropdown hung from the whole line (so it fits the panel), or on phones a glass panel rising from the bottom; picking one filters the films), and the films as video cards, four across. On phones the labels hide and the buttons go compact so the line still fits at 320 px. |
+| `projects.index.tsx` | `/projects` (`?client=<name>` opens it filtered) | The Work page, a compact YouTube-like layout on one white panel (`WorkBackdrop`): a header picture (`HeaderPicture`: `brand/work-header-*.webp`, sunrise and a glass prism, phone crop below 640 px; a blurred copy on top in screen blend makes the prism's light glow and slowly breathe, masked to the prism side; a dark shade under the words, below them on phones, keeps them readable) with "Our work / Stories that create impact." over it (copy in `site.ts` `WORK_PAGE`; its height is the words plus padding), a slim featured-film banner, one line with "Projects (n)", "Initiatives of:" and "Sort by:" (`InitiativesFilter`: a glass button showing the chosen client's badge or All, opening "All films" and each client's glass pill (`ClientBadge`, from `site.ts` `WORK_CLIENTS`) in a glass dropdown hung from the whole line (so it fits the panel), or on phones a glass panel rising from the bottom; picking one filters the films), and the films as video cards, four across. On phones the labels hide and the buttons go compact so the line still fits at 320 px. |
 | `projects.$slug.tsx` | `/projects/<slug>` | A film's page reached directly: a normal page under the site header, on the Work page's panel (`WorkBackdrop wide`), holding `CaseStudy`. (From the gallery the same page opens as a sheet over the room: `ProjectSheet`.) |
 | `about.tsx` | `/about` | About page, built from `AboutSections`. |
 | `contact.tsx` | `/contact` | Contact page. |
