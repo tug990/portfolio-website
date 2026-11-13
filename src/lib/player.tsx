@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 
 /*
   The site's one film player, shared by every page (like YouTube's): which
@@ -12,6 +12,10 @@ import { useNavigate } from "@tanstack/react-router";
   player shrinks to the corner (on phones, a bar along the bottom) and keeps
   playing while you browse. It's never moved in the page, only resized and
   placed, because moving a video's element reloads it.
+
+  Minimising on a film's own page goes to the Work page; anywhere else (the
+  sheet over the gallery) the film just leaves its box for the corner, until
+  it's played there again.
 */
 
 export type Film = {
@@ -33,7 +37,7 @@ type PlayerState = {
   docked: boolean;
   play: (film: Film) => void;
   close: () => void;
-  /* to the Work page, the film carrying on in the mini player */
+  /* to the corner (from a film's page: to the Work page), still playing */
   minimise: () => void;
   setSlot: (slug: string, el: HTMLElement | null) => void;
 };
@@ -42,25 +46,34 @@ const PlayerContext = createContext<PlayerState | null>(null);
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const [film, setFilm] = useState<Film | null>(null);
   const [slot, setSlotState] = useState<Slot | null>(null);
+  /* minimised while its box is still on screen */
+  const [held, setHeld] = useState(false);
 
   const play = useCallback((f: Film) => {
     setFilm((cur) => (cur?.slug === f.slug ? cur : f));
+    setHeld(false);
   }, []);
-  const close = useCallback(() => setFilm(null), []);
+  const close = useCallback(() => {
+    setFilm(null);
+    setHeld(false);
+  }, []);
   const minimise = useCallback(() => {
-    navigate({ to: "/projects" });
-  }, [navigate]);
+    if (/^\/projects\/[^/]+/.test(router.state.location.pathname)) navigate({ to: "/projects" });
+    else setHeld(true);
+  }, [navigate, router]);
   const setSlot = useCallback((slug: string, el: HTMLElement | null) => {
     setSlotState((cur) => {
       if (el) return cur?.el === el ? cur : { slug, el };
       // the page is gone: forget its slot
       return cur?.slug === slug ? null : cur;
     });
+    if (!el) setHeld(false);
   }, []);
 
-  const docked = !!film && !!slot && slot.slug === film.slug;
+  const docked = !!film && !!slot && slot.slug === film.slug && !held;
   const value = useMemo(
     () => ({ film, slot, docked, play, close, minimise, setSlot }),
     [film, slot, docked, play, close, minimise, setSlot],

@@ -1,7 +1,9 @@
-import type { Project } from "@/content/projects";
+import { PROJECTS, type Project } from "@/content/projects";
+import { WORK_CLIENTS } from "@/content/site";
+import type { Film } from "@/lib/player";
 import { youtubeCover, youtubeCoverFallback, youtubeCoverSet, youtubeId } from "@/lib/youtube";
 
-/* Values the Work page shares with its components (components/work/WorkUI.tsx). */
+/* Values the Work page and a film's page share with their components (components/work/WorkUI.tsx). */
 
 /* YouTube-like type for cards and their details */
 export const UI = { fontFamily: '"Inter", ui-sans-serif, system-ui, sans-serif' };
@@ -27,6 +29,23 @@ export function coverSources(
 }
 
 export const hasFilm = (p: Project) => !!(p.youtube || p.trailer || p.video);
+
+/* A film as the site's player takes it (lib/player.tsx), or nothing if it has no film yet. */
+export function filmOf(p: Project): Film | undefined {
+  const youtube = p.youtube ? youtubeId(p.youtube) : undefined;
+  const file = p.video ?? p.trailer;
+  if (!youtube && !file) return undefined;
+  return { slug: p.slug, title: p.title, client: p.client, youtube, file, cover: coverOf(p) };
+}
+
+/* The client a film was made for, when they're one of WORK_CLIENTS. */
+export const clientOf = (p: Project) => WORK_CLIENTS.find((c) => c.name === p.client);
+
+/* A client's films. */
+export const filmsOf = (client: string) => PROJECTS.filter((p) => p.client === client);
+
+/* What kind of film it is: its format, else its first tag. */
+export const kindOf = (p: Project) => p.format ?? p.tags[0];
 
 /* Ways to sort a list of films */
 export const SORTS = {
