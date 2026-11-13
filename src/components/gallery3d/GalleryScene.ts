@@ -8,6 +8,7 @@ import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { CSS3DObject, CSS3DRenderer } from "three/examples/jsm/renderers/CSS3DRenderer.js";
+import { StereoEffect } from "three/examples/jsm/effects/StereoEffect.js";
 import type { Project } from "@/content/projects";
 import {
   YT_HOST,
@@ -378,6 +379,25 @@ export class GalleryScene {
   private prismAt?: THREE.Vector3; // where the prism stands, for the camera to walk round it
   private tall = false; // a phone-shaped window when the room was built
   private clipKey = "";
+  /* the floor, for teleporting onto in VR, and its material (opaque in VR, where there's no mirror) */
+  private floor!: THREE.Mesh;
+  private floorMat!: THREE.Material;
+  /*
+    What carries you in VR: the camera sits in this rig. Outside VR it stays
+    at the origin (setPose moves the camera itself); in VR the headset moves
+    the camera within it, and teleporting moves the rig.
+  */
+  private rig = new THREE.Group();
+  private xr: {
+    session: XRSession | null;
+    onPick?: (p: Pick, stop: number) => void;
+    onEnd?: () => void;
+    stick: number; // the thumbstick was pushed (wait for it to come back)
+    rays: THREE.Line[];
+    time0: number;
+  } = { session: null, stick: 0, rays: [], time0: 0 };
+  /* side by side, for a phone in a VR holder (no WebXR, e.g. iPhone) */
+  private stereo?: StereoEffect;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -411,6 +431,8 @@ export class GalleryScene {
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
     this.camera.rotation.order = "YXZ";
     this.camera.layers.enable(1); // lamp halos and beams: seen, but not reflected in the floor
+    this.rig.add(this.camera);
+    this.scene.add(this.rig);
 
     // Soft ambient light and reflections from a neutral studio environment
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -496,6 +518,8 @@ export class GalleryScene {
     const floor = plane(W, allLen, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(0, 0, allMid);
+    this.floor = floor;
+    this.floorMat = floorMat;
     const set: SetCtx = {
       scene: this.scene,
       keep: (...things) => this.disposables.push(...things),
@@ -1299,6 +1323,11 @@ export class GalleryScene {
     this.camera.aspect = w / h;
     // Taller-than-wide screens get a wider view so the screens still fit
     this.camera.fov = fovFor(w / h);
+    if (this.stereo) {
+      this.stereo.setSize(w, h);
+      this.camera.aspect = w / 2 / h;
+      this.camera.fov = 80;
+    }
     this.camera.updateProjectionMatrix();
   }
 
@@ -1469,16 +1498,310 @@ export class GalleryScene {
   }
 
   render(time: number) {
+    if (this.xr.session) return; // the headset draws (xrFrame)
+    this.tick(time);
+    if (this.stereo) {
+      // side by side for a VR holder: straight to the screen (no finishing passes)
+      this.stereo.render(this.scene, this.camera);
+      return;
+    }
+    this.composer.render();
+    this.updateWallYouTube();
+  }
+
+  private tick(time: number) {
     this.works.forEach((w) => {
       if (w.shader) w.shader.uniforms.uTime.value = time;
     });
     this.glimpses.forEach((m) => (m.uniforms.uTime.value = time));
     this.film.uniforms.uTime.value = time;
-    this.composer.render();
-    this.updateWallYouTube();
+  }
+
+  /* ---------- VR ---------- */
+
+  /* Can this device step inside (a headset's browser: Meta Quest, Apple Vision Pro, Pico…)? */
+  static async vrSupported() {
+    try {
+      return !!navigator.xr && (await navigator.xr.isSessionSupported("immersive-vr"));
+    } catch {
+      return false;
+    }
+  }
+
+  get inVR() {
+    return !!this.xr.session;
+  }
+
+  /*
+    Step inside, standing where `at` is. The headset draws the room directly
+    (WebXR can't take the finishing passes: no glow or vignette there, and the
+    floor's mirror becomes plain stone). Pointing and selecting (a controller's
+    trigger, or on Vision Pro looking and pinching) at a film walks you to it;
+    at a door, to the doors; at the floor, to that spot. A thumbstick turns
+    you (left / right, 30° at a time) and walks you between stops (forward /
+    back). `onPick` hears where you went, `onEnd` when you take it off.
+  */
+  async enterVR(
+    at: Pose,
+    stopIndex: number,
+    onPick: (p: Pick, stop: number) => void,
+    onEnd: () => void,
+  ) {
+    if (!navigator.xr || this.xr.session) return;
+    const session = await navigator.xr.requestSession("immersive-vr", {
+      optionalFeatures: ["local-floor", "bounded-floor", "hand-tracking"],
+    });
+    const r = this.renderer;
+    r.xr.enabled = true;
+    r.xr.setFramebufferScaleFactor(1);
+    let floorLevel = true;
+    r.xr.setReferenceSpaceType("local-floor");
+    try {
+      await r.xr.setSession(session);
+    } catch {
+      // no floor-level space: stand the rig at eye height instead
+      floorLevel = false;
+      r.xr.setReferenceSpaceType("local");
+      await r.xr.setSession(session);
+    }
+    this.xr = { ...this.xr, session, onPick, onEnd, stick: 0, time0: performance.now() };
+    this.camera.position.set(0, 0, 0);
+    this.camera.rotation.set(0, 0, 0);
+    this.rig.position.set(at.x, floorLevel ? 0 : ROOM.eye, at.z);
+    this.rig.rotation.set(0, at.yaw, 0);
+    this.stopIndex = stopIndex;
+    // no mirror in VR: the floor is solid stone
+    if (this.reflector) this.reflector.visible = false;
+    this.floorMat.transparent = false;
+    this.floorMat.opacity = 1;
+    this.floorMat.needsUpdate = true;
+    if (this.css) this.css.domElement.style.visibility = "hidden";
+
+    // a thin ray from each controller you point with (not for hands or gaze)
+    for (let i = 0; i < 4; i++) {
+      const c = r.xr.getController(i);
+      const ray = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(),
+          new THREE.Vector3(0, 0, -1),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 }),
+      );
+      ray.scale.z = 4;
+      ray.visible = false;
+      c.add(ray);
+      c.addEventListener("connected", (e) => {
+        ray.visible =
+          (e as unknown as { data: XRInputSource }).data.targetRayMode === "tracked-pointer";
+      });
+      c.addEventListener("disconnected", () => (ray.visible = false));
+      this.rig.add(c);
+      this.xr.rays.push(ray);
+    }
+
+    // every input's select, whichever slot it's in (Vision Pro's look-and-pinch
+    // comes as inputs 2 and 3 when hands are tracked)
+    session.addEventListener("select", (e) => this.xrSelect(e as XRInputSourceEvent));
+    session.addEventListener("end", () => this.leaveVR());
+    r.setAnimationLoop((t, frame) => this.xrFrame(t, frame));
+    this.playNear(stopIndex);
+  }
+
+  exitVR() {
+    this.xr.session?.end().catch(() => this.leaveVR());
+  }
+
+  private stopIndex = 0;
+
+  private leaveVR() {
+    if (!this.xr.session) return;
+    const r = this.renderer;
+    r.setAnimationLoop(null);
+    r.xr.enabled = false;
+    for (let i = 0; i < 4; i++) this.rig.remove(r.xr.getController(i));
+    this.xr.rays.forEach((l) => {
+      l.parent?.remove(l);
+      l.geometry.dispose();
+      (l.material as THREE.Material).dispose();
+    });
+    const onEnd = this.xr.onEnd;
+    this.xr = { session: null, stick: 0, rays: [], time0: 0 };
+    this.rig.position.set(0, 0, 0);
+    this.rig.rotation.set(0, 0, 0);
+    if (this.reflector) {
+      this.reflector.visible = true;
+      this.floorMat.transparent = true;
+      this.floorMat.opacity = 0.84;
+      this.floorMat.needsUpdate = true;
+    }
+    if (this.css) this.css.domElement.style.visibility = "";
+    // back to the window's own size and lens
+    this.setSize(
+      this.canvas.clientWidth || window.innerWidth,
+      this.canvas.clientHeight || window.innerHeight,
+    );
+    onEnd?.();
+  }
+
+  /* Where the headset is, inside the rig (metres, and which way it faces). */
+  private headInRig(frame: XRFrame) {
+    const ref = this.renderer.xr.getReferenceSpace();
+    const pose = ref ? frame.getViewerPose(ref) : null;
+    if (!pose) return { x: 0, z: 0, yaw: 0 };
+    const { position: p, orientation: o } = pose.transform;
+    const q = new THREE.Quaternion(o.x, o.y, o.z, o.w);
+    const e = new THREE.Euler().setFromQuaternion(q, "YXZ");
+    return { x: p.x, z: p.z, yaw: e.y };
+  }
+
+  /* Move the rig so your head ends up standing at `to`, facing its yaw. */
+  private teleport(frame: XRFrame, to: Pose, keepFacing = false) {
+    const head = this.headInRig(frame);
+    const yaw = keepFacing ? this.rig.rotation.y : to.yaw - head.yaw;
+    const c = Math.cos(yaw);
+    const sn = Math.sin(yaw);
+    // the head's offset in the rig, turned by the rig's new yaw
+    const hx = head.x * c + head.z * sn;
+    const hz = -head.x * sn + head.z * c;
+    this.rig.rotation.y = yaw;
+    this.rig.position.x = to.x - hx;
+    this.rig.position.z = to.z - hz;
+  }
+
+  private goToStop(frame: XRFrame, k: number) {
+    const stops = this.layout.stops;
+    const st = stops[Math.max(0, Math.min(stops.length - 1, k))];
+    const i = stops.indexOf(st);
+    this.stopIndex = i;
+    this.teleport(frame, st);
+    this.playNear(i);
+    return i;
+  }
+
+  private xrSelect(e: XRInputSourceEvent) {
+    const ref = this.renderer.xr.getReferenceSpace();
+    const pose = ref ? e.frame.getPose(e.inputSource.targetRaySpace, ref) : null;
+    if (!pose) return;
+    // the ray, from the rig's space into the room's
+    const m = new THREE.Matrix4().fromArray(pose.transform.matrix);
+    this.rig.updateMatrixWorld();
+    m.premultiply(this.rig.matrixWorld);
+    const origin = new THREE.Vector3().setFromMatrixPosition(m);
+    const dir = new THREE.Vector3(0, 0, -1).transformDirection(m);
+    this.raycaster.set(origin, dir);
+    const hit = this.raycaster.intersectObjects([...this.pickables, this.floor], false)[0];
+    if (!hit) return;
+    const pick = hit.object.userData.pick as Pick | undefined;
+    const stops = this.layout.stops;
+    if (pick) {
+      const k =
+        pick.kind === "work"
+          ? stops.findIndex((s) => s.kind === "work" && s.index === pick.index)
+          : stops.length - 1;
+      const i = this.goToStop(e.frame, k);
+      this.xr.onPick?.(pick, i);
+    } else {
+      // the floor: stand there, inside the walls and clear of the prism
+      const { W, D } = this.layout;
+      const x = Math.max(-W / 2 + 0.6, Math.min(W / 2 - 0.6, hit.point.x));
+      const z = Math.max(-D + 0.6, Math.min(this.front - 0.6, hit.point.z));
+      const p = this.prismAt;
+      if (p && Math.hypot(x - p.x, z - p.z) < 1.2) return;
+      this.teleport(e.frame, { x, z, yaw: 0 }, true);
+    }
+  }
+
+  private xrFrame(time: number, frame?: XRFrame) {
+    if (!frame || !this.xr.session) return;
+    this.tick((performance.now() - this.xr.time0) / 1000);
+    // thumbsticks: turn and walk, one notch at a time
+    let sx = 0;
+    let sy = 0;
+    for (const src of this.xr.session.inputSources) {
+      const a = src.gamepad?.axes;
+      if (!a) continue;
+      const x = a.length >= 4 ? a[2] : a[0];
+      const y = a.length >= 4 ? a[3] : a[1];
+      if (Math.abs(x) > Math.abs(sx)) sx = x;
+      if (Math.abs(y) > Math.abs(sy)) sy = y;
+    }
+    const pushed = Math.max(Math.abs(sx), Math.abs(sy));
+    if (this.xr.stick && pushed < 0.3) this.xr.stick = 0;
+    if (!this.xr.stick && pushed > 0.75) {
+      this.xr.stick = 1;
+      if (Math.abs(sx) > Math.abs(sy)) {
+        // turn about where you stand
+        const head = this.headInRig(frame);
+        const before = new THREE.Vector3(head.x, 0, head.z).applyMatrix4(this.rig.matrixWorld);
+        this.rig.rotation.y += sx > 0 ? -Math.PI / 6 : Math.PI / 6;
+        this.rig.updateMatrixWorld();
+        const after = new THREE.Vector3(head.x, 0, head.z).applyMatrix4(this.rig.matrixWorld);
+        this.rig.position.x += before.x - after.x;
+        this.rig.position.z += before.z - after.z;
+      } else {
+        const i = this.goToStop(frame, this.stopIndex + (sy < 0 ? 1 : -1));
+        const st = this.layout.stops[i];
+        this.xr.onPick?.(st.kind === "work" ? { kind: "work", index: st.index } : null, i);
+      }
+    }
+    // each ray reaches as far as what it points at
+    this.xr.rays.forEach((ray) => {
+      if (!ray.visible || !ray.parent) return;
+      ray.parent.updateMatrixWorld();
+      const o = new THREE.Vector3().setFromMatrixPosition(ray.parent.matrixWorld);
+      const d = new THREE.Vector3(0, 0, -1).transformDirection(ray.parent.matrixWorld);
+      this.raycaster.set(o, d);
+      const hit = this.raycaster.intersectObjects([...this.pickables, this.floor], false)[0];
+      ray.scale.z = hit ? hit.distance : 4;
+    });
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  /*
+    Which way a phone is pointing, as a yaw and pitch (radians) in the room's
+    terms (from the browser's alpha / beta / gamma and the screen's turn), for
+    looking round the room by moving the phone.
+  */
+  static lookFromDevice(alpha: number, beta: number, gamma: number, screenAngle: number) {
+    const d = Math.PI / 180;
+    const q = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(beta * d, alpha * d, -gamma * d, "YXZ"),
+    );
+    q.multiply(new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5))); // the camera looks out of the back of the phone
+    q.multiply(
+      new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -screenAngle * d),
+    );
+    const e = new THREE.Euler().setFromQuaternion(q, "YXZ");
+    return { yaw: e.y, pitch: e.x };
+  }
+
+  /* ---------- side by side, for a phone in a VR holder ---------- */
+
+  setStereo(on: boolean) {
+    if (on && !this.stereo) {
+      this.stereo = new StereoEffect(this.renderer);
+      this.stereo.setEyeSeparation(0.064);
+      const w = this.canvas.clientWidth || window.innerWidth;
+      const h = this.canvas.clientHeight || window.innerHeight;
+      this.stereo.setSize(w, h);
+      // each eye gets half the width: a lens for that shape
+      this.camera.aspect = w / 2 / h;
+      this.camera.fov = 80;
+      this.camera.updateProjectionMatrix();
+      if (this.css) this.css.domElement.style.visibility = "hidden";
+    } else if (!on && this.stereo) {
+      this.stereo = undefined;
+      if (this.css) this.css.domElement.style.visibility = "";
+      this.setSize(
+        this.canvas.clientWidth || window.innerWidth,
+        this.canvas.clientHeight || window.innerHeight,
+      );
+      this.renderer.setScissorTest(false);
+    }
   }
 
   dispose() {
+    this.exitVR();
     this.works.forEach((w) => {
       if (w.video) {
         w.video.pause();
