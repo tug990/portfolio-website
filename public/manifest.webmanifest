@@ -1,0 +1,16 @@
+{
+  "name": "Insight Lab",
+  "short_name": "Insight Lab",
+  "description": "A non-fiction studio by Famecast: documentaries, impact films and campaigns.",
+  "start_url": "/projects",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fcfbfe",
+  "theme_color": "#fcfbfe",
+  "icons": [
+    { "src": "/app/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/app/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

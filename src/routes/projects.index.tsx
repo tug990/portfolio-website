@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PROJECTS } from "@/content/projects";
 import { WORK_CLIENTS, WORK_PAGE } from "@/content/site";
@@ -19,18 +19,20 @@ import { UI, filmOf, hasFilm, kindOf, sortFilms, type SortKey } from "@/lib/work
 import { seo } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 
-type Search = { client?: string; kind?: string };
+type Search = { client?: string; kind?: string; q?: string };
 
 /* The kinds of film there are (the chips), newest films' kinds first. */
 const KINDS = [...new Set(sortFilms(PROJECTS, "newest").map(kindOf).filter(Boolean))] as string[];
 
 export const Route = createFileRoute("/projects/")({
-  // ?client=<name>: only that client's films; ?kind=<kind>: one kind of film
+  // ?client=<name>: only that client's films; ?kind=<kind>: one kind of film;
+  // ?q=<words>: searched for that (a film page's theme pills link here)
   validateSearch: (s: Record<string, unknown>): Search => {
     const out: Search = {};
     if (typeof s.client === "string" && WORK_CLIENTS.some((c) => c.name === s.client))
       out.client = s.client;
     if (typeof s.kind === "string" && KINDS.includes(s.kind)) out.kind = s.kind;
+    if (typeof s.q === "string" && s.q.trim()) out.q = s.q.slice(0, 80);
     return out;
   },
   head: () => seo("Work", WORK_PAGE.intro),
@@ -40,7 +42,7 @@ export const Route = createFileRoute("/projects/")({
 /*
   The Work page, YouTube-like:
     the banner (the prism picture, glowing; the headline; Play showreel)
-    YouTube's search box (titles, clients, kinds)
+    YouTube's search box (titles, clients, kinds, themes)
     one line: PROJECTS (n) | Initiatives of: [a client's badge, or All] | Sort by: [...]
       (Initiatives of opens the clients' glass badges, site.ts WORK_CLIENTS;
       picking one shows only their films)
@@ -53,7 +55,11 @@ export const Route = createFileRoute("/projects/")({
 function Work() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(search.q ?? "");
+  // arriving with ?q= (a theme pill): search for it
+  useEffect(() => {
+    if (search.q) setQuery(search.q);
+  }, [search.q]);
   const [sort, setSort] = useState<SortKey>("newest");
   const set = (next: Search) => navigate({ search: next, replace: true, resetScroll: false });
 
@@ -64,9 +70,14 @@ function Work() {
         (!search.client || p.client === search.client) &&
         (!search.kind || kindOf(p) === search.kind) &&
         (!q ||
-          [p.title, p.client, kindOf(p), p.series, ...p.tags].some((t) =>
-            t?.toLowerCase().includes(q),
-          )),
+          [
+            p.title,
+            p.client,
+            kindOf(p),
+            p.series,
+            ...p.tags,
+            ...(p.themes ?? []).map((t) => t.label),
+          ].some((t) => t?.toLowerCase().includes(q))),
     );
   }, [search.client, search.kind, query, sort]);
 
@@ -134,7 +145,7 @@ function Work() {
           </ul>
         ) : (
           <p
-            className="mt-5 rounded-xl bg-[#14172e]/[0.04] px-5 py-12 text-center text-[15px]"
+            className="mt-5 rounded-xl bg-[#0a0a0a]/[0.04] px-5 py-12 text-center text-[15px]"
             style={{ color: MUTED }}
           >
             {query
@@ -374,7 +385,7 @@ function Banner() {
           <button
             type="button"
             onClick={() => play(film)}
-            className="mt-3 flex h-9 w-fit items-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 text-[13px] font-medium text-white backdrop-blur-md transition hover:bg-white/25 sm:mt-4"
+            className="press mt-3 flex h-9 w-fit items-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 text-[13px] font-medium text-white backdrop-blur-md transition hover:bg-white/25 sm:mt-4"
           >
             <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
               <path d="M7 4.5v15l13-7.5z" />
@@ -428,21 +439,21 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
       onSubmit={(e) => e.preventDefault()}
       className="flex w-full max-w-[640px] lg:mx-auto"
     >
-      <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-l-full border border-[#14172e]/15 bg-white pl-4 pr-2 shadow-[inset_0_1px_2px_rgba(20,23,46,0.06)] focus-within:border-[#7b6dff] focus-within:ring-1 focus-within:ring-[#7b6dff]/40">
+      <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-l-full border border-[#0a0a0a]/15 bg-white pl-4 pr-2 shadow-[inset_0_1px_2px_rgba(20,23,46,0.06)] focus-within:border-black/40">
         <span className="sr-only">Search films</span>
         <input
           type="search"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search films, initiatives…"
-          className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#5f6382]/80 [&::-webkit-search-cancel-button]:hidden"
+          className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#6b6b6b]/80 [&::-webkit-search-cancel-button]:hidden"
         />
         {value && (
           <button
             type="button"
             aria-label="Clear"
             onClick={() => onChange("")}
-            className="grid h-7 w-7 place-items-center rounded-full hover:bg-[#14172e]/[0.07]"
+            className="grid h-7 w-7 place-items-center rounded-full hover:bg-[#0a0a0a]/[0.07]"
           >
             <svg
               aria-hidden
@@ -460,7 +471,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
       <button
         type="submit"
         aria-label="Search"
-        className="grid h-10 w-16 shrink-0 place-items-center rounded-r-full border border-l-0 border-[#14172e]/15 bg-[#14172e]/[0.05] transition hover:bg-[#14172e]/[0.1]"
+        className="grid h-10 w-16 shrink-0 place-items-center rounded-r-full border border-l-0 border-[#0a0a0a]/15 bg-[#0a0a0a]/[0.05] transition hover:bg-[#0a0a0a]/[0.1]"
       >
         <svg
           aria-hidden

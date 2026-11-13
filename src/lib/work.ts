@@ -5,8 +5,8 @@ import { youtubeCover, youtubeCoverFallback, youtubeCoverSet, youtubeId } from "
 
 /* Values the Work page and a film's page share with their components (components/work/WorkUI.tsx). */
 
-/* YouTube-like type for cards and their details */
-export const UI = { fontFamily: '"Inter", ui-sans-serif, system-ui, sans-serif' };
+/* The site's type, Jost, for the Work page and a film's page (as everywhere else) */
+export const UI = { fontFamily: '"Jost", ui-sans-serif, system-ui, sans-serif' };
 
 /* A film's picture: its image, else its YouTube cover. */
 export function coverOf(p: Project) {

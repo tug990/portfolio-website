@@ -15,7 +15,8 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 
   Minimising on a film's own page goes to the Work page; anywhere else (the
   sheet over the gallery) the film just leaves its box for the corner, until
-  it's played there again.
+  it's played there again. Scrolling past its box floats it to the corner
+  too, and back into the box when you scroll back (`setOffscreen`, FilmBox).
 */
 
 export type Film = {
@@ -39,6 +40,8 @@ type PlayerState = {
   close: () => void;
   /* to the corner (from a film's page: to the Work page), still playing */
   minimise: () => void;
+  /* its box has scrolled out of sight (the film floats to the corner meanwhile) */
+  setOffscreen: (off: boolean) => void;
   setSlot: (slug: string, el: HTMLElement | null) => void;
 };
 
@@ -51,6 +54,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [slot, setSlotState] = useState<Slot | null>(null);
   /* minimised while its box is still on screen */
   const [held, setHeld] = useState(false);
+  const [offscreen, setOffscreen] = useState(false);
 
   const play = useCallback((f: Film) => {
     setFilm((cur) => (cur?.slug === f.slug ? cur : f));
@@ -70,12 +74,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       // the page is gone: forget its slot
       return cur?.slug === slug ? null : cur;
     });
-    if (!el) setHeld(false);
+    if (!el) {
+      setHeld(false);
+      setOffscreen(false);
+    }
   }, []);
 
-  const docked = !!film && !!slot && slot.slug === film.slug && !held;
+  const docked = !!film && !!slot && slot.slug === film.slug && !held && !offscreen;
   const value = useMemo(
-    () => ({ film, slot, docked, play, close, minimise, setSlot }),
+    () => ({ film, slot, docked, play, close, minimise, setOffscreen, setSlot }),
     [film, slot, docked, play, close, minimise, setSlot],
   );
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

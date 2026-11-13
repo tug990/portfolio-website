@@ -932,7 +932,8 @@ export function Gallery() {
         {/* Controls once inside */}
         <div
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-6 z-10 flex items-center justify-between gap-4 px-6 transition-opacity duration-700",
+            // above the phone's bottom bar (--dock, SiteNav)
+            "pointer-events-none absolute inset-x-0 bottom-[calc(1.5rem+var(--dock,0px))] z-10 flex items-center justify-between gap-4 px-6 transition-opacity duration-700",
             inside ? "opacity-100" : "opacity-0",
           )}
         >
@@ -1038,7 +1039,7 @@ function IntroDoor({
       </div>
       <p
         ref={set("hint")}
-        className="tracked pointer-events-none absolute inset-x-0 bottom-7 flex flex-col items-center gap-3 text-[10px] text-black/50"
+        className="tracked pointer-events-none absolute inset-x-0 bottom-[calc(1.75rem+var(--dock,0px))] flex flex-col items-center gap-3 text-[10px] text-black/50"
       >
         Scroll to enter
         <span className="h-8 w-px overflow-hidden bg-black/10">

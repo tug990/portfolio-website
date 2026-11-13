@@ -12,7 +12,7 @@ export const GLASS_PANEL =
   "border border-white/70 bg-white/60 shadow-[0_22px_60px_-14px_rgba(40,30,90,0.38),0_2px_6px_rgba(40,30,90,0.06),inset_0_1px_0_rgba(255,255,255,0.85)] ring-1 ring-black/[0.05] backdrop-blur-2xl backdrop-saturate-[1.8]";
 /* the buttons that open them: the same glass, lighter */
 export const GLASS_PILL =
-  "border border-white/80 bg-white/60 shadow-[0_2px_10px_-4px_rgba(40,30,90,0.28),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-black/[0.07] backdrop-blur-xl backdrop-saturate-150 transition hover:bg-white/85";
+  "border border-white/80 bg-white/60 shadow-[0_2px_10px_-4px_rgba(40,30,90,0.28),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-black/[0.07] backdrop-blur-xl backdrop-saturate-150 transition hover:bg-white/85 active:scale-[0.97]";
 /* how they open: a quick fade and scale from the button */
 export const MENU_IN = "duration-150 animate-in fade-in zoom-in-95";
 
