@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { SITE } from "@/content/site";
-import { PROJECTS, getProject } from "@/content/projects";
+import { GALLERY_FILMS, getProject } from "@/content/projects";
 import { ProjectSheet } from "@/components/work/ProjectSheet";
 import { setStageTone } from "@/lib/stage";
 import { cn } from "@/lib/utils";
@@ -206,7 +206,7 @@ export function Gallery() {
         if (!alive || !roomCanvas.current) return;
         const coarse = window.matchMedia("(pointer: coarse)").matches;
         const s = new mod.GalleryScene(roomCanvas.current, {
-          projects: PROJECTS,
+          projects: GALLERY_FILMS,
           aspect: window.innerWidth / window.innerHeight,
           // Phones and tablets skip the floor mirror and shadows to stay smooth.
           hq: !coarse && window.innerWidth >= 700,
@@ -574,7 +574,7 @@ export function Gallery() {
     return { x: w.x + w.nx * d, z: w.z + w.nz * d, yaw: w.yaw, y: 1.62 };
   };
 
-  const workSlug = (i: number) => PROJECTS[i]?.slug;
+  const workSlug = (i: number) => GALLERY_FILMS[i]?.slug;
   const showWork = (slug: string, replace = false) =>
     navigate({
       to: "/",
@@ -611,7 +611,7 @@ export function Gallery() {
   useEffect(() => {
     const c = cam.current;
     const s = gs.current;
-    const i = work ? PROJECTS.findIndex((p) => p.slug === work) : -1;
+    const i = work ? GALLERY_FILMS.findIndex((p) => p.slug === work) : -1;
     if (work && i >= 0) {
       if (sheet && !sheet.closing) {
         if (sheet.slug === work) return;
@@ -633,7 +633,7 @@ export function Gallery() {
       // Closed (×, Escape or Back): fade the sheet, step back from the film
       covered.current = false;
       setSheet({ ...sheet, closing: true });
-      const i2 = PROJECTS.findIndex((p) => p.slug === sheet.slug);
+      const i2 = GALLERY_FILMS.findIndex((p) => p.slug === sheet.slug);
       if (s && c.mode === "visit" && i2 >= 0) {
         const L = s.layout;
         const k = L.stops.findIndex((st) => st.kind === "work" && st.index === i2);
@@ -894,7 +894,7 @@ export function Gallery() {
         {/* For keyboards and screen readers: every film and both doors */}
         <nav aria-label="Works in the gallery" className="sr-only">
           <ul>
-            {PROJECTS.map((p, i) => (
+            {GALLERY_FILMS.map((p, i) => (
               <li key={p.slug}>
                 <button
                   type="button"
@@ -965,7 +965,12 @@ export function Gallery() {
           onRequestClose={closeSheet}
           onOpened={() => (covered.current = true)}
           onClosed={() => setSheet(null)}
-          onNext={(slug) => showWork(slug, true)}
+          // On the walls: swap it in. Not on the walls: go to its own page
+          onNext={(slug) =>
+            GALLERY_FILMS.some((p) => p.slug === slug)
+              ? showWork(slug, true)
+              : navigate({ to: "/projects/$slug", params: { slug } })
+          }
         />
       )}
     </>

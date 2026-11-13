@@ -13,7 +13,7 @@ import { CaseStudy } from "@/components/work/CaseStudy";
 */
 
 const EASE = "cubic-bezier(.2,.75,.15,1)";
-const PAPER = "243, 239, 239"; // the reference's warm grey
+const PAPER = "247, 246, 251"; // the Work page's lavender-white
 
 export function ProjectSheet({
   project,
@@ -143,7 +143,7 @@ export function ProjectSheet({
       role="dialog"
       aria-modal="true"
       aria-labelledby="case-title"
-      className="fixed inset-2 z-[70] overflow-y-auto overscroll-contain rounded-[8px] text-black sm:inset-4 lg:overflow-hidden"
+      className="fixed inset-2 z-[70] overflow-y-auto overscroll-contain rounded-[8px] text-black sm:inset-4"
       style={{ backgroundColor: `rgb(${PAPER})` }}
     >
       {/* Close: stays in the corner as you scroll */}
@@ -153,7 +153,7 @@ export function ProjectSheet({
           type="button"
           onClick={onRequestClose}
           aria-label="Close, back to the gallery"
-          className="mr-3 mt-4 flex h-10 w-10 items-center justify-center rounded-full text-[#080808] outline-none transition-opacity hover:opacity-60 focus-visible:ring-2 focus-visible:ring-black/30 lg:mr-6 lg:mt-6"
+          className="mr-3 mt-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#141433] shadow-[0_4px_16px_-4px_rgba(40,30,90,0.35)] outline-none transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-black/30 lg:mr-5 lg:mt-5"
         >
           <svg
             viewBox="0 0 24 24"
@@ -167,7 +167,9 @@ export function ProjectSheet({
           </svg>
         </button>
       </div>
-      <CaseStudy key={project.slug} project={project} heroRef={hero} onNext={onNext} />
+      <div className="mx-auto max-w-[1400px] px-4 pb-14 pt-4 sm:px-7 lg:pt-6">
+        <CaseStudy key={project.slug} project={project} heroRef={hero} onNext={onNext} />
+      </div>
     </div>
   );
 }

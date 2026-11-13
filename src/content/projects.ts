@@ -1,3 +1,5 @@
+import { WORK_CLIENTS } from "./site";
+
 /* Add a project = add an object here. It appears on /projects and gets its own /projects/<slug> page. */
 export type Project = {
   slug: string;
@@ -7,7 +9,9 @@ export type Project = {
   tags: string[];
   featured?: boolean;
   image?: string; // poster or still hung in the gallery, e.g. "/work/my-film.webp" (put the file in public/work/)
-  client?: string; // who it was made for
+  client?: string; // who it was made for (the Work page groups films by this)
+  series?: string; // the programme, campaign or series it belongs to (shown under its title on the Work page)
+  duration?: string; // the film's length, e.g. "07:32": a badge on its thumbnails, and on its page (meta line, Duration)
   trailer?: string; // a short silent clip (15–30 s, 720p MP4) that plays in the gallery frame
   video?: string; // a video file, e.g. "/work/my-film.mp4", shown on the project page
   youtube?: string; // a YouTube link: plays on its gallery screen (muted, looped; a `trailer` wins) and, with sound, atop the case study
@@ -21,10 +25,23 @@ export type Project = {
   story?: { heading: string; text: string[] }[]; // short chapters: the question, the access, the making...
   quote?: { text: string; name: string; role?: string }; // from someone in the film, or the client
   credits?: { role: string; name: string }[];
+  // "In This Film" on its page: what it's about, each with a small drawn icon
+  themes?: { label: string; icon: ThemeIcon }[];
 };
+
+/* The icons a theme can have ("In This Film"): simple line drawings. */
+export type ThemeIcon =
+  "leaf" | "people" | "sprout" | "handshake" | "chart" | "heart" | "drop" | "home";
 
 /* Stand-in chapters, quote and credits for the sample projects, until real ones are written. */
 const SAMPLE_CASE = {
+  themes: [
+    { label: "Women Empowerment", icon: "leaf" },
+    { label: "Rural Enterprises", icon: "people" },
+    { label: "Climate Resilience", icon: "sprout" },
+    { label: "Income & Inclusivity", icon: "handshake" },
+    { label: "Sustainable Rural Growth", icon: "chart" },
+  ] as Project["themes"],
   story: [
     {
       heading: "The question",
@@ -133,7 +150,30 @@ export const PROJECTS: Project[] = [
     ...SAMPLE_CASE,
     body: ["Write the story of this project here."],
   },
+  // More placeholders, so the Work page shows a full listing (20 films), spread
+  // across the clients so each "Initiatives of" badge has films to show.
+  // PLACEHOLDERS ONLY: replace each with a real film (or delete it) before this
+  // goes live, or the site shows "Sample Film" under real clients' names.
+  ...Array.from({ length: 14 }, (_, i): Project => {
+    const n = String(i + 7).padStart(2, "0");
+    return {
+      slug: `sample-film-${n}`,
+      title: `Sample Film ${n}`,
+      summary: "A placeholder film. Replace with a real one.",
+      year: 2025 - (i % 4),
+      tags: [["Documentary", "Impact film", "Campaign", "Series"][i % 4]],
+      client: WORK_CLIENTS[i % WORK_CLIENTS.length].name,
+      ...SAMPLE_CASE,
+      body: ["Write the story of this project here."],
+    };
+  }),
 ];
+
+/*
+  The gallery's walls hold six films: the first six above. (Everything is on
+  the Work page; reorder the list to change what hangs in the room.)
+*/
+export const GALLERY_FILMS = PROJECTS.slice(0, 6);
 
 export const getProject = (slug: string) => PROJECTS.find((p) => p.slug === slug);
 

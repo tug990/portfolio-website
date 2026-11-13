@@ -167,6 +167,87 @@ export const AWARDS: { name: string; result: string; year: number; project?: str
   { name: "Festival or award", result: "Nominee", year: 2024, project: "sample-short" },
 ];
 
+/* Work page (/projects): the words at the top. */
+export const WORK_PAGE = {
+  eyebrow: "Our work",
+  headline: "Stories that\ncreate impact.", // \n: where the line breaks on wider screens
+  intro: "Documentaries, impact films and campaigns for people, communities and change.",
+};
+
+/*
+  The studio's clients. On the Work page, "Initiatives of": a badge button per
+  client, in this order; tapping one shows only that client's films (a film is
+  theirs when its `client` in projects.ts is exactly this `name`). On a film's
+  page, its client's card: their emblem, their name (in `color`), and `about`.
+
+    logo        the badge (pill) image, 480 x 160, in public/clients/
+    mark        the emblem alone, cut out of the badge, in public/clients/marks/
+    markIsLogo  the mark is the whole logo, name included (no name set beside it)
+    color       their name's colour on the card, from their badge
+    about       a line about them on the card (optional)
+*/
+export type WorkClient = {
+  name: string;
+  logo: string;
+  mark: string;
+  markIsLogo?: boolean;
+  color: string;
+  about?: string;
+};
+export const WORK_CLIENTS: WorkClient[] = [
+  {
+    name: "Central Govt. of India",
+    logo: "/clients/central-govt-of-india.webp",
+    mark: "/clients/marks/central-govt-of-india.webp",
+    color: "#15172b",
+  },
+  {
+    name: "Chhattisgarh Govt.",
+    logo: "/clients/chhattisgarh-govt.webp",
+    mark: "/clients/marks/chhattisgarh-govt.webp",
+    color: "#14592a",
+  },
+  {
+    name: "Jharkhand Govt.",
+    logo: "/clients/jharkhand-govt.webp",
+    mark: "/clients/marks/jharkhand-govt.webp",
+    color: "#14522a",
+  },
+  {
+    name: "Odisha Govt.",
+    logo: "/clients/odisha-govt.webp",
+    mark: "/clients/marks/odisha-govt.webp",
+    color: "#13256b",
+  },
+  {
+    name: "NABARD",
+    logo: "/clients/nabard.webp",
+    mark: "/clients/marks/nabard.webp",
+    color: "#176b2c",
+    about: "Rural development, livelihoods and sustainable growth.",
+  },
+  {
+    name: "SIDHKOFED",
+    logo: "/clients/sidhkofed.webp",
+    mark: "/clients/marks/sidhkofed.webp",
+    color: "#14522a",
+  },
+  {
+    name: "MLINDA Charitable Trust",
+    logo: "/clients/mlinda.webp",
+    mark: "/clients/marks/mlinda.webp",
+    markIsLogo: true,
+    color: "#111111",
+  },
+  {
+    name: "Better World Foundation",
+    logo: "/clients/better-world-foundation.webp",
+    mark: "/clients/marks/better-world-foundation.webp",
+    markIsLogo: true,
+    color: "#13426b",
+  },
+];
+
 /* Footer call to action. */
 export const CTA = {
   title: "Tell us the story you want to tell.",
