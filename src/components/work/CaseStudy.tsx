@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { PROJECTS, type Project, type ThemeIcon } from "@/content/projects";
 import { WORK_CLIENTS, type WorkClient } from "@/content/site";
 import { Poster } from "@/components/Poster";
-import { CardMenu } from "@/components/work/WorkUI";
+import { CardMenu, Cover } from "@/components/work/WorkUI";
 import { UI, coverOf } from "@/lib/work";
 import { YT_HOST, youtubeId } from "@/lib/youtube";
 import { cn } from "@/lib/utils";
@@ -257,7 +257,12 @@ function Hero({
           className="group absolute inset-0 block h-full w-full text-left disabled:cursor-default"
         >
           {cover ? (
-            <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <Cover
+              project={project}
+              eager
+              sizes="(min-width: 1024px) 66vw, 100vw"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
           ) : (
             <span className="absolute inset-0">
               <Poster title="" live />
@@ -712,10 +717,9 @@ function MoreItem({ project, onOpen }: { project: Project; onOpen: () => void })
         className="relative aspect-[1.9/1] w-[44%] shrink-0 overflow-hidden rounded-xl bg-black sm:w-[220px] lg:w-[46%]"
       >
         {cover ? (
-          <img
-            src={cover}
-            alt=""
-            loading="lazy"
+          <Cover
+            project={project}
+            sizes="220px"
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
