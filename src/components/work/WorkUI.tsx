@@ -60,11 +60,17 @@ export function Avatar({
   className?: string;
 }) {
   const src = client ? client.mark : "/brand/mark-avatar.webp";
+  // in pixels, not percentages (a percentage height isn't kept inside the circle, so a tall
+  // emblem grew past it and sat low): a whole logo 82% of the circle wide, an emblem 68% of it
+  // tall, the studio's mark 64%; each centred
+  const fit = client?.markIsLogo
+    ? { width: Math.round(size * 0.82), height: "auto" }
+    : { height: Math.round(size * (client ? 0.68 : 0.64)), width: "auto" };
   return (
     <span
       aria-hidden
       className={cn(
-        "grid shrink-0 place-items-center overflow-hidden rounded-full bg-white shadow-[0_1px_3px_rgba(20,23,46,0.12)] ring-1 ring-[#0a0a0a]/10",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-[0_1px_3px_rgba(20,23,46,0.12)] ring-1 ring-[#0a0a0a]/10",
         className,
       )}
       style={{ width: size, height: size }}
@@ -73,10 +79,8 @@ export function Avatar({
         src={src}
         alt=""
         loading="lazy"
-        className={cn(
-          "object-contain",
-          client?.markIsLogo ? "h-auto w-[82%]" : client ? "h-[68%] w-auto" : "h-[64%] w-auto",
-        )}
+        className="max-w-[82%] shrink-0 object-contain"
+        style={fit}
       />
     </span>
   );

@@ -241,8 +241,10 @@ export function TestimonialDrawer() {
         />
 
         {/* The box's inside: lined with black suede, deep, a little blue and amber light within; its walls leather, their tops catching the light */}
+        {/* (data-tone: dark, for the phone's bar, which can't tell from textures) */}
         <div
           aria-hidden
+          data-tone="dark"
           className="absolute overflow-hidden"
           style={{
             left: g.edge,
@@ -500,6 +502,7 @@ function DrawerFront({ g }: { g: ReturnType<typeof geometry> }) {
   return (
     <div
       aria-hidden
+      data-tone="dark"
       className="absolute inset-x-0 isolate"
       style={{
         top: g.front,
