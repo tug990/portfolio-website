@@ -1264,20 +1264,27 @@ const WORLD_LIGHT: Record<PerspectiveId, [string, string]> = {
   picture at the foot, at its own shape, its top fading into its own top
   colour (`top`, `fade`), the words above it; room is kept under the words
   for the part with the subject in it (`subject`), so the words never run into
-  it, whatever the screen's shape. White words on a dark picture, ink on a
+  it, whatever the screen's shape (`words`: top-left, the university's, or
+  top-right, the government's: the same, but on a landscape screen the words
+  above to one side, beside what rises on the other; `subject` then counts
+  that side's). Each picture
+  can have its own top colour (`wide.top`, `tall.top`). White words on a dark picture, ink on a
   light one (`tone`). The way on sits just under the words. It settles in as
   you arrive.
 */
 const WORLD_INK = {
   dark: {
     text: "text-white",
-    label: "text-white/65",
-    body: "text-white/80",
-    hint: "text-white/65 hover:text-white",
-    halo: "[text-shadow:0_2px_24px_rgba(0,0,0,0.45)]",
+    label: "text-white/75",
+    body: "text-white/90",
+    hint: "text-white/80 hover:text-white",
+    halo: "[text-shadow:0_1px_2px_rgba(0,15,45,0.45),0_2px_24px_rgba(0,15,45,0.45)]",
     icon: "border-white/25 bg-white/10 shadow-[0_14px_36px_-14px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.3)]",
     iconInk: "text-white/90",
     shade: "rgba(0,0,0,0.55)",
+    // right behind the words, so they read over a bright sky or cloud (as the Work page's hero)
+    behind:
+      "radial-gradient(closest-side at 50% 58%, rgba(6,22,60,0.62), rgba(6,22,60,0.4) 60%, rgba(6,22,60,0))",
   },
   light: {
     text: "text-[#0a0a0a]",
@@ -1288,15 +1295,18 @@ const WORLD_INK = {
     icon: "border-white/80 bg-white/60 shadow-[0_14px_36px_-14px_rgba(40,30,90,0.35),inset_0_1px_0_rgba(255,255,255,0.9)]",
     iconInk: "text-black/80",
     shade: "rgba(255,255,255,0.6)",
+    behind: "",
   },
 } as const;
 
 function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
   const hero = p.hero!;
   const ink = WORLD_INK[hero.tone];
-  const top = hero.words === "top"; // the picture at the foot on every screen, the words above
-  const right = hero.words === "right";
-  const centre = top ? "mx-auto" : "portrait:mx-auto";
+  // the picture at the foot on every screen, the words above it (centred, or to the left)
+  const top = hero.words.startsWith("top");
+  const topSide = hero.words === "top-left" || hero.words === "top-right"; // on landscape screens
+  const right = hero.words === "right" || hero.words === "top-right";
+  const centre = top && !topSide ? "mx-auto" : "portrait:mx-auto";
   const room = (s: { size: [number, number]; subject: number }) =>
     `${s.size[0]} / ${Math.round(s.size[1] * s.subject)}`;
   return (
@@ -1304,11 +1314,22 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
       className={cn(
         "relative isolate flex min-h-[100svh] overflow-hidden",
         top
-          ? "flex-col items-center text-center"
+          ? cn(
+              "flex-col items-center text-center",
+              topSide && "landscape:text-left",
+              topSide && (right ? "landscape:items-end" : "landscape:items-start"),
+            )
           : "portrait:flex-col portrait:items-center portrait:text-center landscape:items-center",
+        // the colour above the picture: the wide one's on landscape screens, the tall one's on portrait
+        "bg-[var(--top)] [--top:var(--top-wide)] portrait:[--top:var(--top-tall)]",
         ink.text,
       )}
-      style={{ background: hero.top }}
+      style={
+        {
+          "--top-wide": hero.wide.top ?? hero.top,
+          "--top-tall": hero.tall.top ?? hero.top,
+        } as React.CSSProperties
+      }
     >
       <picture
         className={cn(
@@ -1333,7 +1354,7 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
           className={cn("absolute inset-x-0 top-0", !top && "landscape:hidden")}
           style={{
             height: `${hero.fade[1] * 100}%`,
-            background: `linear-gradient(${hero.top} ${(hero.fade[0] / hero.fade[1]) * 100}%, ${hero.top}00)`,
+            background: `linear-gradient(var(--top) ${(hero.fade[0] / hero.fade[1]) * 100}%, transparent)`,
           }}
         />
       </picture>
@@ -1357,9 +1378,16 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
       />
       <div
         className={cn(
-          "px-5 duration-1000 animate-in fade-in slide-in-from-bottom-4",
+          "relative isolate px-5 duration-1000 animate-in fade-in slide-in-from-bottom-4",
           top
-            ? "max-w-3xl pt-[calc(env(safe-area-inset-top)+5.75rem)] sm:pt-28"
+            ? cn(
+                "max-w-3xl pt-[calc(env(safe-area-inset-top)+5.75rem)] sm:pt-28",
+                topSide && "landscape:max-w-[min(55vw,40rem)]",
+                topSide &&
+                  (right
+                    ? "landscape:mr-[max(0px,calc(7vw-1.25rem))]"
+                    : "landscape:ml-[max(0px,calc(7vw-1.25rem))]"),
+              )
             : cn(
                 "portrait:pt-[calc(env(safe-area-inset-top)+5.75rem)] landscape:max-w-[min(40vw,36rem)] landscape:py-28",
                 right
@@ -1368,6 +1396,13 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
               ),
         )}
       >
+        {ink.behind && (
+          <span
+            aria-hidden
+            className="absolute -inset-x-[14%] -bottom-[16%] top-[6%] -z-10 blur-2xl"
+            style={{ background: ink.behind }}
+          />
+        )}
         <span
           className={cn(
             "grid h-14 w-14 place-items-center rounded-full border backdrop-blur-xl sm:h-16 sm:w-16",
@@ -1381,7 +1416,7 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
         <h1
           className={cn(
             "mt-4 text-[32px] font-light leading-[1.1] tracking-tight sm:text-5xl xl:text-6xl",
-            top ? "mx-auto max-w-3xl" : "portrait:mx-auto portrait:max-w-3xl",
+            top && !topSide ? "mx-auto max-w-3xl" : "portrait:mx-auto portrait:max-w-3xl",
             ink.halo,
           )}
         >

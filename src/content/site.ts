@@ -66,20 +66,23 @@ export const ABOUT_PERSPECTIVES: {
     `size`; `alt` says what it shows; `tone`: the picture is dark (white words) or light (ink
     words); `words`: where the words go on the wide one, in its empty part: "left" or "right"
     (the picture over the whole screen, kept on `wide.focus`), or "top" (above it: the picture
-    then sits at the foot at its own shape on every screen, as the tall one always does); `top`:
-    the colour at the pictures' top, which they fade into above them; `fade`: from where to where
+    then sits at the foot at its own shape on every screen, as the tall one always does), or
+    "top-left" / "top-right" (the same, the words above to one side, beside something rising
+    on the other);
+    `top`: the colour at the pictures' top, which they fade into above them (a picture's own
+    `top` if they differ); `fade`: from where to where
     (of a picture's height) that fade runs, solid to clear (cover anything at its top you'd
     rather the words didn't meet); `subject`: how much of each picture, from its foot, holds its
-    subject (kept clear of the words; the wide one's counts only with "top").
+    subject (kept clear of the words; the wide one's counts only with the "top" ones).
   */
   hero?: {
     alt: string;
     tone: "dark" | "light";
-    words: "left" | "right" | "top";
+    words: "left" | "right" | "top" | "top-left" | "top-right";
     top: string;
     fade: [number, number];
-    wide: { src: string; size: [number, number]; focus: string; subject: number };
-    tall: { src: string; size: [number, number]; subject: number };
+    wide: { src: string; size: [number, number]; focus: string; subject: number; top?: string };
+    tall: { src: string; size: [number, number]; subject: number; top?: string };
   };
 }[] = [
   {
@@ -177,6 +180,25 @@ export const ABOUT_PERSPECTIVES: {
       "SIDHKOFED",
     ],
     ask: "A film for our department",
+    hero: {
+      alt: "A man in a white kurta and a saffron turban, seen from behind, sitting on a green hill at sunrise, looking out over a metro train on its viaduct, a highway, a cable bridge, a city and solar panels",
+      tone: "dark",
+      words: "top-right",
+      top: "#6a94cb",
+      fade: [0, 0.3],
+      wide: {
+        src: "/brand/world-government-wide.webp",
+        size: [1672, 941],
+        focus: "50% 50%",
+        subject: 0.55,
+      },
+      tall: {
+        src: "/brand/world-government-tall.webp",
+        size: [941, 1672],
+        subject: 0.5,
+        top: "#507fb3",
+      },
+    },
   },
   {
     id: "real-estate",
@@ -235,6 +257,25 @@ export const ABOUT_PERSPECTIVES: {
     ],
     clients: [],
     ask: "A film for our university",
+    hero: {
+      alt: "A student with a backpack running towards an open yellow door standing in the open air, a grand university and a plane in the sky beyond it, books and pages flying behind him",
+      tone: "dark",
+      words: "top-left",
+      top: "#2772be",
+      fade: [0, 0.3],
+      wide: {
+        src: "/brand/world-university-wide.webp",
+        size: [1672, 941],
+        focus: "50% 50%",
+        subject: 0.53,
+      },
+      tall: {
+        src: "/brand/world-university-tall.webp",
+        size: [941, 1672],
+        subject: 0.55,
+        top: "#225899",
+      },
+    },
   },
 ];
 
