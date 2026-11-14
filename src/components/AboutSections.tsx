@@ -1019,13 +1019,17 @@ function SkyFlow({
 }
 
 /*
-  Mist drifting over the sky, as clouds move: soft billows of white (noise
-  folded into itself, so it curls and flows rather than slides), denser low
-  down in the sea of cloud and in a veil across the gate's foot, thin in the
-  open sky; warm where the gate's light falls on it, cool white elsewhere. A
-  small WebGL drawing at about 30 frames a second, at half the screen's
-  resolution (it has no edges to lose); still under reduced motion; nothing
-  if the device can't draw it.
+  Clouds crossing the sky, as real ones do: soft masses of cloud that drift
+  from the left of the screen to the right, across the door and out the
+  other side, changing shape a little as they go (noise folded into itself).
+  Two layers at two heights and speeds: a high, slower one in the open sky,
+  and a low, quicker one that passes in front of the gate; lit from above
+  (their tops whiter, their undersides greyer), and warm and glowing where
+  they pass before the gate's light. A thin veil of mist lies along the
+  gate's foot. The same crossing time on any screen (about 46 s high, 30 s
+  low). A small WebGL drawing at about 30 frames a second (clouds have no
+  hard edges, so it's drawn at a little under the screen's resolution);
+  still under reduced motion; nothing if the device can't draw it.
 */
 function SkyMist({ img }: { img: React.RefObject<HTMLImageElement | null> }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -1035,7 +1039,7 @@ function SkyMist({ img }: { img: React.RefObject<HTMLImageElement | null> }) {
     if (!cv || !gl) return;
     const vs = "attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }";
     const fs = /* glsl */ `
-      precision mediump float;
+      precision highp float;
       uniform vec2 uRes;
       uniform float uTime;
       uniform vec2 uDoor;   // the gate's slot, in canvas pixels (from the bottom)
@@ -1046,26 +1050,60 @@ function SkyMist({ img }: { img: React.RefObject<HTMLImageElement | null> }) {
         vec2 u = f * f * (3.0 - 2.0 * f);
         return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
       }
-      float fbm(vec2 p) {
+      float fbm5(vec2 p) {
         float v = 0.0, a = 0.5;
         for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
         return v;
       }
+      float fbm3(vec2 p) {
+        float v = 0.0, a = 0.5;
+        for (int i = 0; i < 3; i++) { v += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+        return v;
+      }
+      // a field of cloud, wider than tall, travelling right at speed v (in its own units a second),
+      // its shapes slowly changing as it goes
+      float cloud(vec2 p, float t, float v) {
+        vec2 q = p * vec2(1.1, 2.2);
+        q.x -= t * v; // (looking further left as time goes on: what's there moves right)
+        vec2 w = vec2(fbm3(q * 0.7 + vec2(0.0, t * 0.012)), fbm3(q * 0.7 + vec2(5.2, 1.3) - vec2(0.0, t * 0.009)));
+        return fbm5(q + 1.2 * w);
+      }
       void main() {
         vec2 f = gl_FragCoord.xy;
-        vec2 p = f / uRes.y;
+        // measured in screen heights, or on a tall narrow screen (a phone) in a little more
+        // than its width, so the clouds are the same size to the eye and several fit across
+        float u = min(uRes.y, uRes.x * 1.25);
+        vec2 p = f / u;
+        float span = uRes.x / u;  // the screen's width in those units
+        float h = f.y / uRes.y;   // 0 at the foot of the screen, 1 at the top
         float t = uTime;
-        vec2 q = p * vec2(1.6, 2.6) + vec2(t * 0.032, 0.0);
-        vec2 w = vec2(fbm(q + vec2(0.0, t * 0.03)), fbm(q + vec2(5.2, 1.3) - t * 0.022));
-        float n = fbm(q + 1.8 * w + vec2(t * 0.012, 0.0));
-        float h = f.y / uRes.y;
-        float low = smoothstep(0.66, 0.02, h);
-        float veil = exp(-pow((h - uFoot) / 0.07, 2.0));
-        float dens = smoothstep(0.46, 0.86, n) * (0.18 + 0.82 * low + 0.7 * veil);
-        float d = distance(f, uDoor) / uRes.y;
-        vec3 col = mix(vec3(1.0, 0.95, 0.88), vec3(0.965, 0.968, 0.98), smoothstep(0.02, 0.55, d));
-        float a = clamp(dens * 0.66, 0.0, 0.7);
-        gl_FragColor = vec4(col * a, a);
+        // each layer crosses the whole screen in the same time on any screen
+        float vHigh = span * 1.1 / 46.0;
+        float vLow = span * 1.1 * 1.55 / 30.0;
+        vec2 pl = p * 1.55 + vec2(3.7, 1.1);
+        float dH = cloud(p, t, vHigh);
+        float dL = cloud(pl, t, vLow);
+        float dLup = cloud(pl + vec2(0.0, 0.05), t, vLow); // a little above: for the light on its top
+        // where each layer lies: the high one in the open sky, the low one across the gate
+        float bandH = smoothstep(0.3, 0.52, h) * (1.0 - smoothstep(0.84, 1.0, h));
+        float bandL = smoothstep(0.02, 0.14, h) * (1.0 - smoothstep(0.46, 0.66, h));
+        float aH = smoothstep(0.47, 0.75, dH) * bandH * 0.6;
+        float aL = smoothstep(0.44, 0.7, dL) * bandL * 0.92;
+        // lit from above: tops whiter, undersides greyer
+        float lit = clamp(0.62 + (dL - dLup) * 6.0, 0.0, 1.0);
+        vec3 cL = mix(vec3(0.79, 0.79, 0.82), vec3(1.0, 0.99, 0.975), lit);
+        vec3 cH = mix(vec3(0.88, 0.89, 0.92), vec3(1.0, 0.995, 0.985), smoothstep(0.5, 0.85, dH));
+        // before the gate's light: warm, glowing through, a little thinner
+        vec2 door = uDoor / u;
+        float g = exp(-pow(distance(p, door) / 0.22, 2.0));
+        cL = mix(cL, vec3(1.0, 0.94, 0.84) * 1.04, g * 0.75);
+        aL *= 1.0 - g * 0.45;
+        // a thin veil of mist along the gate's foot, drifting with the low clouds
+        float veil = exp(-pow((h - uFoot) / 0.06, 2.0)) * smoothstep(0.32, 0.72, dL) * 0.35;
+        aL = max(aL, veil);
+        float A = aL + aH * (1.0 - aL);
+        vec3 C = cL * aL + cH * aH * (1.0 - aL);
+        gl_FragColor = vec4(min(C, vec3(1.0)), A);
       }`;
     const sh = (type: number, src: string) => {
       const s = gl.createShader(type)!;
@@ -1089,8 +1127,8 @@ function SkyMist({ img }: { img: React.RefObject<HTMLImageElement | null> }) {
     const uTime = gl.getUniformLocation(prog, "uTime");
     const uDoor = gl.getUniformLocation(prog, "uDoor");
     const uFoot = gl.getUniformLocation(prog, "uFoot");
-    // half the screen's device pixels (the mist has no edges to lose; a phone's full count would cost)
-    const SCALE = Math.min(window.devicePixelRatio || 1, 2) * 0.5;
+    // a little under the screen's resolution (clouds have no hard edges; the full count would cost)
+    const SCALE = Math.min(window.devicePixelRatio || 1, 2) * 0.36;
     let raf = 0;
     let last = 0;
     const t0 = performance.now();
