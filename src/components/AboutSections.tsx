@@ -1254,6 +1254,191 @@ const WORLD_LIGHT: Record<PerspectiveId, [string, string]> = {
 };
 
 /*
+  A perspective's world opening on a photograph (`hero` in ABOUT_PERSPECTIVES:
+  the NGO's, a child drawing ABC in chalk on the road; the corporate one, a
+  man whose jacket is a collage of the work; real estate, a city at dusk with
+  roads of light running to a pin). Words to one side (`words`: left or
+  right): on a landscape screen the wide picture over the whole screen, kept
+  on its subject (`wide.focus`), the words in its empty part over a gentle
+  shade. Words on top (`words`: top), and on every portrait screen: the
+  picture at the foot, at its own shape, its top fading into its own top
+  colour (`top`, `fade`), the words above it; room is kept under the words
+  for the part with the subject in it (`subject`), so the words never run into
+  it, whatever the screen's shape. White words on a dark picture, ink on a
+  light one (`tone`). The way on sits just under the words. It settles in as
+  you arrive.
+*/
+const WORLD_INK = {
+  dark: {
+    text: "text-white",
+    label: "text-white/65",
+    body: "text-white/80",
+    hint: "text-white/65 hover:text-white",
+    halo: "[text-shadow:0_2px_24px_rgba(0,0,0,0.45)]",
+    icon: "border-white/25 bg-white/10 shadow-[0_14px_36px_-14px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.3)]",
+    iconInk: "text-white/90",
+    shade: "rgba(0,0,0,0.55)",
+  },
+  light: {
+    text: "text-[#0a0a0a]",
+    label: "text-black/50",
+    body: "text-black/65",
+    hint: "text-black/50 hover:text-black",
+    halo: "[text-shadow:0_1px_18px_rgba(255,255,255,0.85)]",
+    icon: "border-white/80 bg-white/60 shadow-[0_14px_36px_-14px_rgba(40,30,90,0.35),inset_0_1px_0_rgba(255,255,255,0.9)]",
+    iconInk: "text-black/80",
+    shade: "rgba(255,255,255,0.6)",
+  },
+} as const;
+
+function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
+  const hero = p.hero!;
+  const ink = WORLD_INK[hero.tone];
+  const top = hero.words === "top"; // the picture at the foot on every screen, the words above
+  const right = hero.words === "right";
+  const centre = top ? "mx-auto" : "portrait:mx-auto";
+  const room = (s: { size: [number, number]; subject: number }) =>
+    `${s.size[0]} / ${Math.round(s.size[1] * s.subject)}`;
+  return (
+    <section
+      className={cn(
+        "relative isolate flex min-h-[100svh] overflow-hidden",
+        top
+          ? "flex-col items-center text-center"
+          : "portrait:flex-col portrait:items-center portrait:text-center landscape:items-center",
+        ink.text,
+      )}
+      style={{ background: hero.top }}
+    >
+      <picture
+        className={cn(
+          "absolute -z-20",
+          top ? "inset-x-0 bottom-0" : "portrait:inset-x-0 portrait:bottom-0 landscape:inset-0",
+        )}
+      >
+        <source media="(orientation: portrait)" srcSet={hero.tall.src} />
+        <img
+          src={hero.wide.src}
+          alt={hero.alt}
+          fetchPriority="high"
+          className={cn(
+            "block w-full motion-safe:duration-[2400ms] motion-safe:ease-out motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-105",
+            top ? "h-auto" : "portrait:h-auto landscape:h-full landscape:object-cover",
+          )}
+          style={{ objectPosition: hero.wide.focus }}
+        />
+        {/* the picture's top, fading into its own top colour above it */}
+        <span
+          aria-hidden
+          className={cn("absolute inset-x-0 top-0", !top && "landscape:hidden")}
+          style={{
+            height: `${hero.fade[1] * 100}%`,
+            background: `linear-gradient(${hero.top} ${(hero.fade[0] / hero.fade[1]) * 100}%, ${hero.top}00)`,
+          }}
+        />
+      </picture>
+      {/* a gentle shade where the words are */}
+      {!top && (
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 portrait:hidden"
+          style={{
+            background: `linear-gradient(${right ? 270 : 90}deg, ${ink.shade}, transparent 58%)`,
+          }}
+        />
+      )}
+      <div
+        aria-hidden
+        className={cn("absolute inset-0 -z-10", !top && "landscape:hidden")}
+        style={{
+          background: `linear-gradient(180deg, ${ink.shade}, transparent 40%)`,
+          opacity: 0.6,
+        }}
+      />
+      <div
+        className={cn(
+          "px-5 duration-1000 animate-in fade-in slide-in-from-bottom-4",
+          top
+            ? "max-w-3xl pt-[calc(env(safe-area-inset-top)+5.75rem)] sm:pt-28"
+            : cn(
+                "portrait:pt-[calc(env(safe-area-inset-top)+5.75rem)] landscape:max-w-[min(40vw,36rem)] landscape:py-28",
+                right
+                  ? "landscape:ml-auto landscape:mr-[max(0px,calc(7vw-1.25rem))]"
+                  : "landscape:ml-[max(0px,calc(7vw-1.25rem))]",
+              ),
+        )}
+      >
+        <span
+          className={cn(
+            "grid h-14 w-14 place-items-center rounded-full border backdrop-blur-xl sm:h-16 sm:w-16",
+            centre,
+            ink.icon,
+          )}
+        >
+          <PerspectiveIcon id={p.id} className={cn("h-6 w-6 sm:h-7 sm:w-7", ink.iconInk)} />
+        </span>
+        <p className={cn("tracked mt-5 text-[10px] sm:mt-6", ink.label)}>Your world · {p.label}</p>
+        <h1
+          className={cn(
+            "mt-4 text-[32px] font-light leading-[1.1] tracking-tight sm:text-5xl xl:text-6xl",
+            top ? "mx-auto max-w-3xl" : "portrait:mx-auto portrait:max-w-3xl",
+            ink.halo,
+          )}
+        >
+          {p.title}
+        </h1>
+        <div className={cn("prism-rule mt-6 w-20 sm:mt-7", centre)} />
+        <p
+          className={cn(
+            "mt-6 max-w-xl text-[15px] leading-relaxed sm:mt-7 sm:text-lg",
+            centre,
+            ink.body,
+            ink.halo,
+          )}
+        >
+          {p.text}
+        </p>
+        <a
+          href="#world"
+          className={cn(
+            "tracked mt-8 inline-flex items-center gap-2 text-[10px] transition sm:mt-10",
+            ink.hint,
+          )}
+        >
+          What we make for you
+          <svg
+            aria-hidden
+            viewBox="0 0 24 24"
+            className="h-4 w-4 motion-safe:animate-bounce"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6.5 9.5l5.5 5.5 5.5-5.5" />
+          </svg>
+        </a>
+      </div>
+      {/* room under the words for the subject (the picture's lower part): portrait screens, and
+          landscape ones when the words are on top */}
+      <div
+        aria-hidden
+        className="w-full shrink-0 landscape:hidden"
+        style={{ aspectRatio: room(hero.tall) }}
+      />
+      {top && (
+        <div
+          aria-hidden
+          className="w-full shrink-0 portrait:hidden"
+          style={{ aspectRatio: room(hero.wide) }}
+        />
+      )}
+    </section>
+  );
+}
+
+/*
   A perspective's world, on the other side of the About page's door. You
   arrive in its light (white at the heart, the world's colours either side,
   a beam down the middle as the door's): its sign, its headline over a line
@@ -1311,53 +1496,57 @@ export function PerspectiveWorld({ id }: { id: PerspectiveId }) {
           <span aria-hidden className="w-10 shrink-0" />
         </div>
       </div>
-      <section className="relative isolate flex min-h-[100svh] flex-col items-center justify-center overflow-hidden bg-[#fbfaf8] px-5 pb-[calc(var(--dock,0px)+5rem)] pt-24 text-center sm:pt-28">
-        <div
-          aria-hidden
-          className="absolute inset-0 -z-10"
-          style={{
-            background: `radial-gradient(60% 80% at 50% 42%, #ffffff 0%, rgba(255,255,255,0) 72%), linear-gradient(90deg, ${left}, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%, ${right})`,
-          }}
-        />
-        <div
-          aria-hidden
-          className="absolute left-1/2 top-0 -z-10 h-full w-[24rem] max-w-[70vw] -translate-x-1/2 blur-3xl"
-          style={{
-            background: `linear-gradient(90deg, ${left}, #ffffff 38%, #ffffff 62%, ${right})`,
-          }}
-        />
-        <div className="duration-1000 animate-in fade-in slide-in-from-bottom-4">
-          <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-white/80 bg-white/60 shadow-[0_14px_36px_-14px_rgba(40,30,90,0.35),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-xl">
-            <PerspectiveIcon id={p.id} className="h-7 w-7 text-black/80" />
-          </span>
-          <p className="tracked mt-6 text-[10px] text-black/50">Your world · {p.label}</p>
-          <h1 className="mx-auto mt-4 max-w-3xl text-[34px] font-light leading-[1.1] tracking-tight sm:text-6xl">
-            {p.title}
-          </h1>
-          <div className="prism-rule mx-auto mt-7 w-20" />
-          <p className="mx-auto mt-7 max-w-xl text-[16px] leading-relaxed text-black/60 sm:text-lg">
-            {p.text}
-          </p>
-        </div>
-        <a
-          href="#world"
-          className="tracked absolute bottom-[calc(var(--dock,0px)+1.5rem)] left-1/2 flex -translate-x-1/2 flex-col items-center gap-2 text-[10px] text-black/45 transition hover:text-black/70"
-        >
-          What we make for you
-          <svg
+      {p.hero ? (
+        <WorldPhoto p={p} />
+      ) : (
+        <section className="relative isolate flex min-h-[100svh] flex-col items-center justify-center overflow-hidden bg-[#fbfaf8] px-5 pb-[calc(var(--dock,0px)+5rem)] pt-24 text-center sm:pt-28">
+          <div
             aria-hidden
-            viewBox="0 0 24 24"
-            className="h-4 w-4 motion-safe:animate-bounce"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.6}
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            className="absolute inset-0 -z-10"
+            style={{
+              background: `radial-gradient(60% 80% at 50% 42%, #ffffff 0%, rgba(255,255,255,0) 72%), linear-gradient(90deg, ${left}, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%, ${right})`,
+            }}
+          />
+          <div
+            aria-hidden
+            className="absolute left-1/2 top-0 -z-10 h-full w-[24rem] max-w-[70vw] -translate-x-1/2 blur-3xl"
+            style={{
+              background: `linear-gradient(90deg, ${left}, #ffffff 38%, #ffffff 62%, ${right})`,
+            }}
+          />
+          <div className="duration-1000 animate-in fade-in slide-in-from-bottom-4">
+            <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border border-white/80 bg-white/60 shadow-[0_14px_36px_-14px_rgba(40,30,90,0.35),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-xl">
+              <PerspectiveIcon id={p.id} className="h-7 w-7 text-black/80" />
+            </span>
+            <p className="tracked mt-6 text-[10px] text-black/50">Your world · {p.label}</p>
+            <h1 className="mx-auto mt-4 max-w-3xl text-[34px] font-light leading-[1.1] tracking-tight sm:text-6xl">
+              {p.title}
+            </h1>
+            <div className="prism-rule mx-auto mt-7 w-20" />
+            <p className="mx-auto mt-7 max-w-xl text-[16px] leading-relaxed text-black/60 sm:text-lg">
+              {p.text}
+            </p>
+          </div>
+          <a
+            href="#world"
+            className="tracked absolute bottom-[calc(var(--dock,0px)+1.5rem)] left-1/2 flex -translate-x-1/2 flex-col items-center gap-2 text-[10px] text-black/45 transition hover:text-black/70"
           >
-            <path d="M6.5 9.5l5.5 5.5 5.5-5.5" />
-          </svg>
-        </a>
-      </section>
+            What we make for you
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className="h-4 w-4 motion-safe:animate-bounce"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M6.5 9.5l5.5 5.5 5.5-5.5" />
+            </svg>
+          </a>
+        </section>
+      )}
 
       <section id="world" className="scroll-mt-24 px-4 pb-8 pt-16 sm:px-6 sm:pt-24">
         <div className="mx-auto max-w-6xl">

@@ -60,6 +60,27 @@ export const ABOUT_PERSPECTIVES: {
   offers: { title: string; text: string }[];
   clients: string[];
   ask: string;
+  /*
+    optional: a photograph their world opens on (components/AboutSections.tsx, WorldPhoto), in
+    two shapes: `wide` for landscape screens, `tall` for portrait ones, each with its `src` and
+    `size`; `alt` says what it shows; `tone`: the picture is dark (white words) or light (ink
+    words); `words`: where the words go on the wide one, in its empty part: "left" or "right"
+    (the picture over the whole screen, kept on `wide.focus`), or "top" (above it: the picture
+    then sits at the foot at its own shape on every screen, as the tall one always does); `top`:
+    the colour at the pictures' top, which they fade into above them; `fade`: from where to where
+    (of a picture's height) that fade runs, solid to clear (cover anything at its top you'd
+    rather the words didn't meet); `subject`: how much of each picture, from its foot, holds its
+    subject (kept clear of the words; the wide one's counts only with "top").
+  */
+  hero?: {
+    alt: string;
+    tone: "dark" | "light";
+    words: "left" | "right" | "top";
+    top: string;
+    fade: [number, number];
+    wide: { src: string; size: [number, number]; focus: string; subject: number };
+    tall: { src: string; size: [number, number]; subject: number };
+  };
 }[] = [
   {
     id: "ngo",
@@ -82,6 +103,15 @@ export const ABOUT_PERSPECTIVES: {
     ],
     clients: ["MLINDA Charitable Trust", "Better World Foundation"],
     ask: "A film for our NGO",
+    hero: {
+      alt: "A child in a blue shirt, seen from above, drawing a school bag with ABC on it in chalk on the road",
+      tone: "dark",
+      words: "left",
+      top: "#282828",
+      fade: [0, 0.28],
+      wide: { src: "/brand/world-ngo-wide.webp", size: [1672, 941], focus: "72% 50%", subject: 1 },
+      tall: { src: "/brand/world-ngo-tall.webp", size: [941, 1671], subject: 0.54 },
+    },
   },
   {
     id: "corporate",
@@ -104,6 +134,20 @@ export const ABOUT_PERSPECTIVES: {
     ],
     clients: [],
     ask: "A film for our company",
+    hero: {
+      alt: "A man in a suit seen from behind, his jacket a collage of the work a company's films can show: farmers planting rice, students drumming, a crane in flight, women at work, a building among trees; a green field at his feet",
+      tone: "light",
+      words: "right",
+      top: "#f2ece9",
+      fade: [0.1, 0.28],
+      wide: {
+        src: "/brand/world-corporate-wide.webp",
+        size: [1672, 941],
+        focus: "40% 50%",
+        subject: 1,
+      },
+      tall: { src: "/brand/world-corporate-tall.webp", size: [941, 1672], subject: 0.68 },
+    },
   },
   {
     id: "government",
@@ -155,6 +199,20 @@ export const ABOUT_PERSPECTIVES: {
     ],
     clients: [],
     ask: "A film for our project",
+    hero: {
+      alt: "A city and its fields from above at dusk, roads of light running to a glowing map pin in the middle, the sun just set on the horizon",
+      tone: "dark",
+      words: "top",
+      top: "#023d79",
+      fade: [0, 0.3],
+      wide: {
+        src: "/brand/world-real-estate-wide.webp",
+        size: [1672, 941],
+        focus: "50% 70%",
+        subject: 0.53,
+      },
+      tall: { src: "/brand/world-real-estate-tall.webp", size: [941, 1672], subject: 0.47 },
+    },
   },
   {
     id: "university",
