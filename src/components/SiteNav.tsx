@@ -100,23 +100,57 @@ export function SiteNav() {
       </header>
 
       {/*
-        phones: the header along the bottom, a floating bar of frosted glass
-        with round corners (the same glass as the site's menus), clear of the
-        screen's edges and the home indicator
+        phones: the header along the bottom, a floating capsule of glass as
+        iPhone's (Liquid Glass), clear of the screen's edges and the home
+        indicator. Built in layers, so what's behind stays vivid: a clear,
+        lightly tinted frost (`GLASS.frost`); light across the glass, brighter
+        at the top and glowing at the foot (`GLASS.sheen`); a rim catching the
+        light, strongest top-left and bottom-right (`GLASS.rim`), with fine
+        highlights inside its edge; a soft shadow beneath. The page you're on
+        sits in a small glass lens of its own (TabLink).
       */}
       <nav
         data-site-nav
         aria-label={SITE.name}
         className={cn(
-          "fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+10px)] z-[60] flex h-[60px] overflow-hidden rounded-[26px] border px-1 ring-1 backdrop-saturate-[1.8] sm:hidden",
-          "shadow-[0_18px_40px_-14px_rgba(0,0,0,0.35),0_2px_6px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.8)]",
-          // lighter blur over the 3D gallery (cheaper on a phone)
-          isHome ? "backdrop-blur-md" : "backdrop-blur-2xl",
-          onDark
-            ? "border-white/15 bg-black/45 text-white ring-white/5"
-            : "border-white/70 bg-white/60 text-black ring-black/[0.05]",
+          "fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+10px)] z-[60] isolate flex h-[60px] rounded-full px-1.5 sm:hidden",
+          "shadow-[0_16px_36px_-14px_rgba(0,0,0,0.34),0_3px_10px_-4px_rgba(0,0,0,0.12)]",
+          onDark ? "text-white" : "text-black",
         )}
       >
+        {/* the frost: what's behind, blurred and a little richer, through a faint tint */}
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-0 -z-10 rounded-[inherit] backdrop-saturate-[1.9]",
+            // lighter blur over the 3D gallery (cheaper on a phone)
+            isHome ? "backdrop-blur-md" : "backdrop-blur-[18px]",
+            onDark
+              ? "bg-black/30 backdrop-brightness-[0.9]"
+              : "bg-white/[0.22] backdrop-brightness-[1.08]",
+          )}
+        />
+        {/* light across the glass: brighter at the top, a glow at the foot */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 rounded-[inherit]"
+          style={{ background: onDark ? GLASS.sheenDark : GLASS.sheen }}
+        />
+        {/* the rim: light catching the edge (top-left, bottom-right), and fine highlights inside it */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[inherit] p-px"
+          style={{ ...GLASS.rimMask, background: onDark ? GLASS.rimDark : GLASS.rim }}
+        />
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-0 rounded-[inherit]",
+            onDark
+              ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_-1px_0_rgba(255,255,255,0.08),inset_0_8px_14px_-10px_rgba(255,255,255,0.25)]"
+              : "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(255,255,255,0.4),inset_0_10px_16px_-12px_rgba(255,255,255,0.7),inset_0_-10px_16px_-12px_rgba(255,255,255,0.45)]",
+          )}
+        />
         <TabLink to="/" label="Home" on={path === "/"} onDark={onDark}>
           <img
             src="/brand/mark-nav.webp"
@@ -147,6 +181,25 @@ export function SiteNav() {
   );
 }
 
+/*
+  The phone bar's glass (as iPhone's): the light across it, and its rim (a
+  gradient border, drawn with a mask so only the 1 px edge shows).
+*/
+const GLASS = {
+  sheen:
+    "linear-gradient(180deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.12) 38%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.2) 100%)",
+  sheenDark:
+    "linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.03) 40%, rgba(255,255,255,0) 62%, rgba(255,255,255,0.06) 100%)",
+  rim: "linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0.35) 28%, rgba(255,255,255,0.12) 55%, rgba(255,255,255,0.75) 100%)",
+  rimDark:
+    "linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.05) 55%, rgba(255,255,255,0.3) 100%)",
+  rimMask: {
+    WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+    WebkitMaskComposite: "xor",
+    mask: "linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0)",
+  },
+} as const;
+
 function TabLink({
   to,
   label,
@@ -165,10 +218,28 @@ function TabLink({
       to={to}
       aria-current={on ? "page" : undefined}
       className={cn(
-        "press flex flex-1 flex-col items-center justify-center gap-1 transition-colors",
-        on ? (onDark ? "text-white" : "text-black") : onDark ? "text-white/55" : "text-neutral-500",
+        "press relative flex flex-1 flex-col items-center justify-center gap-1 transition-colors",
+        on
+          ? onDark
+            ? "text-white"
+            : "text-black"
+          : onDark
+            ? "text-white/60"
+            : "text-black/55 [text-shadow:0_1px_0_rgba(255,255,255,0.35)]",
       )}
     >
+      {/* the page you're on: a small lens of glass inside the bar */}
+      {on && (
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-x-1 inset-y-[5px] -z-10 rounded-full",
+            onDark
+              ? "bg-white/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.3),inset_0_0_0_0.5px_rgba(255,255,255,0.18)]"
+              : "bg-white/[0.42] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(255,255,255,0.5),inset_0_0_0_0.5px_rgba(255,255,255,0.7),0_2px_8px_-3px_rgba(0,0,0,0.12)]",
+          )}
+        />
+      )}
       {children}
       <span className="tracked text-[8.5px]">{label}</span>
       {/* a line of prism light under the page you're on */}
