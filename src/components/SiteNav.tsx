@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { SITE } from "@/content/site";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,11 @@ export function SiteNav() {
   // in a perspective's world (/about/<perspective>), About becomes the menu to change it
   const world = worldOf(path);
   const onDark = isHome && tone === "dark"; // the home page is light now unless it says otherwise
+  // the phone's bar: on the landing and the gallery, as they say; elsewhere it looks at what's
+  // behind it and turns to dark glass with white words over a dark picture, as iPhone's does
+  const bar = useRef<HTMLElement>(null);
+  const behindDark = useToneBehind(bar, !isHome, path);
+  const barDark = isHome ? onDark : behindDark;
 
   return (
     <>
@@ -110,58 +116,69 @@ export function SiteNav() {
         sits in a small glass lens of its own (TabLink).
       */}
       <nav
+        ref={bar}
         data-site-nav
         aria-label={SITE.name}
         className={cn(
-          "fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+10px)] z-[60] isolate flex h-[60px] rounded-full px-1.5 sm:hidden",
+          "fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+10px)] z-[60] isolate flex h-[60px] rounded-full px-1.5 transition-colors duration-300 sm:hidden",
           "shadow-[0_16px_36px_-14px_rgba(0,0,0,0.34),0_3px_10px_-4px_rgba(0,0,0,0.12)]",
-          onDark ? "text-white" : "text-black",
+          barDark ? "text-white" : "text-black",
         )}
       >
-        {/* the frost: what's behind, blurred and a little richer, through a faint tint */}
+        {/* the frost: what's behind, blurred and a little richer, through a faint tint (darker over dark) */}
         <span
           aria-hidden
           className={cn(
-            "pointer-events-none absolute inset-0 -z-10 rounded-[inherit] backdrop-saturate-[1.9]",
+            "pointer-events-none absolute inset-0 -z-10 rounded-[inherit] backdrop-saturate-[1.9] transition-[background-color,backdrop-filter] duration-300",
             // lighter blur over the 3D gallery (cheaper on a phone)
             isHome ? "backdrop-blur-md" : "backdrop-blur-[18px]",
-            onDark
-              ? "bg-black/30 backdrop-brightness-[0.9]"
+            barDark
+              ? "bg-black/[0.38] backdrop-brightness-[0.85]"
               : "bg-white/[0.22] backdrop-brightness-[1.08]",
           )}
         />
-        {/* light across the glass: brighter at the top, a glow at the foot */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 rounded-[inherit]"
-          style={{ background: onDark ? GLASS.sheenDark : GLASS.sheen }}
-        />
-        {/* the rim: light catching the edge (top-left, bottom-right), and fine highlights inside it */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-[inherit] p-px"
-          style={{ ...GLASS.rimMask, background: onDark ? GLASS.rimDark : GLASS.rim }}
-        />
-        <span
-          aria-hidden
-          className={cn(
-            "pointer-events-none absolute inset-0 rounded-[inherit]",
-            onDark
-              ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_-1px_0_rgba(255,255,255,0.08),inset_0_8px_14px_-10px_rgba(255,255,255,0.25)]"
-              : "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(255,255,255,0.4),inset_0_10px_16px_-12px_rgba(255,255,255,0.7),inset_0_-10px_16px_-12px_rgba(255,255,255,0.45)]",
-          )}
-        />
-        <TabLink to="/" label="Home" on={path === "/"} onDark={onDark}>
+        {/* light across the glass, the rim catching the light and fine highlights inside it:
+            the light glass and the dark, one fading into the other as what's behind changes */}
+        {[false, true].map((dark) => (
+          <span
+            key={String(dark)}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300"
+            style={{ opacity: dark === barDark ? 1 : 0 }}
+          >
+            <span
+              className="absolute inset-0 -z-10 rounded-[inherit]"
+              style={{ background: dark ? GLASS.sheenDark : GLASS.sheen }}
+            />
+            <span
+              className="absolute inset-0 rounded-[inherit] p-px"
+              style={{ ...GLASS.rimMask, background: dark ? GLASS.rimDark : GLASS.rim }}
+            />
+            <span
+              className={cn(
+                "absolute inset-0 rounded-[inherit]",
+                dark
+                  ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_-1px_0_rgba(255,255,255,0.08),inset_0_8px_14px_-10px_rgba(255,255,255,0.25)]"
+                  : "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(255,255,255,0.4),inset_0_10px_16px_-12px_rgba(255,255,255,0.7),inset_0_-10px_16px_-12px_rgba(255,255,255,0.45)]",
+              )}
+            />
+          </span>
+        ))}
+        <TabLink to="/" label="Home" on={path === "/"} onDark={barDark}>
           <img
             src="/brand/mark-nav.webp"
             alt=""
             width={45}
             height={84}
-            className={cn("h-[22px] w-auto transition", path !== "/" && "opacity-60 grayscale")}
+            className={cn(
+              "h-[22px] w-auto transition",
+              // not the page you're on: grey, or white over dark
+              path !== "/" && (barDark ? "opacity-80 brightness-0 invert" : "opacity-60 grayscale"),
+            )}
           />
         </TabLink>
         {LINKS.map((l) => (
-          <TabLink key={l.to} to={l.to} label={l.label} on={path.startsWith(l.to)} onDark={onDark}>
+          <TabLink key={l.to} to={l.to} label={l.label} on={path.startsWith(l.to)} onDark={barDark}>
             <svg
               aria-hidden
               viewBox="0 0 24 24"
@@ -224,8 +241,8 @@ function TabLink({
             ? "text-white"
             : "text-black"
           : onDark
-            ? "text-white/60"
-            : "text-black/55 [text-shadow:0_1px_0_rgba(255,255,255,0.35)]",
+            ? "text-white/75 [text-shadow:0_1px_2px_rgba(0,0,0,0.35)]"
+            : "text-black/65 [text-shadow:0_1px_0_rgba(255,255,255,0.35)]",
       )}
     >
       {/* the page you're on: a small lens of glass inside the bar */}
@@ -253,4 +270,134 @@ function TabLink({
       />
     </Link>
   );
+}
+
+/*
+  What's behind the phone's bar, light or dark (as iPhone's glass turns dark
+  over a dark picture). Looked at where the four tabs are: the topmost thing
+  under each that paints there decides: a part marked data-tone="dark" or
+  "light"; a photograph (the pixel under the tab, read from a small copy of
+  it, placed as object-fit and object-position place it); a film (dark); a
+  solid colour; nothing, the page's white. A drawing (a canvas) is passed
+  over for the photograph under it, which shows the same picture. Most of the
+  four wins (a tie keeps how it was); checked as you scroll, and twice a
+  second for what moves by itself. Phones only.
+*/
+const TONE = { dark: 0.6 }; // below this brightness (0 to 1), what's behind counts as dark
+
+function useToneBehind(bar: React.RefObject<HTMLElement | null>, enabled: boolean, path: string) {
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    if (!enabled) {
+      setDark(false);
+      return;
+    }
+    const phone = window.matchMedia("(max-width: 639px)");
+    let raf = 0;
+    const check = () => {
+      raf = 0;
+      const el = bar.current;
+      if (!el || !phone.matches) return setDark(false);
+      const r = el.getBoundingClientRect();
+      let d = 0;
+      let l = 0;
+      for (const f of [0.14, 0.38, 0.62, 0.86]) {
+        if (toneAt(r.left + r.width * f, r.top + r.height / 2) === "dark") d++;
+        else l++;
+      }
+      setDark((was) => (d === l ? was : d > l));
+    };
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(check);
+    };
+    kick();
+    window.addEventListener("scroll", kick, { passive: true });
+    window.addEventListener("resize", kick);
+    const timer = window.setInterval(kick, 500);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", kick);
+      window.removeEventListener("resize", kick);
+      clearInterval(timer);
+    };
+  }, [bar, enabled, path]);
+  return dark;
+}
+
+const luma = (r: number, g: number, b: number) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+
+function toneAt(x: number, y: number): "dark" | "light" {
+  for (const el of document.elementsFromPoint(x, y)) {
+    if (el.closest("[data-site-nav]")) continue;
+    const marked = el.closest<HTMLElement>("[data-tone]");
+    if (marked) return marked.dataset.tone === "dark" ? "dark" : "light";
+    if (el instanceof HTMLCanvasElement) continue;
+    if (el instanceof HTMLImageElement) {
+      const v = pixelLuma(el, x, y);
+      if (v !== null) return v < TONE.dark ? "dark" : "light";
+      continue;
+    }
+    if (el instanceof HTMLVideoElement || el instanceof HTMLIFrameElement) return "dark";
+    const c = getComputedStyle(el).backgroundColor.match(/[\d.]+/g);
+    if (c && (c[3] === undefined ? 1 : +c[3]) >= 0.5) {
+      return luma(+c[0], +c[1], +c[2]) < TONE.dark ? "dark" : "light";
+    }
+  }
+  return "light";
+}
+
+// small copies of the photographs looked at (null: another site's, which can't be read)
+const copies = new Map<string, { data: Uint8ClampedArray; w: number; h: number } | null>();
+
+function pixelLuma(img: HTMLImageElement, x: number, y: number): number | null {
+  const src = img.currentSrc || img.src;
+  const nw = img.naturalWidth;
+  const nh = img.naturalHeight;
+  if (!src || !img.complete || !nw || !nh) return null;
+  let copy = copies.get(src);
+  if (copy === undefined) {
+    try {
+      const w = 64;
+      const h = Math.max(1, Math.round((w * nh) / nw));
+      const cv = document.createElement("canvas");
+      cv.width = w;
+      cv.height = h;
+      const ctx = cv.getContext("2d", { willReadFrequently: true })!;
+      ctx.drawImage(img, 0, 0, w, h);
+      copy = { data: ctx.getImageData(0, 0, w, h).data, w, h };
+    } catch {
+      copy = null;
+    }
+    copies.set(src, copy);
+  }
+  if (!copy) return null;
+  // where (x, y) falls in the picture, as object-fit and object-position place it
+  const r = img.getBoundingClientRect();
+  const cs = getComputedStyle(img);
+  let sx = r.width / nw;
+  let sy = r.height / nh;
+  if (cs.objectFit === "cover") sx = sy = Math.max(sx, sy);
+  else if (cs.objectFit === "contain" || cs.objectFit === "scale-down") sx = sy = Math.min(sx, sy);
+  const [px = "50%", py = "50%"] = cs.objectPosition.split(" ");
+  const off = (v: string, room: number) =>
+    v.endsWith("%") ? (parseFloat(v) / 100) * room : parseFloat(v) || 0;
+  const u = (x - r.left - off(px, r.width - nw * sx)) / (nw * sx);
+  const v = (y - r.top - off(py, r.height - nh * sy)) / (nh * sy);
+  if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+  // a few pixels round the point
+  let sum = 0;
+  let n = 0;
+  const cx = Math.round(u * (copy.w - 1));
+  const cy = Math.round(v * (copy.h - 1));
+  for (let j = -1; j <= 1; j++) {
+    for (let i = -1; i <= 1; i++) {
+      const X = Math.min(copy.w - 1, Math.max(0, cx + i));
+      const Y = Math.min(copy.h - 1, Math.max(0, cy + j));
+      const k = (Y * copy.w + X) * 4;
+      if (copy.data[k + 3] < 128) continue;
+      sum += luma(copy.data[k], copy.data[k + 1], copy.data[k + 2]);
+      n++;
+    }
+  }
+  return n ? sum / n : null;
 }

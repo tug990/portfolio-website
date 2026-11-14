@@ -69,6 +69,9 @@ const FOCUS = [0.49, 0.52] as const;
 
 /* India's tricolour, as the line under the government initiatives' names (WorkUI.tsx ClientBadge). */
 const TRICOLOUR = "linear-gradient(90deg, #ff7a1a, #ffb27a 28%, #f3f1ea 50%, #86c98a 72%, #1e8a3c)";
+/* The shade of deeper sky behind the words, so they read clearly over bright cloud: darkest at their heart. */
+const WORDS_SHADE =
+  "radial-gradient(closest-side, rgba(6,24,70,0.5), rgba(6,24,70,0.3) 55%, rgba(6,24,70,0))";
 
 /* How it lifts. */
 const LIFT = {
@@ -500,19 +503,25 @@ export function WorkHero() {
           )}
         />
         {/* a breath of deeper sky behind the words */}
-        <span className="absolute inset-x-0 top-0 h-[45%] bg-gradient-to-b from-[rgba(8,30,80,0.32)] to-transparent" />
+        <span className="absolute inset-x-0 top-0 h-[50%] bg-gradient-to-b from-[rgba(8,30,80,0.4)] to-transparent" />
       </div>
 
       {/* the words, in the middle of the sky above the door (placed by layout): INDIA, large, on a
           line of the tricolour; our story, our identity, smaller; the words, smaller still */}
       <div
         ref={words}
-        className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+2.5rem)] flex flex-col items-center px-6 text-center text-white sm:top-[5.25rem]"
+        className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+2.5rem)] isolate flex flex-col items-center px-6 text-center text-white sm:top-[5.25rem]"
       >
-        <h1 className="flex flex-col items-center [text-shadow:0_1px_2px_rgba(0,20,60,0.4),0_2px_24px_rgba(0,20,60,0.45)]">
+        {/* a soft shade of deeper sky right behind them, so they read over any cloud or glare */}
+        <span
+          aria-hidden
+          className="absolute -inset-y-[30%] left-1/2 -z-10 w-[min(100%,62rem)] -translate-x-1/2 blur-2xl"
+          style={{ background: WORDS_SHADE }}
+        />
+        <h1 className="flex flex-col items-center [text-shadow:0_1px_2px_rgba(0,15,45,0.6),0_0_18px_rgba(0,15,45,0.35),0_4px_30px_rgba(0,15,45,0.4)]">
           <span className="inline-flex flex-col items-stretch">
             {/* (the left padding balances the spacing after the last letter, so it sits centred) */}
-            <span className="tracked pl-[0.32em] text-[clamp(2.5rem,5.2vw,4.5rem)] font-light leading-none">
+            <span className="tracked pl-[0.32em] text-[clamp(2.5rem,5.2vw,4.5rem)] font-normal leading-none">
               {WORK_PAGE.title}
             </span>
             {/* the tricolour, as on the government initiatives' badges */}
@@ -522,19 +531,20 @@ export function WorkHero() {
               style={{ background: TRICOLOUR }}
             />
           </span>
-          <span className="tracked mt-4 pl-[0.32em] text-[clamp(0.95rem,1.5vw,1.35rem)] font-light leading-snug">
+          {/* (phones: a little tighter, so it stays on one line) */}
+          <span className="tracked mt-4 whitespace-nowrap pl-[0.26em] text-[14px] font-normal leading-snug tracking-[0.26em] sm:pl-[0.32em] sm:text-[clamp(1rem,1.6vw,1.4rem)] sm:tracking-[0.32em]">
             {WORK_PAGE.tagline}
           </span>
         </h1>
-        <p className="mt-3 max-w-[34rem] text-[13px] leading-relaxed text-white/90 sm:text-[14px] [text-shadow:0_1px_2px_rgba(0,20,60,0.45),0_2px_18px_rgba(0,20,60,0.4)] lg:max-w-[56rem] lg:text-[15px]">
+        <p className="mt-4 max-w-[36rem] text-[15px] font-normal leading-relaxed text-white [text-shadow:0_1px_2px_rgba(0,15,45,0.65),0_0_14px_rgba(0,15,45,0.4),0_2px_24px_rgba(0,15,45,0.4)] sm:text-[16px] lg:max-w-[58rem] lg:text-[17px]">
           {WORK_PAGE.text}
         </p>
       </div>
 
       {/* how to go on, as the landing says how to enter */}
-      <p className="tracked pointer-events-none absolute inset-x-0 bottom-[calc(1.75rem+var(--dock,0px))] flex flex-col items-center gap-3 text-[10px] text-white/90 [text-shadow:0_1px_6px_rgba(0,0,0,0.45)]">
+      <p className="tracked pointer-events-none absolute inset-x-0 bottom-[calc(1.75rem+var(--dock,0px))] flex flex-col items-center gap-3 text-[11px] font-medium text-white [text-shadow:0_1px_2px_rgba(0,20,0,0.6),0_0_14px_rgba(0,20,0,0.55)]">
         {WORK_PAGE.hint}
-        <span className="h-8 w-px overflow-hidden bg-white/30">
+        <span className="h-8 w-px overflow-hidden bg-white/40 shadow-[0_0_6px_rgba(0,20,0,0.5)]">
           <span
             className="block h-1/2 w-full bg-white/90"
             style={{ animation: "hint-line 1.8s ease-in-out infinite" }}
