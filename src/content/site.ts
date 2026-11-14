@@ -6,12 +6,31 @@ export const SITE = {
   description:
     "Insight Lab is a non-fiction studio by Famecast. A portfolio of documentaries, series and stories rooted in what is real.",
   email: "info@insightlab.media",
+  // the phone number, as people should read it (e.g. "+91 98765 43210"): on the Contact page
+  // once it's filled in (left empty, it isn't shown)
+  phone: "",
   url: "https://example.com",
   socials: [
     { label: "Instagram", href: "https://instagram.com/" },
     { label: "LinkedIn", href: "https://linkedin.com/" },
     { label: "YouTube", href: "https://youtube.com/" },
   ],
+};
+
+/*
+  Contact page (/contact). Its hero (components/ContactHero.tsx): `eyebrow`
+  and `title` above the door, then the email and phone (SITE); `hint` at its
+  foot, to the form. The form below: `formEyebrow`, `formTitle`, `formIntro`;
+  `sent`: shown once someone's email app has opened with their message.
+*/
+export const CONTACT_PAGE = {
+  eyebrow: "Get in touch",
+  title: "Let us talk",
+  hint: "Write to us",
+  formEyebrow: "Write to us",
+  formTitle: "Start a conversation",
+  formIntro: "A few lines are enough: who you are, and the story you'd like to tell.",
+  sent: "Your email app has opened with your message. Press send there, and it's on its way to us.",
 };
 
 /* About page headline: each word hangs on its own card. */
