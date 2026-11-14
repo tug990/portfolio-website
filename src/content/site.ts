@@ -304,10 +304,17 @@ export const AWARDS: { name: string; result: string; year: number; project?: str
   { name: "Festival or award", result: "Nominee", year: 2024, project: "sample-short" },
 ];
 
-/* Work page (/projects): the words at the top. */
+/*
+  Work page (/projects). Its hero (components/work/WorkHero.tsx): `title`,
+  large, on a line of the tricolour; `tagline` under it, smaller; `text`,
+  smaller still; `hint` at the foot. `intro`: the page's description for
+  search engines.
+*/
 export const WORK_PAGE = {
-  eyebrow: "Our work",
-  headline: "Stories that\ncreate impact.", // \n: where the line breaks on wider screens
+  title: "India",
+  tagline: "Our Story – Our Identity",
+  text: "Insight Lab celebrates the soul of India through its people, culture, heritage, achievements and untold stories.",
+  hint: "Scroll",
   intro: "Documentaries, impact films and campaigns for people, communities and change.",
 };
 

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PROJECTS } from "@/content/projects";
+import { WorkHero } from "@/components/work/WorkHero";
 import { WORK_CLIENTS, WORK_PAGE } from "@/content/site";
 import {
   Check,
@@ -13,9 +14,8 @@ import {
   VideoCard,
   WorkBackdrop,
 } from "@/components/work/WorkUI";
-import { usePlayer } from "@/lib/player";
 import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
-import { UI, filmOf, hasFilm, kindOf, sortFilms, type SortKey } from "@/lib/work";
+import { UI, kindOf, sortFilms, type SortKey } from "@/lib/work";
 import { seo } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +26,7 @@ const KINDS = [...new Set(sortFilms(PROJECTS, "newest").map(kindOf).filter(Boole
 
 export const Route = createFileRoute("/projects/")({
   // ?client=<name>: only that client's films; ?kind=<kind>: one kind of film;
-  // ?q=<words>: searched for that (a film page's theme pills link here)
+  // ?q=<words>: films about that (a film page's theme pills link here)
   validateSearch: (s: Record<string, unknown>): Search => {
     const out: Search = {};
     if (typeof s.client === "string" && WORK_CLIENTS.some((c) => c.name === s.client))
@@ -40,12 +40,13 @@ export const Route = createFileRoute("/projects/")({
 });
 
 /*
-  The Work page, YouTube-like:
-    the banner (the prism picture, glowing; the headline; Play showreel)
-    YouTube's search box (titles, clients, kinds, themes)
+  The Work page (where the landing lands):
+    first the hero over the whole screen (components/work/WorkHero.tsx), lifted
+      away by a scroll (not when arriving filtered); then, YouTube-like:
     one line: PROJECTS (n) | Initiatives of: [a client's badge, or All] | Sort by: [...]
       (Initiatives of opens the clients' glass badges, site.ts WORK_CLIENTS;
       picking one shows only their films)
+    arriving from a film's theme (?q=): "Films about <theme>", to clear
     chips of the kinds of film (All, Documentary, Impact film…)
     the films as YouTube video cards: 1 across on phones (edge to edge), 2 on
       tablets, 3–4 on PC
@@ -55,11 +56,9 @@ export const Route = createFileRoute("/projects/")({
 function Work() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [query, setQuery] = useState(search.q ?? "");
-  // arriving with ?q= (a theme pill): search for it
-  useEffect(() => {
-    if (search.q) setQuery(search.q);
-  }, [search.q]);
+  const query = search.q ?? "";
+  // the hero, when you arrive at the Work page itself (not at a client's films or a theme)
+  const [hero] = useState(() => !search.client && !search.kind && !search.q);
   const [sort, setSort] = useState<SortKey>("newest");
   const set = (next: Search) => navigate({ search: next, replace: true, resetScroll: false });
 
@@ -83,13 +82,8 @@ function Work() {
 
   return (
     <WorkBackdrop>
-      <Banner />
-
-      <div className="mt-4 sm:mt-5">
-        <SearchBox value={query} onChange={setQuery} />
-      </div>
-
-      <section aria-labelledby="projects" className="mt-6">
+      {hero && <WorkHero />}
+      <section aria-labelledby="projects" className="mt-2 sm:mt-4">
         {/* One line: PROJECTS (n) on the left; Initiatives of and Sort by on the right */}
         <div className="relative z-20 flex items-center justify-between gap-2">
           <h2
@@ -106,6 +100,34 @@ function Work() {
             <SortMenu value={sort} onChange={setSort} />
           </div>
         </div>
+
+        {/* from a film's theme (?q=): what's shown, and a way back to everything */}
+        {search.q && (
+          <p
+            className="mt-4 flex flex-wrap items-center gap-2 text-[14px]"
+            style={{ color: MUTED }}
+          >
+            Films about
+            <button
+              type="button"
+              onClick={() => set({ ...search, q: undefined })}
+              aria-label={`Clear: films about ${search.q}`}
+              className="press flex h-8 items-center gap-1.5 rounded-full bg-[#0a0a0a] pl-3.5 pr-2.5 text-[13px] font-medium text-white"
+            >
+              {search.q}
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+              >
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </p>
+        )}
 
         {/* the kinds of film, as YouTube's chips */}
         <Scroller
@@ -327,165 +349,5 @@ function InitiativesFilter({
         </>
       )}
     </div>
-  );
-}
-
-/* ---------- the banner ---------- */
-
-/*
-  public/brand/work-header-{1400,2000,phone}.webp: sunrise over forested hills,
-  a glass prism splitting the light, with the prism's glow (the same picture,
-  blurred, its bright parts laid over in "screen", breathing: styles.css
-  prism-glow). The headline over the sunrise; Play showreel starts the
-  showreel in the mini player, so you can keep browsing.
-*/
-function Banner() {
-  const { play } = usePlayer();
-  const reel =
-    PROJECTS.find((p) => p.tags.includes("Showreel") && hasFilm(p)) ??
-    PROJECTS.find((p) => p.featured && hasFilm(p));
-  const film = reel && filmOf(reel);
-  const [first, ...rest] = WORK_PAGE.headline.split("\n");
-  return (
-    <header className="relative -mx-4 aspect-[16/8] overflow-hidden bg-[#1d1b2a] sm:mx-0 sm:aspect-[3.6/1] sm:rounded-2xl lg:aspect-[4.4/1]">
-      <HeaderPicture
-        eager
-        className="absolute inset-0 h-full w-full object-cover object-[70%_50%] lg:object-center"
-      />
-      <HeaderPicture
-        aria-hidden
-        className="prism-glow pointer-events-none absolute inset-0 h-full w-full object-cover object-[70%_50%] [mask-image:linear-gradient(90deg,transparent_30%,#000_60%)] lg:object-center"
-        style={{
-          filter: "blur(16px) brightness(0.72) contrast(2.3) saturate(1.7)",
-          mixBlendMode: "screen",
-          animation: "prism-glow 5s ease-in-out infinite",
-        }}
-      />
-      <span
-        aria-hidden
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(55% 95% at 15% 60%, rgba(8,6,18,0.55), transparent 75%), linear-gradient(90deg, rgba(8,6,18,0.45), transparent 60%)",
-        }}
-      />
-      <div className="absolute inset-y-0 left-0 flex max-w-[64%] flex-col justify-center px-5 text-white sm:max-w-[55%] sm:px-8 lg:px-10">
-        <p className="tracked text-[10px] font-semibold text-white/90 [text-shadow:0_1px_2px_rgba(0,0,0,0.5)] sm:text-[11px]">
-          {WORK_PAGE.eyebrow}
-        </p>
-        <p className="mt-1.5 text-[17px] font-normal uppercase leading-[1.3] tracking-[0.18em] [text-shadow:0_1px_2px_rgba(0,0,0,0.45),0_2px_18px_rgba(0,0,0,0.55)] sm:mt-2 sm:text-[22px] lg:text-[26px]">
-          {first}
-          {rest.length > 0 && (
-            <>
-              <br /> {rest.join(" ")}
-            </>
-          )}
-        </p>
-        {film && (
-          <button
-            type="button"
-            onClick={() => play(film)}
-            className="press mt-3 flex h-9 w-fit items-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 text-[13px] font-medium text-white backdrop-blur-md transition hover:bg-white/25 sm:mt-4"
-          >
-            <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-              <path d="M7 4.5v15l13-7.5z" />
-            </svg>
-            Play showreel
-          </button>
-        )}
-      </div>
-    </header>
-  );
-}
-
-/* The header picture: the phone crop on phones, else 1400 or 2000 px as the screen needs. */
-function HeaderPicture({
-  eager,
-  className,
-  style,
-  ...rest
-}: {
-  eager?: boolean;
-  className?: string;
-  style?: React.CSSProperties;
-  "aria-hidden"?: boolean;
-}) {
-  return (
-    <picture {...rest}>
-      <source media="(max-width: 639px)" srcSet="/brand/work-header-phone.webp" />
-      <img
-        src="/brand/work-header-1400.webp"
-        srcSet="/brand/work-header-1400.webp 1400w, /brand/work-header-2000.webp 2000w"
-        sizes="(min-width: 1320px) 1030px, 100vw"
-        width={2000}
-        height={667}
-        fetchPriority={eager ? "high" : undefined}
-        decoding="async"
-        alt=""
-        className={className}
-        style={style}
-      />
-    </picture>
-  );
-}
-
-/* ---------- search ---------- */
-
-/* YouTube's search: a long pill and a round-ended button with the magnifier. */
-function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <form
-      role="search"
-      onSubmit={(e) => e.preventDefault()}
-      className="flex w-full max-w-[640px] lg:mx-auto"
-    >
-      <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-l-full border border-[#0a0a0a]/15 bg-white pl-4 pr-2 shadow-[inset_0_1px_2px_rgba(20,23,46,0.06)] focus-within:border-black/40">
-        <span className="sr-only">Search films</span>
-        <input
-          type="search"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Search films, initiatives…"
-          className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#6b6b6b]/80 [&::-webkit-search-cancel-button]:hidden"
-        />
-        {value && (
-          <button
-            type="button"
-            aria-label="Clear"
-            onClick={() => onChange("")}
-            className="grid h-7 w-7 place-items-center rounded-full hover:bg-[#0a0a0a]/[0.07]"
-          >
-            <svg
-              aria-hidden
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-            >
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
-        )}
-      </label>
-      <button
-        type="submit"
-        aria-label="Search"
-        className="grid h-10 w-16 shrink-0 place-items-center rounded-r-full border border-l-0 border-[#0a0a0a]/15 bg-[#0a0a0a]/[0.05] transition hover:bg-[#0a0a0a]/[0.1]"
-      >
-        <svg
-          aria-hidden
-          viewBox="0 0 24 24"
-          className="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.9"
-          strokeLinecap="round"
-        >
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="M16 16l4.5 4.5" />
-        </svg>
-      </button>
-    </form>
   );
 }
