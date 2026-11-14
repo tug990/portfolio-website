@@ -31,6 +31,11 @@ export const CONTACT_PAGE = {
   formTitle: "Start a conversation",
   formIntro: "A few lines are enough: who you are, and the story you'd like to tell.",
   sent: "Your email app has opened with your message. Press send there, and it's on its way to us.",
+  // the testimonials' leather box (components/TestimonialDrawer.tsx): the words above it, the label on its front, the words on its strap
+  saidEyebrow: "What people say",
+  saidTitle: "In their words",
+  drawerLabel: "Testimonials",
+  drawerSub: "Client feedback",
 };
 
 /* About page headline: each word hangs on its own card. */
@@ -258,25 +263,71 @@ export const HISTORY: {
   },
 ];
 
-/* About page, "In their words". `image` is optional (a portrait in public/). */
+/*
+  "In their words": on the About page (a slideshow) and the Contact page (a
+  drawer of folders, one each). `image` is optional (a portrait in public/).
+  `highlight`: a few words of the quote, marked as with a highlighter on the
+  Contact page. `stars`: 1 to 5, shown on the Contact page (leave it out for
+  none). These are placeholders: replace them with what people really said.
+*/
 export const TESTIMONIALS: {
   quote: string;
+  highlight?: string;
   name: string;
   role: string;
   company: string;
+  stars?: number;
   image?: string;
 }[] = [
   {
-    quote: "Replace this with something a collaborator or client said about working with you.",
+    quote:
+      "Replace this with something a client said about working with you, in their own words. Two or three sentences are plenty.",
+    highlight: "in their own words",
     name: "Name Surname",
     role: "Role",
     company: "Company",
+    stars: 5,
   },
   {
-    quote: "A second quote. Keep each one to two or three sentences.",
+    quote:
+      "A second quote. Keep each one to two or three sentences, and choose a few words to mark, as here.",
+    highlight: "a few words to mark",
     name: "Name Surname",
     role: "Role",
     company: "Company",
+    stars: 5,
+  },
+  {
+    quote: "A third: what they came to you with, and what the film did for them.",
+    highlight: "what the film did",
+    name: "Name Surname",
+    role: "Role",
+    company: "Company",
+    stars: 5,
+  },
+  {
+    quote: "A fourth: how it felt to work together, from the first call to the premiere.",
+    highlight: "from the first call",
+    name: "Name Surname",
+    role: "Role",
+    company: "Company",
+    stars: 5,
+  },
+  {
+    quote: "A fifth: a moment of the shoot or the edit they still remember.",
+    highlight: "they still remember",
+    name: "Name Surname",
+    role: "Role",
+    company: "Company",
+    stars: 5,
+  },
+  {
+    quote: "A sixth: who they would tell about you, and why.",
+    highlight: "and why",
+    name: "Name Surname",
+    role: "Role",
+    company: "Company",
+    stars: 5,
   },
 ];
 
