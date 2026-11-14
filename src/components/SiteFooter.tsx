@@ -1,91 +1,152 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { CTA, SITE } from "@/content/site";
+import { FooterReveal } from "@/components/FooterReveal";
 
 /*
-  Footer for every page except the landing and the gallery: the gallery's
-  card (step inside, on a screen or in VR), a call to action, then the studio
-  name in huge type under a row of lights that switch on as it scrolls into view.
+  Footer for every page except the landing and the gallery (after
+  exquisite-road-005415.framer.app): the gallery's card (step inside, on a
+  screen or in VR); then the picture rising out of the page, the door of
+  light in the desert at night, where the cursor grows a green field through
+  (FooterReveal), and over it, in its night sky above the door, the call to
+  action large and bold, a small label and its links as little white chips
+  (Book a call, the email, Work, About, Contact); then the socials and the year.
 */
-const LIGHTS = 6;
+// (white, to read on the picture's night sky; they lean to a cursor coming near: MagneticLinks)
+const CHIP =
+  "press inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3.5 text-[12.5px] text-black transition-colors will-change-transform hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
+// their shadow, and a soft white glow that grows as the cursor comes near (--near: 0..1)
+const CHIP_GLOW = {
+  boxShadow:
+    "0 2px 10px -2px rgba(0,0,0,0.35), 0 0 calc(var(--near, 0) * 30px) calc(var(--near, 0) * 2px) rgba(255,255,255,calc(var(--near, 0) * 0.5))",
+} as const;
+
+/* How the chips answer a cursor coming near: tune here. */
+const MAGNET = {
+  reach: 160, // how far away (px) they start to notice it
+  pull: 12, // how far (px) they lean towards it, at most
+  grow: 0.07, // how much they grow, closest
+};
+
+/*
+  The footer's links, as chips that answer a cursor coming near: within
+  `reach`, each leans towards it (more the closer it is, never more than
+  `pull`), grows a little and glows; away, they ease back. Mouse and
+  trackpad only (on touch screens they just give as they're tapped); under
+  reduced motion they glow but don't move.
+*/
+function MagneticLinks({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || window.matchMedia("(hover: none)").matches) return;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const chips = [...root.querySelectorAll<HTMLElement>("[data-magnetic]")];
+    // (their lean is eased here, every frame: no transition on it, or it would trail behind)
+    chips.forEach((el) => (el.style.transition = "background-color 0.15s, color 0.15s"));
+    const at = chips.map(() => ({ x: 0, y: 0, n: 0 }));
+    let pointer: { x: number; y: number } | null = null;
+    let raf = 0;
+    const frame = () => {
+      raf = 0;
+      let moving = false;
+      chips.forEach((el, i) => {
+        const s = at[i];
+        let tx = 0;
+        let ty = 0;
+        let tn = 0;
+        if (pointer) {
+          // (its centre where it rests, without the lean it has now)
+          const r = el.getBoundingClientRect();
+          const dx = pointer.x - (r.left + r.width / 2 - s.x);
+          const dy = pointer.y - (r.top + r.height / 2 - s.y);
+          const d = Math.hypot(dx, dy);
+          const k = Math.max(0, 1 - d / MAGNET.reach);
+          tn = k * k * (3 - 2 * k);
+          if (!still) {
+            const lean = Math.min(MAGNET.pull, d * 0.3) * tn;
+            tx = (dx / Math.max(d, 1)) * lean;
+            ty = (dy / Math.max(d, 1)) * lean;
+          }
+        }
+        s.x += (tx - s.x) * 0.2;
+        s.y += (ty - s.y) * 0.2;
+        s.n += (tn - s.n) * 0.2;
+        if (Math.abs(tx - s.x) + Math.abs(ty - s.y) + Math.abs(tn - s.n) > 0.01) moving = true;
+        el.style.transform =
+          s.n > 0.002
+            ? `translate(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px) scale(${(1 + MAGNET.grow * s.n).toFixed(4)})`
+            : "";
+        el.style.setProperty("--near", s.n.toFixed(3));
+      });
+      if (moving) raf = requestAnimationFrame(frame);
+    };
+    const onMove = (e: PointerEvent) => {
+      const r = root.getBoundingClientRect();
+      const near =
+        e.clientX > r.left - MAGNET.reach &&
+        e.clientX < r.right + MAGNET.reach &&
+        e.clientY > r.top - MAGNET.reach &&
+        e.clientY < r.bottom + MAGNET.reach;
+      if (!near && !pointer) return;
+      pointer = near ? { x: e.clientX, y: e.clientY } : null;
+      if (!raf) raf = requestAnimationFrame(frame);
+    };
+    const onLeave = () => {
+      pointer = null;
+      if (!raf) raf = requestAnimationFrame(frame);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    document.documentElement.addEventListener("pointerleave", onLeave);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+      document.documentElement.removeEventListener("pointerleave", onLeave);
+    };
+  }, []);
+  return (
+    <nav
+      ref={ref}
+      aria-label="Get in touch"
+      className="mt-4 flex max-w-xl flex-wrap justify-center gap-2"
+    >
+      {children}
+    </nav>
+  );
+}
 
 export function SiteFooter() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [on, setOn] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(([e]) => setOn(e.isIntersecting), { threshold: 0.35 });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
   return (
     <footer className="overflow-hidden pt-16 sm:pt-20">
       <GalleryCard />
-      <div className="mx-auto mt-20 flex max-w-6xl flex-col gap-10 px-4 sm:mt-24 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
-        <h2 className="max-w-xl text-5xl font-medium leading-[0.95] tracking-tight sm:text-7xl">
+
+      {/* the picture, rising out of the page: the desert at night, a green field where the cursor
+          passes; over it, in its night sky above the door, the call to action, its label and links */}
+      <FooterReveal className="mt-20 h-[min(150vw,720px)] w-full bg-[#07090c] sm:mt-28 sm:h-[min(72vw,920px)]">
+        <h2 className="max-w-[15ch] text-balance text-[clamp(2.4rem,6.4vw,5.6rem)] font-semibold leading-[0.95] tracking-[-0.045em] text-white [text-shadow:0_2px_24px_rgba(0,0,0,0.45)]">
           {CTA.title}
         </h2>
-        <div className="flex flex-col gap-6 lg:items-end">
-          <div className="flex flex-wrap gap-2">
-            <a
-              href={CTA.call.href}
-              className="rounded-md bg-black/[0.05] px-4 py-2.5 text-sm transition-colors hover:bg-black/10"
-            >
-              {CTA.call.label} →
-            </a>
-            <a
-              href={`mailto:${SITE.email}`}
-              className="rounded-md bg-black/[0.05] px-4 py-2.5 text-sm transition-colors hover:bg-black/10"
-            >
-              {SITE.email} →
-            </a>
-          </div>
-          <nav className="flex gap-6 text-sm">
-            <Link to="/projects" className="hover:underline">
-              Work
-            </Link>
-            <Link to="/about" className="hover:underline">
-              About
-            </Link>
-            <Link to="/contact" className="hover:underline">
-              Contact
-            </Link>
-          </nav>
-        </div>
-      </div>
-
-      {/* The name, lit from above */}
-      <div ref={ref} className="relative mx-auto mt-20 max-w-[1600px] px-2">
-        <div className="relative flex justify-around px-[6%]" aria-hidden>
-          {Array.from({ length: LIGHTS }, (_, i) => (
-            <span key={i} className="relative h-1.5 w-[8%] rounded-full bg-black/80">
-              <span
-                className="absolute left-1/2 top-full h-[38vw] max-h-[520px] w-[16vw] -translate-x-1/2"
-                style={{
-                  clipPath: "polygon(30% 0, 70% 0, 100% 100%, 0 100%)",
-                  background:
-                    "linear-gradient(180deg, rgba(255,250,240,.95), rgba(255,250,240,.25) 70%, transparent)",
-                  opacity: on ? 1 : 0,
-                  transition: `opacity .9s ease ${on ? i * 120 : 0}ms`,
-                }}
-              />
-            </span>
-          ))}
-        </div>
-        <p
-          className="relative mt-[2vw] select-none whitespace-nowrap text-center font-medium leading-[0.8] tracking-[-0.04em]"
-          style={{
-            fontSize: "clamp(4rem, 17vw, 17rem)",
-            color: on ? "#0a0a0a" : "#e7e6e2",
-            transition: "color 1.2s ease .3s",
-          }}
-        >
-          {SITE.name}
+        <p className="mt-5 text-[15px] text-white/75 [text-shadow:0_1px_8px_rgba(0,0,0,0.5)]">
+          {CTA.label}
         </p>
-      </div>
+        <MagneticLinks>
+          <a href={CTA.call.href} className={CHIP} style={CHIP_GLOW} data-magnetic>
+            {CTA.call.label} <span aria-hidden>→</span>
+          </a>
+          <a href={`mailto:${SITE.email}`} className={CHIP} style={CHIP_GLOW} data-magnetic>
+            {SITE.email}
+          </a>
+          <Link to="/projects" className={CHIP} style={CHIP_GLOW} data-magnetic>
+            Work
+          </Link>
+          <Link to="/about" className={CHIP} style={CHIP_GLOW} data-magnetic>
+            About
+          </Link>
+          <Link to="/contact" className={CHIP} style={CHIP_GLOW} data-magnetic>
+            Contact
+          </Link>
+        </MagneticLinks>
+      </FooterReveal>
 
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-6 text-xs text-black/55 sm:px-6">
         <ul className="flex gap-5">

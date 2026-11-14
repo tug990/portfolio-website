@@ -425,8 +425,9 @@ export const WORK_CLIENTS: WorkClient[] = [
   },
 ];
 
-/* Footer call to action. */
+/* Footer: the big line over its picture, the small label under it, and the call. */
 export const CTA = {
   title: "Tell us the story you want to tell.",
+  label: "Start a conversation",
   call: { label: "Book a call", href: "mailto:info@insightlab.media?subject=A%20call" },
 };
