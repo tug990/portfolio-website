@@ -4,7 +4,7 @@ The map of this repo: what the site is, and which file owns what.
 **Read this before editing anything. Update it in the same change whenever you
 add, move, rename, delete, or change what a file is responsible for.**
 
-Last updated: 2026-11-13
+Last updated: 2026-11-14
 
 ---
 
@@ -19,8 +19,12 @@ The visitor experience, in order:
    prism light in the gap) on paper white, headline "Where the light comes
    through.", "Scroll to enter". One scroll (or swipe, click, arrow key)
    wakes it: its light bursts out, and you land on the Work page.
-2. **The Work page** (`/projects`), the site's home: the films, a YouTube-like
-   page with a mini player, and each film's page (`/projects/<slug>`).
+2. **The Work page** (`/projects`), the site's home: first a hero over the
+   whole screen, the door of light standing in a field at sunset, alive (wind
+   crossing the grass, clouds drifting, the sun's glow breathing), "India,
+   Our Story. Our Identity." at the top; a scroll lifts it away like a
+   curtain going up, onto the films, a YouTube-like page with a mini player;
+   and each film's page (`/projects/<slug>`).
 3. **The gallery** (`/gallery`, from the "Step into the light" card above
    every page's footer): a larger-than-life 3D world (three.js) to walk like a
    game, with every film in it, one building throughout (oak floors, crisp
@@ -119,7 +123,8 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | `favicon.png` | `routes/__root.tsx` |
 | `manifest.webmanifest` | Makes the site an app you can add to a phone's home screen (`__root.tsx` links it): name, opens at `/projects` in its own window (no browser bars), colours, icons |
 | `app/icon-192.png`, `app/icon-512.png`, `app/icon-maskable-512.png`, `app/apple-touch-icon.png` | The app's home-screen icons (the mark on the page colour; `maskable`: with room round it for Android's shapes; `apple-touch-icon`: iPhone) |
-| `brand/work-header-1400.webp`, `brand/work-header-2000.webp`, `brand/work-header-phone.webp` | The Work page's banner (`projects.index.tsx` `HeaderPicture`): 1400 / 2000 px for wider screens (47 / 74 KB), and for phones a full-resolution crop of the prism side (45 KB) |
+| `brand/work-hero-wide.webp`, `brand/work-hero-tablet.webp`, `brand/work-hero-phone.webp` | The Work page's hero (`WorkHero.tsx`), as supplied (not recompressed): 1672 × 941 for laptops, 1448 × 1086 for tablets, 1056 × 1490 for phones (the nearest to the screen's shape is used); where the door, the field, the treetops and the sun are in each: `SCENES` |
+| `brand/work-header-1400.webp`, `brand/work-header-2000.webp`, `brand/work-header-phone.webp` | **Unused** since the Work page's banner was removed: the old banner (sunrise over forested hills, a glass prism): 1400 / 2000 px for wider screens (47 / 74 KB), and for phones a full-resolution crop of the prism side (45 KB) |
 | `clients/marks/*.webp` | Each client's emblem exactly as on their badge (cut out, background removed; MLINDA and Better World: their whole logo). Used in their glass pill on the Work page (`ClientBadge`), and in a round avatar (`Avatar`) on cards and by a film's title |
 | `brand/logo-stacked.webp` | The landing logo artwork (`Gallery.tsx`, `LogoDoor.tsx`) |
 | `brand/mark-transparent.webp` | The logo inlaid on the prism plinth (`GalleryScene.ts`, shown large) |
@@ -137,7 +142,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | --- | --- |
 | `router.tsx` | Creates the TanStack router (scroll restoration, not-found, errors). |
 | `routeTree.gen.ts` | **Generated** by TanStack from `routes/`. Never edit by hand. |
-| `styles.css` | Tailwind 4 theme tokens, fonts, global styles, `.tracked` letter-spacing, `.press` (buttons and cards give a little as they're tapped), `--dock` (phones: the bottom bar's height; the page keeps that room, the mini player and gallery controls sit above it; a page marked `data-full-screen`, the About page's sky, runs on under the bar instead), app feel (no grey tap flash or double-tap delay on buttons and links, no long-press menu on pictures, no bounce past the page's ends once added to the home screen), keyframes (e.g. `hint-line`, `prism-glow`: the Work header's breathing glow, still under reduced motion), and the rule that hides the header during the way in (`html.journey [data-site-nav]`). |
+| `styles.css` | Tailwind 4 theme tokens, fonts, global styles, `.tracked` letter-spacing, `.press` (buttons and cards give a little as they're tapped), `--dock` (phones: the bottom bar's height; the page keeps that room, the mini player and gallery controls sit above it; a page marked `data-full-screen`, the About page's sky, runs on under the bar instead), app feel (no grey tap flash or double-tap delay on buttons and links, no long-press menu on pictures, no bounce past the page's ends once added to the home screen), keyframes (e.g. `hint-line`, `prism-glow`: the old Work banner's breathing glow (**unused** now), still under reduced motion), and the rule that hides the header during the way in (`html.journey [data-site-nav]`). |
 
 ### `src/routes/`: pages (one file = one URL)
 
@@ -146,7 +151,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | `__root.tsx` | all | HTML shell, app meta (viewport-fit=cover, theme colour, the manifest and home-screen icon, opening as its own app on iPhone and Android), fonts (Jost, the site's one typeface), favicon, `SiteNav`, `SiteFooter`, `Toaster`, `NotFound`, and the site's film player (`PlayerProvider` round everything, `MiniPlayer` once), so a film keeps playing across pages. Each page fades in as you arrive (keyed on the path). The footer shows on every page except the landing (`/`), the gallery (`/gallery`) and the About page's sky (`/about`). |
 | `index.tsx` | `/` | The landing: `<Gallery start="landing" />` (the logo; scrolling carries you to the Work page). Old `?work=<slug>` links redirect to `/projects/<slug>`. |
 | `gallery.tsx` | `/gallery` | The 3D gallery: `<Gallery start="room" />`; accepts `?work=<slug>` (a case study over the room). |
-| `projects.index.tsx` | `/projects` (`?client=<name>` shows that client's films, `?kind=<kind>` one kind, `?q=<words>` searched for that) | The Work page, YouTube-like: the banner (`HeaderPicture` with the prism's breathing glow, the headline (`WORK_PAGE`), Play showreel: starts it in the mini player), YouTube's search box (titles, clients, kinds, themes), one line with "Projects (n)", "Initiatives of:" and "Sort by:" (`InitiativesFilter`: a glass button showing the chosen client's badge or All, opening "All films" and each client's glass pill (`ClientBadge`, from `site.ts` `WORK_CLIENTS`) in a glass dropdown hung from the whole line, or on phones a glass panel rising from the bottom; picking one filters the films; `SortMenu`), chips of the kinds of film, and the films as YouTube video cards (one across, edge to edge, on phones; two on tablets; three or four on PC). On phones the labels hide and the buttons go compact so the line still fits at 320 px. |
+| `projects.index.tsx` | `/projects` (`?client=<name>` shows that client's films, `?kind=<kind>` one kind, `?q=<words>` films about that) | The Work page (where the landing lands): first the hero over the whole screen (`WorkHero`, components/work/WorkHero.tsx; not when arriving filtered, `?client=` / `?kind=` / `?q=`), lifted away by a scroll; then, YouTube-like, no banner and no search box: one line with "Projects (n)", "Initiatives of:" and "Sort by:" (`InitiativesFilter`: a glass button showing the chosen client's badge or All, opening "All films" and each client's glass pill (`ClientBadge`, from `site.ts` `WORK_CLIENTS`) in a glass dropdown hung from the whole line, or on phones a glass panel rising from the bottom; picking one filters the films; `SortMenu`); arriving from a film's theme pill (`?q=`), "Films about <theme>" with a button to clear it; chips of the kinds of film, and the films as YouTube video cards (one across, edge to edge, on phones; two on tablets; three or four on PC). On phones the labels hide and the buttons go compact so the line still fits at 320 px. |
 | `projects.$slug.tsx` | `/projects/<slug>` | A film's page reached directly: a normal page under the site header (`WorkBackdrop wide`), holding `CaseStudy`. (From the gallery the same page opens as a sheet over the room: `ProjectSheet`.) |
 | `about.index.tsx` | `/about` | The About page: the sky alone (`PerspectiveHero`: the door of light in the clouds, "Know us from the perspective of you", the picker), one screen, no footer. Choosing who you are carries you through the door into their world. |
 | `about.$perspective.tsx` | `/about/<perspective>` (`ngo`, `corporate`, `government`, `real-estate`, `university`) | A perspective's world, on the other side of the door (`PerspectiveWorld`), then the rest of the About sections (expertise, approach, testimonials, worked with, story, team, awards, FAQ). An unknown one is not found. |
@@ -156,7 +161,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 
 | File | What it holds |
 | --- | --- |
-| `site.ts` | Site name, tagline, description, socials, contact (email: info@insightlab.media), About page copy (the perspectives: `ABOUT_PERSPECTIVE_TITLE`, `ABOUT_PERSPECTIVES` with each one's words, three kinds of film, `clients` from `WORK_CLIENTS` and the email subject `ask`; headline, intro, expertise, numbers…), Work page copy (`WORK_PAGE`) and the clients (`WORK_CLIENTS`: `name`, emblem `mark` (`markIsLogo` when it's the whole logo), the words on their pill `small` / `big`, `rule` (tricolour or SIDHKOFED's), `color`, optional `about`; a film's `client` must match a name). |
+| `site.ts` | Site name, tagline, description, socials, contact (email: info@insightlab.media), About page copy (the perspectives: `ABOUT_PERSPECTIVE_TITLE`, `ABOUT_PERSPECTIVES` with each one's words, three kinds of film, `clients` from `WORK_CLIENTS` and the email subject `ask`; headline, intro, expertise, numbers…), the Work page's hero words (`WORK_PAGE`: `title`, `tagline`, `text`, `hint`) and description for search engines (`intro`) and the clients (`WORK_CLIENTS`: `name`, emblem `mark` (`markIsLogo` when it's the whole logo), the words on their pill `small` / `big`, `rule` (tricolour or SIDHKOFED's), `color`, optional `about`; a film's `client` must match a name). |
 | `projects.ts` | The `Project` type and the `PROJECTS` list: title, slug, year, format, tags, `client` (shows a film under that client's "Initiatives of" badge), `series` (the line under a card's title), `duration` (the time badge on its card), video/poster, `youtube` (a YouTube link: plays on the film's wall screen and in its case study), story, stills, quote, credits, `themes` ("In This Film", each with a `ThemeIcon`). Ends with 14 generated placeholders (`sample-film-07`…`20`) so the Work page lists 20, spread across the `WORK_CLIENTS` so every badge filters to something: **replace them before going live**, or "Sample Film" shows under real clients' names. `GALLERY_FILMS` (the first six: what hangs in the gallery), `getProject`, `nextProject` (**unused** since the film page lists More Projects). Every film is on `/projects` and at `/projects/<slug>`. |
 
 ### `src/lib/`: small helpers
@@ -192,6 +197,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 
 | File | What it does |
 | --- | --- |
+| `WorkHero.tsx` | **The Work page's hero**: the door of light in a field at sunset over the whole screen, alive, drawn by WebGL from the photograph (`SCENES`: the picture for each shape of screen and where its door, field, treetops and sun are) at the screen's resolution with bicubic sampling: wind crosses the grass in gusts from the right, as the grass in the photograph leans, plainly visible (in perspective: the nearer grass sways more, a steady breeze under the gusts, clumps flutter on their own, a lighter, warmer band rolls over the field where a gust bends it; how far and fast: the grass part of the shader `FS`), the clouds drift slowly left with the wind, the sun's glow breathes and its rays shimmer; the door and the trees stay still. The words in the sky above the door, never on it: INDIA large on a line of the tricolour (`TRICOLOUR`, as the government initiatives' badges), "Our Story – Our Identity" smaller under it, the words smaller still (`WORK_PAGE.title`, `tagline`, `text`); placed by `layout`, centred between the top (under the header on wider screens) and the door's top as it falls on that screen, the picture moved down just enough to give them room (beyond its top edge its sky carried on up, softened into its own deep blue: `SKY_ABOVE`, each scene's `top`); on a screen too short even so, the words a little smaller; "Scroll" at its foot. It lies over the films (fixed, under the header): scroll, swipe up, Space / ↓ / Enter or a click lifts it like a curtain going up (`LIFT`: `travel`, `parallax`: the scene inside rising slower, a shadow under its edge); let go part-way and it finishes, or falls back; at the top of the page a deliberate scroll up (or a pull down that starts at the top) brings it back down. Draws ~30 fps only while it's down; reduced motion or no WebGL: the still photograph. |
 | `ProjectSheet.tsx` | The sheet a film opens in over the gallery: the film flies from its wall position into place (FLIP), paper fades up, close (a white × in the corner) / Escape / Back fade it away. Lavender-white, scrolls as a whole, holds `CaseStudy`. |
 | `CaseStudy.tsx` | A film's page, as YouTube's watch page. PC: the film (`FilmBox`: cover and play button, then the site's player over it; a stand-in carries its title), its kind as a small grey label and the title in light wide-spaced capitals over a line of prism light (as the site sets its titles), the client's avatar and name with "Their films" (to the Work page filtered), and Share and WhatsApp (the mini player, full screen and keyboard list are on the film: `MiniPlayer.tsx` Controls; no YouTube link); the description in a white hairline box (year · kind · length · series; the themes it addresses as pill buttons, each opening the Work page searched for it; three lines; a black "Read more" / "Show less" button for the story, quote, stills, credits, about the client); beside it Up next (chips All / From <client>, small rows). Tablets: one column, Up next two across. Phones: the film edge to edge, the pills a row you swipe, Up next as full cards. In the gallery's sheet (it passes `heroRef`): room for the sheet's close button, and other films open in place (`onNext`). |
 | `FilmPlayer.tsx` | **Unused** since the film page plays YouTube with its own controls: the old case-study player (YouTube through the IFrame API behind custom controls, a video file, or a stand-in film, with an 8-frame filmstrip). |
@@ -215,7 +221,7 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 
 | To change… | Edit |
 | --- | --- |
-| Copy, socials, About text, Work page banner words | `src/content/site.ts` |
+| Copy, socials, About text | `src/content/site.ts` |
 | The About page's perspectives (who's listed, their words, their clients) | `src/content/site.ts` (`ABOUT_PERSPECTIVES`); the sky and picker, the clouds' flow and the mist (`SkyFlow`, `SkyMist`), going through the door, each world's light and layout: `src/components/AboutSections.tsx` (`PerspectiveHero`, `SkyMist`, `PerspectivePicker`, `enter`, `SKY_DOOR`, `WORLD_LIGHT`, `PerspectiveWorld`); their icons and the switcher (header on large screens, sticky bar on phones): `src/components/PerspectiveMenu.tsx` |
 | Add / edit a project, or its film / YouTube link | `src/content/projects.ts` |
 | Clients ("Initiatives of" pills, avatars, a film's client) | `WORK_CLIENTS` in `src/content/site.ts`, emblems in `public/clients/marks/` (and each film's `client` in `projects.ts`) |
@@ -233,7 +239,8 @@ Vercel deploys `main` automatically. `.claude/launch.json` (not committed) has
 | Room architecture, lights, post-processing, where the prism stands | `src/components/gallery3d/GalleryScene.ts` |
 | Prism plinth and its glass, cove light, wall finish | `src/components/gallery3d/warmset.ts` |
 | Floor stone | `src/components/gallery3d/marble.ts` |
-| The Work page (banner, search, Initiatives of, Sort by, chips, grid) | `src/routes/projects.index.tsx`; its cards, chips, avatars, colours: `src/components/work/WorkUI.tsx` |
+| The Work page's hero (its words, pictures, how the grass, clouds and sun move, how it lifts) | words: `WORK_PAGE` in `src/content/site.ts`; pictures: `public/brand/work-hero-*.webp`; the rest: `src/components/work/WorkHero.tsx` (`SCENES`, the shader `FS`, `LIFT`) |
+| The Work page (Initiatives of, Sort by, chips, grid) | `src/routes/projects.index.tsx`; its cards, chips, avatars, colours: `src/components/work/WorkUI.tsx` |
 | A film's page (YouTube's watch page) | `src/components/work/CaseStudy.tsx` |
 | Case-study open/close animation | `src/components/work/ProjectSheet.tsx` |
 | The mini player (look, size, corner) | `src/components/MiniPlayer.tsx`; what's playing: `src/lib/player.tsx` |
