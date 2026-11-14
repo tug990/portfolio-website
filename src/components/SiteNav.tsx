@@ -43,8 +43,12 @@ export function SiteNav() {
   // the phone's bar: on the landing and the gallery, as they say; elsewhere it looks at what's
   // behind it and turns to dark glass with white words over a dark picture, as iPhone's does
   const bar = useRef<HTMLElement>(null);
-  const behindDark = useToneBehind(bar, !isHome, path);
+  const behindDark = useToneBehind(bar, !isHome, path, PHONE);
   const barDark = isHome ? onDark : behindDark;
+  // the top bar (tablets and up) does the same: dark glass, white words, over a dark picture
+  const top = useRef<HTMLElement>(null);
+  const topBehind = useToneBehind(top, !isHome, path, WIDER);
+  const topDark = isHome ? onDark : topBehind;
 
   return (
     <>
@@ -54,9 +58,10 @@ export function SiteNav() {
         className="fixed inset-x-0 top-[calc(1rem+env(safe-area-inset-top))] z-30 hidden px-4 sm:block"
       >
         <nav
+          ref={top}
           className={cn(
-            "relative isolate mx-auto flex h-14 max-w-5xl items-center justify-between rounded-xl border px-4 transition-colors",
-            onDark
+            "relative isolate mx-auto flex h-14 max-w-5xl items-center justify-between rounded-xl border px-4 transition-colors duration-300",
+            topDark
               ? "border-white/10 bg-black/40 text-white"
               : isHome
                 ? "border-black/5 bg-white/80 text-black"
@@ -90,11 +95,11 @@ export function SiteNav() {
                     to={l.to}
                     className={cn(
                       "tracked text-[11px] transition-colors",
-                      onDark
-                        ? "text-white/55 hover:text-white"
+                      topDark
+                        ? "text-white/70 hover:text-white"
                         : "text-neutral-500 hover:text-black",
                     )}
-                    activeProps={{ className: onDark ? "!text-white" : "!text-black" }}
+                    activeProps={{ className: topDark ? "!text-white" : "!text-black" }}
                   >
                     {l.label}
                   </Link>
@@ -281,23 +286,32 @@ function TabLink({
   solid colour; nothing, the page's white. A drawing (a canvas) is passed
   over for the photograph under it, which shows the same picture. Most of the
   four wins (a tie keeps how it was); checked as you scroll, and twice a
-  second for what moves by itself. Phones only.
+  second for what moves by itself, on the screens where that bar shows
+  (`screens`): the bottom bar on phones, the top bar on wider screens.
 */
 const TONE = { dark: 0.6 }; // below this brightness (0 to 1), what's behind counts as dark
 
-function useToneBehind(bar: React.RefObject<HTMLElement | null>, enabled: boolean, path: string) {
+const PHONE = "(max-width: 639px)"; // where the bottom bar shows
+const WIDER = "(min-width: 640px)"; // where the top bar shows
+
+function useToneBehind(
+  bar: React.RefObject<HTMLElement | null>,
+  enabled: boolean,
+  path: string,
+  screens: string,
+) {
   const [dark, setDark] = useState(false);
   useEffect(() => {
     if (!enabled) {
       setDark(false);
       return;
     }
-    const phone = window.matchMedia("(max-width: 639px)");
+    const shown = window.matchMedia(screens);
     let raf = 0;
     const check = () => {
       raf = 0;
       const el = bar.current;
-      if (!el || !phone.matches) return setDark(false);
+      if (!el || !shown.matches) return setDark(false);
       const r = el.getBoundingClientRect();
       let d = 0;
       let l = 0;
@@ -320,7 +334,7 @@ function useToneBehind(bar: React.RefObject<HTMLElement | null>, enabled: boolea
       window.removeEventListener("resize", kick);
       clearInterval(timer);
     };
-  }, [bar, enabled, path]);
+  }, [bar, enabled, path, screens]);
   return dark;
 }
 

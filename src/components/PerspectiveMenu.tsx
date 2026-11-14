@@ -91,13 +91,13 @@ export function PerspectiveSwitch({
         className={cn(
           "flex items-center outline-none focus-visible:ring-2 focus-visible:ring-[#6d7bff]/50",
           nav
-            ? "tracked gap-1.5 rounded-md text-[11px] text-black"
+            ? "tracked gap-1.5 rounded-md text-[11px] text-inherit" // the header's colour: black, or white when it's dark
             : "h-10 min-w-0 max-w-full gap-2 rounded-full px-3 text-[14px] font-medium text-black/85",
         )}
       >
         {nav ? (
           <>
-            About <span className="text-black/30">·</span> {p.label}
+            About <span className="opacity-30">·</span> {p.label}
           </>
         ) : (
           <>
