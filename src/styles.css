@@ -14,14 +14,21 @@
   --color-ink: var(--foreground);
 }
 
-/* Design tokens: white, ink black, and a prism of light. */
+/* Design tokens: white, ink black, and a prism of light; the site's lines are India's tricolour. */
 :root {
   --background: #fcfcfc;
   --foreground: #0a0a0a;
   --muted: #f1f1f0;
   --muted-foreground: #6b6b6b;
   --border: #e6e6e6;
+  /* the light (the logo's door, glows, dots): blue, white, amber */
   --prism: linear-gradient(90deg, #1f2cff 0%, #2bb8ff 30%, #ffffff 50%, #ff8a1f 72%, #ff3d1f 100%);
+  /* every line (rules under titles, progress, the menu's underline…): saffron, white, green,
+     as the Work page's flag line; `-v` runs top to bottom, for upright lines */
+  --tricolour: linear-gradient(90deg, #ff7a1a, #ffb27a 28%, #f3f1ea 50%, #86c98a 72%, #1e8a3c);
+  --tricolour-v: linear-gradient(180deg, #ff7a1a, #ffb27a 28%, #f3f1ea 50%, #86c98a 72%, #1e8a3c);
+  /* a raised surface on the page (a film's description box, pills) */
+  --card: #ffffff;
 }
 
 @layer base {
@@ -185,9 +192,10 @@
     text-transform: uppercase;
     letter-spacing: 0.3em;
   }
+  /* the line under a title (the name is from when it was the prism's; it's the tricolour now) */
   .prism-rule {
     height: 1px;
-    background: var(--prism);
+    background: var(--tricolour);
   }
 }
 

@@ -223,7 +223,7 @@ export function Approach() {
                 <span
                   aria-hidden
                   className="absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2"
-                  style={{ background: "var(--prism)" }}
+                  style={{ background: "var(--tricolour)" }}
                 />
               </span>
             </p>
@@ -443,7 +443,10 @@ export function Story() {
             </span>
             <span
               className="w-[2px] transition-all duration-500"
-              style={{ height: j === i ? 40 : 20, background: j === i ? "var(--prism)" : "#0003" }}
+              style={{
+                height: j === i ? 40 : 20,
+                background: j === i ? "var(--tricolour-v)" : "#0003",
+              }}
             />
           </button>
         ))}
@@ -1162,7 +1165,7 @@ function PerspectivePicker({
         <span
           aria-hidden
           className="pointer-events-none absolute inset-x-8 -bottom-1 h-3 rounded-full opacity-60 blur-md"
-          style={{ background: "var(--prism)" }}
+          style={{ background: "var(--tricolour)" }}
         />
       )}
       <button

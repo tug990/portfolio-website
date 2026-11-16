@@ -264,14 +264,14 @@ function TabLink({
       )}
       {children}
       <span className="tracked text-[8.5px]">{label}</span>
-      {/* a line of prism light under the page you're on */}
+      {/* a line of the tricolour under the page you're on */}
       <span
         aria-hidden
         className={cn(
           "h-[2px] w-5 rounded-full transition-opacity",
           on ? "opacity-100" : "opacity-0",
         )}
-        style={{ background: "var(--prism)" }}
+        style={{ background: "var(--tricolour)" }}
       />
     </Link>
   );
