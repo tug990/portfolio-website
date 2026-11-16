@@ -163,7 +163,8 @@ export function Expertise() {
   const item = EXPERTISE[active];
   return (
     <section ref={ref} style={{ height: `${n * 70 + 40}vh` }}>
-      <div className="sticky top-0 flex h-screen flex-col px-4 pt-28 sm:px-6">
+      {/* (the screen's height as an iPhone shows it with its toolbars, clear of the phone's bottom bar) */}
+      <div className="sticky top-0 flex h-screen flex-col px-4 pb-[var(--dock,0px)] pt-28 supports-[height:100svh]:h-svh sm:px-6">
         <SectionHead kicker="What we bring to the table" title="Expertise" />
         <div className="grid flex-1 items-center gap-10 lg:grid-cols-[1.2fr_1fr]">
           <ol className="space-y-1">

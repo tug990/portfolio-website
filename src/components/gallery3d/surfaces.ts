@@ -101,7 +101,9 @@ export function plaster(color = 0xf3f1ec) {
         "#include <common>",
         /* glsl */ `#include <common>
         varying vec3 vPlPos;
-        float plHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+        // (a hash without sin(): sin of large numbers is too rough on phone GPUs, an iPhone's above all,
+        // and turns the fine stipple into sparkles where light falls)
+        float plHash(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
         float plNoise(vec3 p) {
           vec3 i = floor(p), f = fract(p);
           vec3 u = f * f * (3.0 - 2.0 * f);

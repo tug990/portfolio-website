@@ -178,20 +178,23 @@ export const roomSpots = (zA: number, perRoom: number[]) =>
 
 /* A soft oval of light, for where a spotlight lands on a wall */
 function lightPoolTexture() {
+  // (light as grey on black, no transparency: Safari keeps a see-through canvas premultiplied, and
+  // un-premultiplied for a texture its faintest edges turn to stray coloured specks, which the
+  // pool's added light makes plain on an iPhone; grey values are read as they are, not as sRGB)
   const c = document.createElement("canvas");
   c.width = 256;
   c.height = 256;
-  const x = c.getContext("2d")!;
+  const x = c.getContext("2d", { alpha: false })!;
+  x.fillStyle = "#000";
+  x.fillRect(0, 0, 256, 256);
   const g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0, "rgba(255,255,255,0.95)");
-  g.addColorStop(0.35, "rgba(255,255,255,0.55)");
-  g.addColorStop(0.7, "rgba(255,255,255,0.14)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
+  g.addColorStop(0, "rgb(242,242,242)");
+  g.addColorStop(0.35, "rgb(140,140,140)");
+  g.addColorStop(0.7, "rgb(36,36,36)");
+  g.addColorStop(1, "rgb(0,0,0)");
   x.fillStyle = g;
   x.fillRect(0, 0, 256, 256);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return new THREE.CanvasTexture(c);
 }
 
 /* A band (a ribbon) along a curve, `width` wide, turning `twists` times round its length */
@@ -1099,7 +1102,15 @@ export function buildWorld(
     const yaw = side < 0 ? Math.PI / 2 : -Math.PI / 2;
     const paintC = tone(client.color, 0.32, 0.22);
     const lacquerC = tone(client.color, 0.15, 0.45);
-    const paint = new THREE.MeshStandardMaterial({ color: paintC, roughness: 0.93 });
+    // (drawn a hair in front of the wall in depth too, so a phone's coarser depth never lets the
+    // plaster show through)
+    const paint = new THREE.MeshStandardMaterial({
+      color: paintC,
+      roughness: 0.93,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -2,
+    });
     keep(paint);
 
     /* the walls: the corridor wall with a doorway in the room's middle; its near and far walls (a

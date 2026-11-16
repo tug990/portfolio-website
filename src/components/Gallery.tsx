@@ -606,7 +606,14 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     const s = scene.current;
     const T = !!tunnel.current;
     const e = T ? band(p, THRESHOLD) : 0; // without the corridor the logo stays put
-    const s0 = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
+    // (on a tall phone the logo is kept just small enough that the words under it clear "Scroll
+    // to enter" at the foot, above the phone's bottom bar)
+    const fit =
+      s.text && s.hint
+        ? (s.hint.offsetTop - 20 - s.text.offsetHeight - 34 - H * 0.4) / (686 - LOGO.center.y)
+        : Infinity;
+    const base = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
+    const s0 = Math.max(base * 0.55, Math.min(base, fit));
     const zoomOf = (x: number) => Math.exp(Math.log(T ? DOOR_ZOOM : 120) * Math.pow(x, 1.7));
     const zoom = zoomOf(e);
     // The 3D doors take over at the size the logo has reached
