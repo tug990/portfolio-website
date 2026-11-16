@@ -11,15 +11,14 @@ import { cn } from "@/lib/utils";
   shimmering; the door itself stands still and sharp. The words at the top,
   in the middle (WORK_PAGE).
 
-  It lies over the films: scroll (wheel, trackpad, a swipe up on a phone),
-  Space, ↓, Enter or a click lifts it away like a curtain going up (the
-  scene inside rising a little slower, a shadow under its edge), and the
-  films are there. Back at the top of the page, scroll up and it comes down
-  again. Let go part-way and it finishes (or falls back, barely moved).
+  It's the top of the Work page, and the films follow straight on under it
+  on the same page: it stops a little short of the screen's foot so the
+  Projects line shows below it (`PEEK`), and as the page scrolls the scene
+  inside rises a little slower than the page and the words fade (`DEPTH`).
 
   One WebGL drawing of the photograph (public/brand/work-hero-*.webp: the
   one nearest the screen's shape), at the screen's resolution with bicubic
-  sampling so it stays sharp, ~30 frames a second while it's down. Under
+  sampling so it stays sharp, ~30 frames a second while it's on screen. Under
   reduced motion, or without WebGL, the still photograph.
 */
 
@@ -73,11 +72,12 @@ const TRICOLOUR = "linear-gradient(90deg, #ff7a1a, #ffb27a 28%, #f3f1ea 50%, #86
 const WORDS_SHADE =
   "radial-gradient(closest-side, rgba(6,24,70,0.5), rgba(6,24,70,0.3) 55%, rgba(6,24,70,0))";
 
-/* How it lifts. */
-const LIFT = {
-  travel: 1.1, // screens of scrolling to lift it fully
-  parallax: 0.35, // the scene inside rises this much slower than its frame
-};
+/* How much of the page under it shows at the screen's foot (px): the Projects line, so it's plain
+   the films are right there. */
+const PEEK = 92;
+/* As the page scrolls: how much slower the scene inside moves than the page, and over how much of
+   its height the words fade. */
+const DEPTH = { parallax: 0.35, words: 0.6 };
 
 const FS = /* glsl */ `
 precision highp float;
@@ -256,22 +256,16 @@ export function WorkHero() {
     void document.fonts?.ready.then(layout);
     window.addEventListener("resize", layout);
 
-    /* ---- lifting ---- */
-    // already down the page (come back to it): it starts lifted
-    let goal = window.scrollY > 10 ? 1 : 0;
-    let p = goal;
-    let idle = 0;
-    let lastScroll = 0;
-    const place = () => {
-      el.style.transform = p ? `translate3d(0, ${-p * 100}%, 0)` : "";
-      inner.style.transform = p ? `translate3d(0, ${p * LIFT.parallax * 100}%, 0)` : "";
-      text.style.opacity = String(Math.max(0, 1 - p * 1.8));
-      el.style.boxShadow = p > 0.001 && p < 1 ? "0 24px 60px -10px rgba(10,20,40,0.35)" : "";
-      const up = p >= 0.999;
-      el.style.visibility = up ? "hidden" : "";
-      el.inert = up;
+    /* ---- as the page scrolls: the scene inside rises slower than the page, the words fade ---- */
+    const scrolled = () => {
+      if (still) return;
+      const r = el.getBoundingClientRect();
+      const y = Math.min(Math.max(-r.top, 0), r.height);
+      inner.style.transform = y ? `translate3d(0, ${y * DEPTH.parallax}px, 0)` : "";
+      text.style.opacity = y ? String(Math.max(0, 1 - y / (r.height * DEPTH.words))) : "";
     };
-    place();
+    scrolled();
+    window.addEventListener("scroll", scrolled, { passive: true });
 
     /* ---- the living picture ---- */
     const gl = still ? null : cv.getContext("webgl", { antialias: false, alpha: false });
@@ -353,134 +347,45 @@ export function WorkHero() {
       }
     }
 
-    /* ---- the frame loop: the picture while it's down, the lift while it moves ---- */
+    /* ---- the frame loop: the living picture, while it's on screen ---- */
     let raf = 0;
-    let last = performance.now();
     let lastDraw = 0;
-    const kick = () => {
-      if (!raf) raf = requestAnimationFrame(frame_);
-    };
-    const frame_ = (now: number) => {
+    let seen = true;
+    const tick = (now: number) => {
       raf = 0;
-      const dt = Math.min(0.2, (now - last) / 1000); // (real time, so a slow device still lifts it on time)
-      last = now;
-      // let go part-way: it finishes lifting, or falls back if barely moved
-      if (idle && now - idle > 420) {
-        idle = 0;
-        goal = goal > 0.1 ? 1 : 0;
-      }
-      if (still) p = goal;
-      else p += (goal - p) * (1 - Math.exp(-dt * 5));
-      if (Math.abs(goal - p) < 0.0008) p = goal;
-      place();
-      if (p < 0.999 && now - lastDraw > 32) {
+      if (!seen) return;
+      if (now - lastDraw > 32) {
         lastDraw = now;
         draw(now);
       }
-      if (p < 0.999 || p !== goal) kick();
+      raf = requestAnimationFrame(tick);
     };
-    kick();
+    const start = () => {
+      if (gl && seen && !raf) raf = requestAnimationFrame(tick);
+    };
+    const watch = new IntersectionObserver(([e]) => {
+      seen = !!e?.isIntersecting;
+      start();
+    });
+    watch.observe(el);
+    start();
 
-    /* ---- hands ---- */
-    const lift = () => {
-      goal = 1;
-      idle = 0;
-      kick();
-    };
-    const lower = () => {
-      goal = 0;
-      idle = 0;
-      kick();
-    };
-    const down = () => goal < 1 || p < 0.999;
-    const onWheel = (e: WheelEvent) => {
-      // over the hero: it lifts instead of the page scrolling
-      e.preventDefault();
-      const unit = e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? window.innerHeight : 1;
-      goal = Math.min(
-        1,
-        Math.max(0, goal + (e.deltaY * unit) / (window.innerHeight * LIFT.travel)),
-      );
-      idle = performance.now();
-      kick();
-    };
-    // at the top of the page, a deliberate scroll up brings it back down
-    const onPageWheel = (e: WheelEvent) => {
-      if (down() || e.deltaY > -2 || window.scrollY > 0) return;
-      if (performance.now() - lastScroll < 300) return; // still coasting up from below
-      lower();
-    };
-    const onScroll = () => {
-      lastScroll = performance.now();
-      if (window.scrollY > 2 && goal < 1) lift(); // the page moved (its scrollbar, a jump): lift it
-    };
-    let touch: { y: number; goal: number; moved: boolean; atTop: boolean } | null = null;
-    const onTouchStart = (e: TouchEvent) => {
-      touch = { y: e.touches[0].clientY, goal, moved: false, atTop: window.scrollY <= 0 };
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (!touch) return;
-      const dy = touch.y - e.touches[0].clientY;
-      if (Math.abs(dy) > 8) touch.moved = true;
-      if (down()) {
-        goal = Math.min(1, Math.max(0, touch.goal + dy / (window.innerHeight * 0.85)));
-        idle = 0;
-        kick();
-      } else if (touch.atTop && window.scrollY <= 0 && dy < -70) lower(); // pulled down at the top
-    };
-    const onTouchEnd = () => {
-      if (!touch) return;
-      const t = touch;
-      touch = null;
-      if (!t.moved || !down()) return;
-      goal = goal > t.goal + 0.05 ? 1 : goal < t.goal - 0.05 ? 0 : goal > 0.1 ? 1 : 0;
-      kick();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      const el2 = e.target as HTMLElement | null;
-      if (el2?.closest("input, textarea, select, [contenteditable]")) return;
-      if (
-        down() &&
-        [" ", "ArrowDown", "PageDown", "Enter"].includes(e.key) &&
-        !el2?.closest("a, button")
-      ) {
-        e.preventDefault();
-        lift();
-      } else if (!down() && window.scrollY <= 0 && ["ArrowUp", "PageUp"].includes(e.key)) {
-        e.preventDefault();
-        lower();
-      }
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    el.addEventListener("click", lift);
-    window.addEventListener("wheel", onPageWheel, { passive: true });
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    window.addEventListener("touchend", onTouchEnd);
-    window.addEventListener("keydown", onKey);
     return () => {
       cancelAnimationFrame(raf);
-      el.removeEventListener("wheel", onWheel);
-      el.removeEventListener("click", lift);
-      window.removeEventListener("wheel", onPageWheel);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
-      window.removeEventListener("keydown", onKey);
+      watch.disconnect();
+      window.removeEventListener("scroll", scrolled);
       window.removeEventListener("resize", layout);
       gl?.getExtension("WEBGL_lose_context")?.loseContext();
     };
   }, []);
 
   return (
-    // (sized to the screen itself rather than inset-0: while the page fades in, its wrapper is
-    // briefly transformed, which would measure a fixed element against the whole page)
-    <div
+    // (the screen's height, less the phone's bottom bar and the peek at the Projects line below)
+    <section
       ref={frame}
-      className="fixed left-0 top-0 z-[25] h-screen w-full touch-none supports-[height:100dvh]:h-[100dvh] select-none overflow-hidden bg-[#0058a8] will-change-transform"
-      style={{ cursor: "pointer" }}
+      aria-label={WORK_PAGE.title}
+      className="relative h-[calc(100vh-var(--dock,0px)-var(--peek))] min-h-[440px] w-full select-none overflow-hidden bg-[#0058a8] supports-[height:100svh]:h-[calc(100svh-var(--dock,0px)-var(--peek))]"
+      style={{ ["--peek" as string]: `${PEEK}px` }}
     >
       <div ref={scene} aria-hidden className="absolute inset-0">
         {/* the still photograph (until the living one is ready, or where it can't be) */}
@@ -542,7 +447,7 @@ export function WorkHero() {
       </div>
 
       {/* how to go on, as the landing says how to enter */}
-      <p className="tracked pointer-events-none absolute inset-x-0 bottom-[calc(1.75rem+var(--dock,0px))] flex flex-col items-center gap-3 text-[11px] font-medium text-white [text-shadow:0_1px_2px_rgba(0,20,0,0.6),0_0_14px_rgba(0,20,0,0.55)]">
+      <p className="tracked pointer-events-none absolute inset-x-0 bottom-6 flex flex-col items-center gap-3 text-[11px] font-medium text-white [text-shadow:0_1px_2px_rgba(0,20,0,0.6),0_0_14px_rgba(0,20,0,0.55)]">
         {WORK_PAGE.hint}
         <span className="h-8 w-px overflow-hidden bg-white/40 shadow-[0_0_6px_rgba(0,20,0,0.5)]">
           <span
@@ -551,6 +456,6 @@ export function WorkHero() {
           />
         </span>
       </p>
-    </div>
+    </section>
   );
 }

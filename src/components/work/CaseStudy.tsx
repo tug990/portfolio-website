@@ -219,7 +219,7 @@ function Actions({ project }: { project: Project }) {
 
 /*
   The description, in a white box: a first line (year, kind, length,
-  series), the themes it addresses as pill buttons (each shows the Work page
+  series, where it was filmed), the themes it addresses as pill buttons (each shows the Work page
   searched for it), three lines of the summary and opening, and "Read more"
   for the rest: the story, a quote, stills, credits, about the client.
 */
@@ -245,7 +245,7 @@ function Description({ project }: { project: Project }) {
     >
       <p className="text-[13px]" style={{ color: MUTED }}>
         <span className="font-medium text-[#0a0a0a]">
-          {[project.year, kindOf(project), project.duration, project.series]
+          {[project.year, kindOf(project), project.duration, project.series, project.place]
             .filter(Boolean)
             .join(" · ")}
         </span>

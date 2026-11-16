@@ -24,16 +24,26 @@ export const PRISM = "var(--prism)";
 
 /*
   The page both sit on: the site's near-white. `wide`: a film's page
-  (YouTube's watch page runs wider). Phones keep a 16 px edge, which films
-  and cards run out over (edge to edge).
+  (YouTube's watch page runs wider). `flush`: with the Work page's hero
+  above it, so no room is kept at its top for the header. Phones keep a
+  16 px edge, which films and cards run out over (edge to edge).
 */
-export function WorkBackdrop({ children, wide }: { children: ReactNode; wide?: boolean }) {
+export function WorkBackdrop({
+  children,
+  wide,
+  flush,
+}: {
+  children: ReactNode;
+  wide?: boolean;
+  flush?: boolean;
+}) {
   return (
     <div className="relative overflow-x-clip bg-[#fcfcfc]" style={{ ...UI, color: INK }}>
       <div
         className={cn(
           // phones: the header is at the bottom (SiteNav), so the page starts at the top
-          "relative mx-auto px-4 pb-16 pt-[calc(env(safe-area-inset-top)+12px)] sm:px-6 sm:pt-[92px] lg:px-8",
+          "relative mx-auto px-4 pb-16 sm:px-6 lg:px-8",
+          flush ? "pt-5 sm:pt-7" : "pt-[calc(env(safe-area-inset-top)+12px)] sm:pt-[92px]",
           wide ? "max-w-[1720px]" : "max-w-[1320px]",
         )}
       >
