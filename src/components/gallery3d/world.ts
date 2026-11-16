@@ -34,10 +34,14 @@ import type { Surfaces } from "./surfaces";
       benches facing the Threshold; the exhibition title over the balcony
     THE GRAND STAIRCASE: oak, 8 m wide, glass sides and oak rails
     THE UPPER FLOOR (oak floor at 6 m)
-      the balcony; the corridor with a room for each initiative (their films
-      lit by track spots, their emblem, a sculpture, a bench, their name over
-      the door); and at the end, the last hall: the Spectrum (tubes of
-      coloured light, after Dan Flavin) between two doors, About and Contact
+      the balcony; the corridor with a room for each client behind a closed
+      door lacquered in their colour, their emblem on it in a brass-ringed
+      medallion, their name in gold (it swings open as you come near); each
+      room painted a deep, quiet shade of their colour, as deep as its films
+      need, their emblem on an ivory panel facing the door, their films lit
+      by track spots round the walls, a sculpture, a bench; and at the end,
+      the last hall: the Spectrum (tubes of coloured light, after Dan Flavin)
+      between two doors, About and Contact
 */
 
 export const ATRIUM = { W: 30, D: 30, H: 16 };
@@ -81,48 +85,94 @@ export type Place = { name: string; x: number; y: number; z: number; yaw: number
 /* The doors out, at the end: to the About and Contact pages */
 export type WorldDoor = { x: number; z: number; label: string; to: "/about" | "/contact" };
 
-/* The rooms upstairs: which side, how far back, their middle */
-export function roomFrame(zA: number, r: number) {
-  const zU = zA - ATRIUM.D; // where the upper floor begins
-  const side = r % 2 === 0 ? -1 : 1; // alternate left, right, so neighbours face each other
-  const k = Math.floor(r / 2);
-  const z1 = zU - UPPER.balcony - k * UPPER.roomD; // the room's near edge
-  const zc = z1 - UPPER.roomD / 2;
-  const x0 = side < 0 ? -ATRIUM.W / 2 : UPPER.corridor;
-  const x1 = side < 0 ? -UPPER.corridor : ATRIUM.W / 2;
-  return { side, k, z1, z0: z1 - UPPER.roomD, zc, x0, x1, xc: (x0 + x1) / 2 };
-}
-/* Where the rooms end (the last hall begins), and where the upper floor ends */
-export const roomsEnd = (zA: number, rooms: number) =>
-  zA - ATRIUM.D - UPPER.balcony - Math.ceil(rooms / 2) * UPPER.roomD;
-export const upperEnd = (zA: number, rooms: number) => roomsEnd(zA, rooms) - UPPER.end;
+/*
+  The rooms upstairs, one per client, either side of the corridor (`roomPlan`).
+  Each is as deep as its films need (`ROOM`): they hang on its side walls first
+  (the far wall, then the near, three to a wall at most), then either side of
+  the client's emblem on the outer wall, the wall you face as you come in.
+  Each room goes on whichever side of the corridor has gone less far, so both
+  sides keep pace; a side that ends sooner is closed by a plain wall.
+*/
+export const ROOM = {
+  spacing: 3.4, // between films' middles (m)
+  scale: 1.25, // films hang a little larger than in the hall
+  perWall: 3, // films on each side wall at most
+  feature: 5, // the emblem's share of the outer wall (m)
+  minDepth: 9,
+  door: 2.8, // the doorway's width (m); 3.3 high
+};
+export type RoomFrame = {
+  side: -1 | 1; // which side of the corridor (-1: left)
+  first: boolean; // the first room on its side (its near wall is its own)
+  z1: number; // its near wall (towards the atrium)
+  z0: number; // its far wall
+  zc: number;
+  x0: number;
+  x1: number;
+  xc: number;
+  cx: number; // the corridor wall's middle
+  depth: number;
+  spots: RoomSpot[]; // where its films hang, in the order you walk round
+};
 
-/* Where the films of each room hang: on its outer wall, side by side */
-export function roomSpots(zA: number, perRoom: number[]) {
-  const spots: RoomSpot[] = [];
-  perRoom.forEach((n, r) => {
-    const f = roomFrame(zA, r);
-    const wallX = f.side * (ATRIUM.W / 2);
-    const nx = -f.side; // facing into the room
-    for (let j = 0; j < n; j++) {
-      const off = n === 1 ? 0 : (j - (n - 1) / 2) * 3.4;
-      // facing +x (left wall): your right is -z; facing -x: +z (as in the hall)
-      spots.push({
-        scale: 1.25,
-        x: wallX,
-        y: UPPER.y,
-        z: f.zc - off * f.side,
-        yaw: nx > 0 ? Math.PI / 2 : -Math.PI / 2,
-        face: nx > 0 ? Math.PI / 2 : -Math.PI / 2,
-        nx,
-        nz: 0,
-        tx: 0,
-        tz: nx > 0 ? -1 : 1,
-      });
-    }
-  });
-  return spots;
+/* a film on a wall: its middle on the wall's face, facing out along (nx, nz) */
+function spotOn(x: number, z: number, nx: number, nz: number): RoomSpot {
+  const face = Math.atan2(nx, nz);
+  // (to your right as you face it)
+  return { scale: ROOM.scale, x, y: UPPER.y, z, yaw: face, face, nx, nz, tx: nz, tz: -nx };
 }
+
+export function roomPlan(zA: number, perRoom: number[]) {
+  const zStart = zA - ATRIUM.D - UPPER.balcony;
+  const gone = { [-1]: 0, [1]: 0 } as Record<-1 | 1, number>;
+  const rooms: RoomFrame[] = perRoom.map((n) => {
+    const onSides = Math.min(n, ROOM.perWall * 2);
+    const flank = Math.ceil((n - onSides) / 2); // films each side of the emblem
+    // (the last film each side of the emblem: its middle, its half and its label, then room to
+    // spare before the corner, where the side wall's last film hangs)
+    const reach = ROOM.feature / 2 + ROOM.spacing / 2 + (flank - 1) * ROOM.spacing + 3.8;
+    const depth = Math.max(ROOM.minDepth, flank ? 2 * reach : 0);
+    const side: -1 | 1 = gone[-1] <= gone[1] ? -1 : 1;
+    const first = gone[side] === 0;
+    const z1 = zStart - gone[side];
+    gone[side] += depth;
+    const z0 = z1 - depth;
+    const zc = (z1 + z0) / 2;
+    const x0 = side < 0 ? -ATRIUM.W / 2 : UPPER.corridor;
+    const x1 = side < 0 ? -UPPER.corridor : ATRIUM.W / 2;
+    const xc = (x0 + x1) / 2;
+    // round the room as you walk it: the far wall (from the corridor out), the outer wall either
+    // side of the emblem (far to near), the near wall (from the outer wall back)
+    const spots: RoomSpot[] = [];
+    const along = (m: number) =>
+      Array.from({ length: m }, (_, j) => (j - (m - 1) / 2) * ROOM.spacing);
+    const far = Math.ceil(onSides / 2);
+    const near = onSides - far;
+    const out = (o: number) => side * o; // further from the corridor
+    along(far)
+      .sort((a, b) => a - b)
+      .forEach((o) => spots.push(spotOn(xc + out(o), z0 + 0.15, 0, 1)));
+    const outer = n - onSides;
+    const flanks: number[] = [];
+    for (let j = 0; j < flank; j++) {
+      const o = ROOM.feature / 2 + ROOM.spacing / 2 + j * ROOM.spacing;
+      flanks.push(-o);
+      if (flanks.length < outer) flanks.push(o);
+    }
+    flanks
+      .slice(0, outer)
+      .sort((a, b) => a - b)
+      .forEach((o) => spots.push(spotOn(side * (ATRIUM.W / 2), zc + o, -side, 0)));
+    along(near)
+      .sort((a, b) => b - a)
+      .forEach((o) => spots.push(spotOn(xc + out(o), z1 - 0.15, 0, -1)));
+    return { side, first, z1, z0, zc, x0, x1, xc, cx: side * UPPER.corridor, depth, spots };
+  });
+  return { rooms, end: zStart - Math.max(gone[-1], gone[1]), gone, zStart };
+}
+/* Where the films of the rooms hang, room by room */
+export const roomSpots = (zA: number, perRoom: number[]) =>
+  roomPlan(zA, perRoom).rooms.flatMap((r) => r.spots);
 
 /* ---------- helpers ---------- */
 
@@ -190,7 +240,8 @@ export function buildWorld(
     hallW: number;
     clients: WorkClient[];
     aniso: number;
-    filmSpots: RoomSpot[];
+    /* how many films each client's room holds (in the order of `clients`) */
+    perRoom: number[];
     /* the building's surfaces, shared with the hall (surfaces.ts) */
     surfaces: Surfaces;
   },
@@ -201,15 +252,16 @@ export function buildWorld(
   const H = ATRIUM.H;
   const zC = zA - ATRIUM.D / 2; // the atrium's middle
   const zB = zA - ATRIUM.D; // its back (where the upper floor begins)
-  const zR = roomsEnd(zA, clients.length); // the last hall begins
-  const zEnd = upperEnd(zA, clients.length);
+  const plan = roomPlan(zA, o.perRoom);
+  const zR = plan.end; // the last hall begins
+  const zEnd = zR - UPPER.end;
   const yU = UPPER.y;
   const zones: Zone[] = [];
   const colliders: Collider[] = [];
   const floors: THREE.Mesh[] = [];
   const places: Place[] = [];
   const doors: WorldDoor[] = [];
-  const animate: ((t: number) => void)[] = [];
+  const animate: ((t: number, eye?: THREE.Vector3) => void)[] = [];
   const benches: {
     x: number;
     z: number;
@@ -896,14 +948,30 @@ export function buildWorld(
   scene.add(warmUp);
   places.push({ name: "The balcony", x: 0, y: yU, z: zB - 1.6, yaw: 0 });
 
-  /* ---------- the rooms, one per initiative ---------- */
-  const doorW = 3.0;
+  /* ---------- the rooms, one per client ---------- */
+  const doorW = ROOM.door;
+  const doorH = 3.3;
   const laylight = new THREE.MeshBasicMaterial({
     color: new THREE.Color(1, 0.98, 0.95).multiplyScalar(1.15),
     toneMapped: false,
   });
   const prismKnotGeo = new THREE.TorusKnotGeometry(0.34, 0.055, 220, 14, 2, 3);
   keep(laylight, prismKnotGeo);
+  // a client's colour, as a deep, quiet paint (`l`: how light; `s`: how strong at most)
+  const tone = (hex: string, l: number, s: number) => {
+    const hsl = { h: 0, s: 0, l: 0 };
+    new THREE.Color(hex).getHSL(hsl, THREE.SRGBColorSpace);
+    return new THREE.Color().setHSL(hsl.h, Math.min(hsl.s, s), l, THREE.SRGBColorSpace);
+  };
+  const css = (c: THREE.Color) => `#${c.getHexString(THREE.SRGBColorSpace)}`;
+  // the doors, opening as you come near: each its leaf, its hinge, how open (0 to 1)
+  const roomDoors: { leaf: THREE.Group; side: -1 | 1; x: number; z: number; open: number }[] = [];
+  const brassEdge = new THREE.MeshStandardMaterial({
+    color: 0xb8925a,
+    metalness: 1,
+    roughness: 0.32,
+  });
+  keep(brassEdge);
 
   /* a sculpture on a stone plinth, a different one in each room */
   const sculpture = (r: number, x: number, z: number) => {
@@ -979,25 +1047,112 @@ export function buildWorld(
     m.rotation.y = facing;
   };
 
-  clients.forEach((client, r) => {
-    const f = roomFrame(zA, r);
-    const cx = f.side * UPPER.corridor; // the corridor-side wall
-    const yaw = f.side < 0 ? Math.PI / 2 : -Math.PI / 2;
-    // the corridor wall, with a doorway in the middle of the room
+  /* a client's mark, drawn into a canvas (centred in a box), once it has loaded */
+  const drawMark = (
+    g: CanvasRenderingContext2D,
+    img: HTMLImageElement,
+    cx: number,
+    cy: number,
+    maxW: number,
+    maxH: number,
+  ) => {
+    const k = Math.min(maxW / img.width, maxH / img.height);
+    g.drawImage(
+      img,
+      cx - (img.width * k) / 2,
+      cy - (img.height * k) / 2,
+      img.width * k,
+      img.height * k,
+    );
+  };
+  const spacedLines = (name: string, per: number) => {
+    const lines: string[] = [];
+    for (const wd of name.toUpperCase().split(" ")) {
+      const last = lines[lines.length - 1];
+      if (last && (last + " " + wd).length <= per) lines[lines.length - 1] = last + " " + wd;
+      else lines.push(wd);
+    }
+    return lines.slice(0, 3).map((ln) => ln.split("").join(" "));
+  };
+  /* lines of words in a box: the largest size (up to `size`) at which the widest fits `maxW` */
+  const fitFont = (g: CanvasRenderingContext2D, lines: string[], size: number, maxW: number) => {
+    let px = size;
+    for (; px > 20; px -= 2) {
+      g.font = `300 ${px}px Jost, ui-sans-serif, system-ui`;
+      if (Math.max(...lines.map((l) => g.measureText(l).width)) <= maxW) break;
+    }
+    return px;
+  };
+  const prismRule = (g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+    const grad = g.createLinearGradient(x, 0, x + w, 0);
+    ["#1f2cff", "#2bb8ff", "#ffffff", "#ff8a1f", "#ff3d1f"].forEach((col, k) =>
+      grad.addColorStop(k / 4, col),
+    );
+    g.fillStyle = grad;
+    g.fillRect(x, y, w, h);
+  };
+
+  plan.rooms.forEach((f, r) => {
+    const client = clients[r]!;
+    const { side, cx } = f;
+    const inward = side; // from the corridor into the room
+    const yaw = side < 0 ? Math.PI / 2 : -Math.PI / 2;
+    const paintC = tone(client.color, 0.32, 0.22);
+    const lacquerC = tone(client.color, 0.15, 0.45);
+    const paint = new THREE.MeshStandardMaterial({ color: paintC, roughness: 0.93 });
+    keep(paint);
+
+    /* the walls: the corridor wall with a doorway in the room's middle; its near and far walls (a
+       room's near wall is the far wall of the room before it on its side: drawn once) */
     wall(cx, f.z1, cx, f.zc + doorW / 2, yU, yU + UPPER.H);
     wall(cx, f.zc - doorW / 2, cx, f.z0, yU, yU + UPPER.H);
-    wall(cx, f.zc + doorW / 2, cx, f.zc - doorW / 2, yU + 3.3, yU + UPPER.H, 0.3, false);
+    wall(cx, f.zc + doorW / 2, cx, f.zc - doorW / 2, yU + doorH, yU + UPPER.H, 0.3, false);
     blockAt(cx - 0.3, cx + 0.3, f.zc + doorW / 2 - 0.15, f.z1 + 0.3, 1);
     blockAt(cx - 0.3, cx + 0.3, f.z0 - 0.3, f.zc - doorW / 2 + 0.15, 1);
-    // its near and far walls (a room's near wall is its neighbour's far wall: drawn once)
-    for (const zz of f.k === 0 ? [f.z1, f.z0] : [f.z0]) wall(f.x0, zz, f.x1, zz, yU, yU + UPPER.H);
+    for (const zz of f.first ? [f.z1, f.z0] : [f.z0]) wall(f.x0, zz, f.x1, zz, yU, yU + UPPER.H);
     for (const zz of [f.z1, f.z0])
       blockAt(Math.min(f.x0, f.x1), Math.max(f.x0, f.x1), zz - 0.3, zz + 0.3, 1);
 
+    /* painted in the client's colour, deep and quiet, as museums paint a room for its collection
+       (a skin just proud of each wall's inner face, the shadow gap at the foot left showing) */
+    const skin = (
+      w: number,
+      h: number,
+      x: number,
+      y: number,
+      z: number,
+      nx: number,
+      nz: number,
+    ) => {
+      const m = plane(w, h, paint);
+      m.position.set(x + nx * 0.002, y, z + nz * 0.002);
+      m.rotation.y = Math.atan2(nx, nz);
+    };
+    const inner = Math.abs(f.x1 - f.x0) - 0.15; // corridor wall's face to the outer wall
+    const xMid = cx + inward * (0.15 + inner / 2);
+    const hy = UPPER.H - 0.04;
+    const ym = yU + 0.04 + hy / 2;
+    skin(inner, hy, xMid, ym, f.z0 + 0.15, 0, 1);
+    skin(inner, hy, xMid, ym, f.z1 - 0.15, 0, -1);
+    skin(f.depth - 0.3, hy, side * (ATRIUM.W / 2), ym, f.zc, -side, 0);
+    const cf = cx + inward * 0.15; // the corridor wall's face, inside
+    const nearLen = f.z1 - 0.15 - (f.zc + doorW / 2);
+    const farLen = f.zc - doorW / 2 - (f.z0 + 0.15);
+    skin(nearLen, hy, cf, ym, f.zc + doorW / 2 + nearLen / 2, inward, 0);
+    skin(farLen, hy, cf, ym, f.z0 + 0.15 + farLen / 2, inward, 0);
+    skin(doorW, UPPER.H - doorH, cf, yU + doorH + (UPPER.H - doorH) / 2, f.zc, inward, 0);
+
+    // its light: warm and soft from the laylight above, one lamp for every ten metres or so of room
+    const lamps = Math.max(1, Math.round(f.depth / 10));
+    for (let k = 0; k < lamps; k++) {
+      const l = new THREE.PointLight(0xffe2c4, 22, 15, 1.4);
+      l.position.set(f.xc, yU + UPPER.H - 0.7, f.z1 - ((k + 0.5) * f.depth) / lamps);
+      scene.add(l);
+    }
     // its light ceiling: a laylight of diffusing glass in a fine frame, softly lighting the room
     const lw = Math.abs(f.x1 - f.x0) - 1.2;
-    const ld = UPPER.roomD - 1.2;
-    const ceil = plane(Math.abs(f.x1 - f.x0), UPPER.roomD, ceilMat);
+    const ld = f.depth - 1.2;
+    const ceil = plane(Math.abs(f.x1 - f.x0), f.depth, ceilMat);
     ceil.rotation.x = Math.PI / 2;
     ceil.position.set(f.xc, yU + UPPER.H + 0.01, f.zc);
     const lay = plane(lw, ld, laylight);
@@ -1005,88 +1160,247 @@ export function buildWorld(
     lay.position.set(f.xc, yU + UPPER.H - 0.01, f.zc);
     for (let k = 1; k < 4; k++)
       box(0.04, 0.03, ld, darkMetal, f.xc - lw / 2 + (k * lw) / 4, yU + UPPER.H - 0.03, f.zc);
-    for (let k = 1; k < 3; k++)
-      box(lw, 0.03, 0.04, darkMetal, f.xc, yU + UPPER.H - 0.03, f.zc - ld / 2 + (k * ld) / 3);
+    const bays = Math.max(3, Math.round(ld / 3));
+    for (let k = 1; k < bays; k++)
+      box(lw, 0.03, 0.04, darkMetal, f.xc, yU + UPPER.H - 0.03, f.zc - ld / 2 + (k * ld) / bays);
 
-    // the client's emblem, large on the far wall, their name under it
-    const c = document.createElement("canvas");
-    c.width = 1024;
-    c.height = 1280;
-    const x = c.getContext("2d")!;
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = o.aniso;
-    const draw = (img?: HTMLImageElement) => {
-      x.fillStyle = "#fbfaf7";
-      x.fillRect(0, 0, 1024, 1280);
-      if (img) {
-        const h = client.markIsLogo ? 300 : 640;
-        const w0 = (img.width / img.height) * h;
-        const w = Math.min(w0, 860);
-        const hh = (w / w0) * h;
-        x.drawImage(img, 512 - w / 2, 120 + (640 - hh) / 2, w, hh);
+    /* the emblem, facing you as you come in: on an ivory panel in a fine brass frame in the middle
+       of the outer wall, its name under it and a line of prism light, washed with light */
+    {
+      const c = document.createElement("canvas");
+      c.width = 1024;
+      c.height = 1280;
+      const g = c.getContext("2d")!;
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = o.aniso;
+      const draw = (img?: HTMLImageElement) => {
+        g.fillStyle = "#f7f3ea";
+        g.fillRect(0, 0, 1024, 1280);
+        if (img)
+          drawMark(g, img, 512, 450, client.markIsLogo ? 860 : 620, client.markIsLogo ? 300 : 620);
+        g.fillStyle = "#1b1712";
+        g.textAlign = "center";
+        const lines = spacedLines(client.name, 14);
+        const px = fitFont(g, lines, 62, 880);
+        lines.forEach((ln, k) => g.fillText(ln, 512, 900 + k * px * 1.4));
+        prismRule(g, 392, 1150, 240, 6);
+        tex.needsUpdate = true;
+      };
+      draw();
+      const img = new Image();
+      img.onload = () => draw(img);
+      img.src = client.mark;
+      const emMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 });
+      keep(tex, emMat);
+      const pw = 2.4;
+      const ph = 3.0;
+      const plateG = new THREE.BoxGeometry(pw, ph, 0.04);
+      keep(plateG);
+      const plate = new THREE.Mesh(plateG, [paint, paint, paint, paint, emMat, paint]);
+      const fx = side * (ATRIUM.W / 2) - side * 0.022;
+      plate.position.set(fx, yU + 2.55, f.zc);
+      plate.rotation.y = -side * (Math.PI / 2);
+      plate.castShadow = hq;
+      scene.add(plate);
+      // its brass frame
+      const t = 0.035;
+      for (const [w, h, dy, dz] of [
+        [pw + 2 * t, t, ph / 2 + t / 2, 0],
+        [pw + 2 * t, t, -ph / 2 - t / 2, 0],
+        [t, ph, 0, pw / 2 + t / 2],
+        [t, ph, 0, -pw / 2 - t / 2],
+      ] as const) {
+        const fr = box(w, h, 0.05, brassEdge, fx, yU + 2.55 + dy, f.zc + dz);
+        fr.rotation.y = -side * (Math.PI / 2);
       }
-      x.fillStyle = "#121212";
-      x.font = "300 64px Jost, ui-sans-serif, system-ui";
-      x.textAlign = "center";
-      const words = client.name.toUpperCase().split(" ");
-      const lines: string[] = [];
-      for (const wd of words) {
-        const last = lines[lines.length - 1];
-        if (last && (last + " " + wd).length <= 16) lines[lines.length - 1] = last + " " + wd;
-        else lines.push(wd);
-      }
-      lines
-        .slice(0, 2)
-        .forEach((ln, k) => x.fillText(ln.split("").join(" "), 512, 940 + k * 90, 940));
-      const grad = x.createLinearGradient(380, 0, 644, 0);
-      ["#1f2cff", "#2bb8ff", "#ffffff", "#ff8a1f", "#ff3d1f"].forEach((col, k) =>
-        grad.addColorStop(k / 4, col),
-      );
-      x.fillStyle = grad;
-      x.fillRect(380, 1150, 264, 6);
-      tex.needsUpdate = true;
-    };
-    draw();
-    const img = new Image();
-    img.onload = () => draw(img);
-    img.src = client.mark;
-    const emMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 });
-    keep(tex, emMat);
-    const plateG = new THREE.BoxGeometry(2.4, 3.0, 0.03);
-    keep(plateG);
-    const plate = new THREE.Mesh(plateG, [wallMat, wallMat, wallMat, wallMat, emMat, wallMat]);
-    plate.position.set(f.xc, yU + 2.5, f.z0 + 0.17);
-    plate.castShadow = hq;
-    scene.add(plate);
-    pool(f.xc, yU + 2.6, f.z0 + 0.15, 0, 1, 4.6, 4.4, 0.55);
+      pool(side * (ATRIUM.W / 2), yU + 2.7, f.zc, -side, 0, 5.2, 5.4, 0.7);
+    }
 
-    // a track along the ceiling in front of the films, a spot for each, and its light on the wall
-    const trackX = f.side * (ATRIUM.W / 2 - 1.7);
-    box(0.05, 0.04, UPPER.roomD - 1.6, darkMetal, trackX, yU + UPPER.H - 0.05, f.zc);
-    o.filmSpots
-      .filter((s) => Math.abs(s.z - f.zc) < UPPER.roomD / 2 && Math.sign(s.x) === f.side)
-      .forEach((s) => {
-        spotHead(trackX, yU + UPPER.H - 0.07, s.z, s.x, yU + 1.62, s.z);
-        pool(s.x, yU + 1.75, s.z, s.nx, 0, 3.6, 2.9);
+    /* its films: a track along the ceiling in front of each wall that has them, a spot for each film,
+       and its light on the wall */
+    const byWall = new Map<string, RoomSpot[]>();
+    for (const s of f.spots) {
+      const key = `${s.nx},${s.nz}`;
+      byWall.set(key, [...(byWall.get(key) ?? []), s]);
+    }
+    for (const list of byWall.values()) {
+      const s0 = list[0]!;
+      const off = 1.7;
+      const ys = yU + UPPER.H;
+      if (s0.nx !== 0) {
+        const zs = list.map((s) => s.z);
+        const z0 = Math.min(...zs) - 1;
+        const z1 = Math.max(...zs) + 1;
+        box(0.05, 0.04, z1 - z0, darkMetal, s0.x + s0.nx * off, ys - 0.05, (z0 + z1) / 2);
+      } else {
+        const xs = list.map((s) => s.x);
+        const x0 = Math.min(...xs) - 1;
+        const x1 = Math.max(...xs) + 1;
+        box(x1 - x0, 0.04, 0.05, darkMetal, (x0 + x1) / 2, ys - 0.05, s0.z + s0.nz * off);
+      }
+      for (const s of list) {
+        spotHead(s.x + s.nx * off, ys - 0.07, s.z + s.nz * off, s.x, yU + 1.62, s.z);
+        pool(s.x, yU + 1.75, s.z, s.nx, s.nz, 3.6, 2.9);
+      }
+    }
+
+    /* the door: closed, a single tall leaf lacquered in the client's colour, their emblem on it in a
+       brass-ringed medallion, their name in gold beneath; it swings into the room as you come near
+       (`update`), and stands open across the room's corner while you're near */
+    {
+      const lw2 = doorW - 0.03;
+      const lh = doorH - 0.02;
+      const c = document.createElement("canvas");
+      c.width = 1024;
+      c.height = Math.round((1024 * lh) / lw2);
+      const g = c.getContext("2d")!;
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = o.aniso;
+      const H2 = c.height;
+      const gold = "#d6b47a";
+      const draw = (img?: HTMLImageElement) => {
+        // lacquer, a soft sheen down it
+        g.fillStyle = css(lacquerC);
+        g.fillRect(0, 0, 1024, H2);
+        const sheen = g.createLinearGradient(0, 0, 1024, 0);
+        sheen.addColorStop(0, "rgba(255,255,255,0.05)");
+        sheen.addColorStop(0.45, "rgba(255,255,255,0)");
+        sheen.addColorStop(1, "rgba(0,0,0,0.12)");
+        g.fillStyle = sheen;
+        g.fillRect(0, 0, 1024, H2);
+        // a fine double line of gold, inset
+        g.strokeStyle = gold;
+        g.lineWidth = 3;
+        g.strokeRect(70, 70, 1024 - 140, H2 - 140);
+        g.lineWidth = 1.5;
+        g.strokeRect(88, 88, 1024 - 176, H2 - 176);
+        // the medallion: ivory in a ring of brass, the client's mark in it
+        const my = H2 * 0.4;
+        const R = client.markIsLogo ? 0 : 250;
+        if (R) {
+          const ring = g.createLinearGradient(512 - R, my - R, 512 + R, my + R);
+          ring.addColorStop(0, "#f3dcaa");
+          ring.addColorStop(0.5, "#b88d4f");
+          ring.addColorStop(1, "#f0d29a");
+          g.fillStyle = ring;
+          g.beginPath();
+          g.arc(512, my, R + 18, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = "#f6f1e5";
+          g.beginPath();
+          g.arc(512, my, R, 0, Math.PI * 2);
+          g.fill();
+          if (img) drawMark(g, img, 512, my, R * 1.25, R * 1.45);
+        } else {
+          // a wide logo: on an ivory plaque in brass
+          const pw2 = 760;
+          const ph2 = 300;
+          g.fillStyle = gold;
+          g.fillRect(512 - pw2 / 2 - 14, my - ph2 / 2 - 14, pw2 + 28, ph2 + 28);
+          g.fillStyle = "#f6f1e5";
+          g.fillRect(512 - pw2 / 2, my - ph2 / 2, pw2, ph2);
+          if (img) drawMark(g, img, 512, my, pw2 - 90, ph2 - 80);
+        }
+        // the name, in spaced gold capitals, a line of prism light under it
+        g.fillStyle = gold;
+        g.textAlign = "center";
+        const lines = spacedLines(client.name, 12);
+        const px = fitFont(g, lines, 58, 700);
+        const ny = H2 * 0.7;
+        lines.forEach((ln, k) => g.fillText(ln, 512, ny + k * px * 1.4));
+        prismRule(g, 412, ny + (lines.length - 1) * px * 1.4 + px * 0.9, 200, 4);
+        tex.needsUpdate = true;
+      };
+      draw();
+      const img = new Image();
+      img.onload = () => draw(img);
+      img.src = client.mark;
+      const face = new THREE.MeshPhysicalMaterial({
+        map: tex,
+        roughness: 0.42,
+        clearcoat: 0.8,
+        clearcoatRoughness: 0.16,
       });
+      keep(tex, face);
+      const leafG = new THREE.BoxGeometry(0.08, lh, lw2);
+      keep(leafG);
+      // (its faces are the box's ±x sides; its edges brass)
+      const leafM = new THREE.Mesh(leafG, [face, face, brassEdge, brassEdge, brassEdge, brassEdge]);
+      leafM.castShadow = hq;
+      leafM.position.set(0, lh / 2, lw2 / 2);
+      // the hinge: at the doorway's far jamb, by the room's side of the wall
+      const leaf = new THREE.Group();
+      const hx = cx + inward * 0.1;
+      const hz = f.zc - doorW / 2 + 0.015;
+      leaf.position.set(hx, yU + 0.01, hz);
+      leaf.add(leafM);
+      // a long brass pull on each face, by its free edge
+      const pullG = new THREE.CylinderGeometry(0.016, 0.016, 1.1, 12);
+      keep(pullG);
+      for (const sx of [-1, 1]) {
+        const pull = new THREE.Mesh(pullG, brassEdge);
+        pull.position.set(sx * 0.1, 1.15, lw2 - 0.28);
+        leaf.add(pull);
+      }
+      scene.add(leaf);
+      roomDoors.push({ leaf, side, x: cx, z: f.zc, open: 0 });
+      // the doorway's reveal, lined in blackened steel
+      for (const dz of [doorW / 2 - 0.01, -doorW / 2 + 0.01])
+        box(0.3, doorH, 0.02, darkMetal, cx, yU + doorH / 2, f.zc + dz);
+      box(0.3, 0.02, doorW, darkMetal, cx, yU + doorH - 0.01, f.zc);
+      // (where it stands open, across the corner: the way round it)
+      blockAt(
+        Math.min(hx, hx + inward * lw2),
+        Math.max(hx, hx + inward * lw2),
+        hz - 0.2,
+        hz + 0.2,
+        1,
+      );
+    }
 
-    // its sculpture, by the near wall; its name over the doorway, on the corridor side
-    sculpture(r, f.xc - f.side * 1.4, f.z1 - 1.6);
+    // its sculpture: in the near corner by the corridor, clear of the films; in a long room, out on the
+    // floor between the door and the near wall; none in a short room whose near wall is full
+    const nearFilms = f.spots.filter((p) => p.nz < 0).length;
+    if (nearFilms < ROOM.perWall) sculpture(r, cx + inward * 2.4, f.z1 - 2.3);
+    else if (f.depth >= 15) sculpture(r, cx + inward * 3.4, f.zc + 3.6);
+    // its name over the doorway, on the corridor side
     sign(
       client.name,
       2.6,
-      cx - f.side * 0.17,
+      cx - inward * 0.17,
       yU + 3.75,
       f.zc,
       f.side < 0 ? Math.PI / 2 : -Math.PI / 2,
     );
-    // a bench in the middle, facing the films
-    const bx = f.xc + f.side * 1.2;
+    // a bench in the middle, facing the emblem
+    const bx = f.xc + inward * 1.2;
     const bz = f.zc;
     addBench(ctx, new THREE.Vector3(bx, yU, bz), Math.PI / 2);
-    benches.push({ x: bx, z: bz, floor: yU, seats: [{ x: bx - f.side * 0.06, z: bz, yaw }] });
+    benches.push({ x: bx, z: bz, floor: yU, seats: [{ x: bx - inward * 0.06, z: bz, yaw }] });
     blockAt(bx - 0.45, bx + 0.45, bz - 1.35, bz + 1.35, 1);
+  });
+  // a side of the corridor whose rooms end sooner: closed by a plain wall to the last hall
+  for (const sd of [-1, 1] as const) {
+    const zs = plan.zStart - plan.gone[sd];
+    if (zs - zR > 0.05) {
+      wall(sd * UPPER.corridor, zs, sd * UPPER.corridor, zR, yU, yU + UPPER.H);
+      blockAt(sd * UPPER.corridor - 0.3, sd * UPPER.corridor + 0.3, zR, zs, 1);
+    }
+  }
+  // the doors: open as you come within reach of one (on the upper floor), closed again as you go
+  let lastT = 0;
+  const reach = 4.6;
+  animate.push((t, eye) => {
+    const dt = Math.min(0.1, Math.max(0, t - lastT));
+    lastT = t;
+    for (const d of roomDoors) {
+      const near = !!eye && eye.y > yU && Math.hypot(eye.x - d.x, eye.z - d.z) < reach;
+      d.open += ((near ? 1 : 0) - d.open) * (1 - Math.exp(-dt * 2.6));
+      const e = d.open * d.open * (3 - 2 * d.open);
+      d.leaf.rotation.y = d.side * (Math.PI / 2) * e;
+    }
   });
   places.push({ name: "The rooms", x: 0, y: yU, z: zB - UPPER.balcony - 2, yaw: 0 });
 
@@ -1224,7 +1538,8 @@ export function buildWorld(
     /* where to catch the world's light for reflections (GalleryScene's probes): the atrium, the upper floor */
     probes: [new THREE.Vector3(0, 3.2, zC), new THREE.Vector3(0, yU + 2, zB - 3)],
     bounds: { minX: -W / 2, maxX: W / 2, minZ: zEnd, maxZ: zA },
-    update: (t: number) => animate.forEach((a) => a(t)),
+    /* what moves; `eye`, where you are (the rooms' doors open as you come near) */
+    update: (t: number, eye?: THREE.Vector3) => animate.forEach((a) => a(t, eye)),
   };
 }
 export type World = ReturnType<typeof buildWorld>;

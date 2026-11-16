@@ -789,7 +789,7 @@ export class GalleryScene {
         hallW: W,
         clients: this.roomClients,
         aniso,
-        filmSpots: roomSpots(-(D + GalleryScene.BACK), this.perRoom),
+        perRoom: this.perRoom,
         surfaces: S!,
       });
       this.benches.push(...this.world.benches);
@@ -2549,7 +2549,7 @@ export class GalleryScene {
   private tmpV = new THREE.Vector3();
 
   private tick(time: number) {
-    this.world?.update(time);
+    this.world?.update(time, this.camera.getWorldPosition(this.tmpV));
     this.glowGuide(time);
     this.works.forEach((w) => {
       if (w.shader && !w.paused) w.shader.uniforms.uTime.value = time;
