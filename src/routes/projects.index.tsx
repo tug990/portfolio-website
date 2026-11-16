@@ -41,8 +41,8 @@ export const Route = createFileRoute("/projects/")({
 
 /*
   The Work page (where the landing lands):
-    first the hero over the whole screen (components/work/WorkHero.tsx), lifted
-      away by a scroll (not when arriving filtered); then, YouTube-like:
+    first the hero, the top of the page (components/work/WorkHero.tsx; not when
+      arriving filtered), the films straight on under it; then, YouTube-like:
     one line: PROJECTS (n) | Initiatives of: [a client's badge, or All] | Sort by: [...]
       (Initiatives of opens the clients' glass badges, site.ts WORK_CLIENTS;
       picking one shows only their films)
@@ -81,102 +81,104 @@ function Work() {
   }, [search.client, search.kind, query, sort]);
 
   return (
-    <WorkBackdrop>
+    <>
       {hero && <WorkHero />}
-      <section aria-labelledby="projects" className="mt-2 sm:mt-4">
-        {/* One line: PROJECTS (n) on the left; Initiatives of and Sort by on the right */}
-        <div className="relative z-20 flex items-center justify-between gap-2">
-          <h2
-            id="projects"
-            className="tracked whitespace-nowrap text-[12px] font-semibold tracking-[0.16em] sm:text-sm sm:tracking-[0.32em]"
-          >
-            Projects <span className="text-black/45 max-[359px]:hidden">({shown.length})</span>
-          </h2>
-          <div className="flex items-center gap-1.5 sm:gap-5">
-            <InitiativesFilter
-              selected={search.client ?? null}
-              onSelect={(c) => set({ ...search, client: c ?? undefined })}
-            />
-            <SortMenu value={sort} onChange={setSort} />
-          </div>
-        </div>
-
-        {/* from a film's theme (?q=): what's shown, and a way back to everything */}
-        {search.q && (
-          <p
-            className="mt-4 flex flex-wrap items-center gap-2 text-[14px]"
-            style={{ color: MUTED }}
-          >
-            Films about
-            <button
-              type="button"
-              onClick={() => set({ ...search, q: undefined })}
-              aria-label={`Clear: films about ${search.q}`}
-              className="press flex h-8 items-center gap-1.5 rounded-full bg-[#0a0a0a] pl-3.5 pr-2.5 text-[13px] font-medium text-white"
+      <WorkBackdrop flush={hero}>
+        <section aria-labelledby="projects" className={hero ? undefined : "mt-2 sm:mt-4"}>
+          {/* One line: PROJECTS (n) on the left; Initiatives of and Sort by on the right */}
+          <div className="relative z-20 flex items-center justify-between gap-2">
+            <h2
+              id="projects"
+              className="tracked whitespace-nowrap text-[12px] font-semibold tracking-[0.16em] sm:text-sm sm:tracking-[0.32em]"
             >
-              {search.q}
-              <svg
-                aria-hidden
-                viewBox="0 0 24 24"
-                className="h-3.5 w-3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-              >
-                <path d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </button>
-          </p>
-        )}
+              Projects <span className="text-black/45 max-[359px]:hidden">({shown.length})</span>
+            </h2>
+            <div className="flex items-center gap-1.5 sm:gap-5">
+              <InitiativesFilter
+                selected={search.client ?? null}
+                onSelect={(c) => set({ ...search, client: c ?? undefined })}
+              />
+              <SortMenu value={sort} onChange={setSort} />
+            </div>
+          </div>
 
-        {/* the kinds of film, as YouTube's chips */}
-        <Scroller
-          label="Kinds of film"
-          gap="gap-2"
-          step={0.6}
-          className="-mx-4 mt-4 px-4 sm:mx-0 sm:px-0"
-        >
-          <li className="shrink-0">
-            <Chip active={!search.kind} onClick={() => set({ ...search, kind: undefined })}>
-              All
-            </Chip>
-          </li>
-          {KINDS.map((k) => (
-            <li key={k} className="shrink-0">
-              <Chip
-                active={search.kind === k}
-                onClick={() => set({ ...search, kind: search.kind === k ? undefined : k })}
+          {/* from a film's theme (?q=): what's shown, and a way back to everything */}
+          {search.q && (
+            <p
+              className="mt-4 flex flex-wrap items-center gap-2 text-[14px]"
+              style={{ color: MUTED }}
+            >
+              Films about
+              <button
+                type="button"
+                onClick={() => set({ ...search, q: undefined })}
+                aria-label={`Clear: films about ${search.q}`}
+                className="press flex h-8 items-center gap-1.5 rounded-full bg-[#0a0a0a] pl-3.5 pr-2.5 text-[13px] font-medium text-white"
               >
-                {k}
+                {search.q}
+                <svg
+                  aria-hidden
+                  viewBox="0 0 24 24"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </p>
+          )}
+
+          {/* the kinds of film, as YouTube's chips */}
+          <Scroller
+            label="Kinds of film"
+            gap="gap-2"
+            step={0.6}
+            className="-mx-4 mt-4 px-4 sm:mx-0 sm:px-0"
+          >
+            <li className="shrink-0">
+              <Chip active={!search.kind} onClick={() => set({ ...search, kind: undefined })}>
+                All
               </Chip>
             </li>
-          ))}
-        </Scroller>
-
-        {shown.length > 0 ? (
-          <ul className="mt-5 grid gap-x-4 gap-y-7 sm:grid-cols-2 sm:gap-y-10 lg:grid-cols-3 2xl:grid-cols-4">
-            {shown.map((p) => (
-              <li key={p.slug}>
-                <VideoCard
-                  project={p}
-                  bleed
-                  sizes="(min-width: 1536px) 300px, (min-width: 1024px) 31vw, (min-width: 640px) 48vw, 100vw"
-                />
+            {KINDS.map((k) => (
+              <li key={k} className="shrink-0">
+                <Chip
+                  active={search.kind === k}
+                  onClick={() => set({ ...search, kind: search.kind === k ? undefined : k })}
+                >
+                  {k}
+                </Chip>
               </li>
             ))}
-          </ul>
-        ) : (
-          <p
-            className="mt-5 rounded-xl bg-[#0a0a0a]/[0.04] px-5 py-12 text-center text-[15px]"
-            style={{ color: MUTED }}
-          >
-            {query
-              ? "No films match that yet."
-              : `Films for ${search.client ?? "this"} are on their way.`}
-          </p>
-        )}
-      </section>
-    </WorkBackdrop>
+          </Scroller>
+
+          {shown.length > 0 ? (
+            <ul className="mt-5 grid gap-x-4 gap-y-7 sm:grid-cols-2 sm:gap-y-10 lg:grid-cols-3 2xl:grid-cols-4">
+              {shown.map((p) => (
+                <li key={p.slug}>
+                  <VideoCard
+                    project={p}
+                    bleed
+                    sizes="(min-width: 1536px) 300px, (min-width: 1024px) 31vw, (min-width: 640px) 48vw, 100vw"
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p
+              className="mt-5 rounded-xl bg-[#0a0a0a]/[0.04] px-5 py-12 text-center text-[15px]"
+              style={{ color: MUTED }}
+            >
+              {query
+                ? "No films match that yet."
+                : `Films for ${search.client ?? "this"} are on their way.`}
+            </p>
+          )}
+        </section>
+      </WorkBackdrop>
+    </>
   );
 }
 
