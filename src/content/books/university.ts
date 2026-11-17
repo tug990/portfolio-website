@@ -2,13 +2,6 @@ import type { ServiceBook } from "@/content/service-books";
 
 /* "Insight Lab - University Service Book.pdf", as the university's world shows it */
 export const UNIVERSITY: ServiceBook = {
-  theme: {
-    head: '"Bricolage Grotesque", "DM Sans", ui-sans-serif, system-ui, sans-serif',
-    body: '"DM Sans", ui-sans-serif, system-ui, sans-serif',
-    headWeight: 800,
-    fonts:
-      "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap",
-  },
   itemWord: "Service",
   cover: {
     kicker: "For universities and colleges",

@@ -9,22 +9,11 @@ import { UNIVERSITY } from "@/content/books/university";
   The Service Books: one for each of the About page's perspectives, the
   studio's printed guide to what it makes for them (Insight Lab - <who>
   Service Book.pdf), as a perspective's world shows it (ServiceBook.tsx).
-  Each book is a file of its own in content/books/. Each has its own
-  typefaces (`theme`, as printed); its colours are the site's own, whatever
-  the printed book's; the words are the book's own. A part a book doesn't
+  Each book is a file of its own in content/books/. Its words are the
+  book's own; its type and colours are the site's, not the printed book's. A part a book doesn't
   have is left out (Government has no packages, but its portfolio and the
   ways it's commissioned).
 */
-
-export type BookTheme = {
-  /* headings and words: CSS font stacks, and where they're loaded from (Google Fonts) */
-  head: string;
-  body: string;
-  headWeight: number;
-  fonts: string;
-  /* a service's line and closing words in the heading face's italic (as the NGO book) */
-  italic?: boolean;
-};
 
 export type OutcomeIcon =
   | "people"
@@ -84,7 +73,6 @@ export type Service = {
 };
 
 export type ServiceBook = {
-  theme: BookTheme;
   /* what each is called: "Service", "Film type", "Film" ("Service 3 of 8") */
   itemWord: string;
   cover: { kicker: string; title: string; text: string };

@@ -2,14 +2,6 @@ import type { ServiceBook } from "@/content/service-books";
 
 /* "Insight Lab - NGO Service Book.pdf", as the NGO world shows it */
 export const NGO: ServiceBook = {
-  theme: {
-    head: '"Fraunces", Georgia, ui-serif, serif',
-    body: '"Karla", ui-sans-serif, system-ui, sans-serif',
-    headWeight: 600,
-    italic: true,
-    fonts:
-      "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Karla:wght@400;500;700&display=swap",
-  },
   itemWord: "Service",
   cover: {
     kicker: "For NGOs and foundations",

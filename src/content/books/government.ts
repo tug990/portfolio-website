@@ -2,13 +2,6 @@ import type { ServiceBook } from "@/content/service-books";
 
 /* "Insight Lab - Government Service Book.pdf", as the government's world shows it */
 export const GOVERNMENT: ServiceBook = {
-  theme: {
-    head: '"Literata", Georgia, ui-serif, serif',
-    body: '"Source Sans 3", ui-sans-serif, system-ui, sans-serif',
-    headWeight: 700,
-    fonts:
-      "https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Source+Sans+3:wght@400;600;700&display=swap",
-  },
   itemWord: "Film type",
   cover: {
     kicker: "For government institutions",

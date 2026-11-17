@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 
 /*
   A perspective's Service Book (content/service-books.ts), as its world on
-  the About page shows it: the printed book's design (its layout and
-  typefaces, `theme`) in the site's own colours (ink on near-white, soft
+  the About page shows it: the printed book's design (its layout) in the
+  site's own type (Jost: light headings, medium titles) and colours (ink on near-white, soft
   grey panels, black for what's chosen, the prism's light along dark bands,
   the tricolour for every line), made to be used rather than read through.
   In order: why it matters and what the services do (`Intro`, with the
@@ -23,19 +23,24 @@ import { cn } from "@/lib/utils";
   or how a department commissions us, and what it can expect), and let's
   talk (`Talk`). A part a book doesn't have is left out. `children` sits
   between the services and how we work together (the clients and their
-  films).
+  films); `about` (who we are: AboutSections.tsx `AboutUs`) between how we
+  work together and let's talk. Its pieces (`Part`, `Kicker`, `Title`,
+  `Rise`, `PrismEdge`, `Arrow`, `HEAD`) are shared with `about`, so it
+  speaks the same way.
 */
 export function ServiceBook({
   book,
   ask,
   children,
+  about,
 }: {
   book: Book;
   /* the email subject for this perspective (ABOUT_PERSPECTIVES `ask`) */
   ask: string;
   children?: ReactNode;
+  /* who we are, before let's talk */
+  about?: ReactNode;
 }) {
-  const t = book.theme;
   // the service open in the list below; chosen from anywhere on the page
   const [open, setOpen] = useState(book.services[0].id);
   const services = useRef<HTMLElement>(null);
@@ -44,17 +49,8 @@ export function ServiceBook({
     services.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   return (
-    <div
-      className="text-foreground [font-family:var(--bk-body)]"
-      style={
-        {
-          "--bk-head": t.head,
-          "--bk-body": t.body,
-          "--bk-weight": t.headWeight,
-        } as CSSProperties
-      }
-    >
-      <Intro book={book} />
+    <div className="text-foreground">
+      <Intro book={book} about={!!about} />
       <Research book={book} />
       <Start book={book} show={show} />
       {book.year && <Year book={book} show={show} />}
@@ -64,6 +60,7 @@ export function ServiceBook({
       {book.portfolio && <Portfolio book={book} show={show} />}
       {children}
       <Together book={book} />
+      {about}
       <Talk book={book} ask={ask} />
     </div>
   );
@@ -71,21 +68,22 @@ export function ServiceBook({
 
 /* ---------- the pieces the book is made of ---------- */
 
-const HEAD = "[font-family:var(--bk-head)] [font-weight:var(--bk-weight)] tracking-[-0.01em]";
+/* headings and big numbers, as the site sets them: Jost, light, close */
+export const HEAD = "font-light tracking-tight";
 
 /* the small spaced capitals over each part, as the site's */
-function Kicker({ children, className }: { children: ReactNode; className?: string }) {
+export function Kicker({ children, className }: { children: ReactNode; className?: string }) {
   return <p className={cn("tracked font-sans text-[10px] text-black/50", className)}>{children}</p>;
 }
 
-function Title({ children, className }: { children: ReactNode; className?: string }) {
+export function Title({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <h2 className={cn(HEAD, "text-[28px] leading-[1.12] sm:text-[40px]", className)}>{children}</h2>
   );
 }
 
 /* a part of the page, the book's width */
-function Part({
+export function Part({
   id,
   className,
   dark,
@@ -110,7 +108,7 @@ function Part({
 }
 
 /* rises into place the first time it's seen */
-function Rise({
+export function Rise({
   children,
   className,
   delay = 0,
@@ -154,7 +152,7 @@ function Rise({
 }
 
 /* the prism's light, as a line along the top of something dark */
-function PrismEdge() {
+export function PrismEdge() {
   return (
     <span
       aria-hidden
@@ -206,7 +204,7 @@ function Tick({ className }: { className?: string }) {
   );
 }
 
-function Arrow({ className }: { className?: string }) {
+export function Arrow({ className }: { className?: string }) {
   return (
     <svg
       aria-hidden
@@ -321,7 +319,7 @@ const OUTCOME_ICONS: Record<OutcomeIcon, ReactNode> = {
 };
 
 /* the contents of a book, as on its second page */
-function contentsOf(book: Book): [string, string][] {
+function contentsOf(book: Book, about: boolean): [string, string][] {
   const parts: ([string, string] | false | undefined)[] = [
     ["#research", "What the research shows"],
     ["#start", "Where to start"],
@@ -330,6 +328,7 @@ function contentsOf(book: Book): [string, string][] {
     book.portfolio && ["#portfolio", book.portfolio.title],
     ["#together", book.together.title],
     book.compare && ["#compare", book.compare.title],
+    about && ["#about", "Who we are"],
     ["#talk", book.talk.kicker],
   ];
   return parts.filter((x): x is [string, string] => !!x);
@@ -337,14 +336,14 @@ function contentsOf(book: Book): [string, string][] {
 
 /* ---------- why it matters ---------- */
 
-function Intro({ book }: { book: Book }) {
+function Intro({ book, about }: { book: Book; about: boolean }) {
   const { intro } = book;
   return (
     <Part id="world">
       {/* the book's contents, to jump from */}
       <nav aria-label="On this page" className="-mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
         <ul className="flex w-max gap-2 sm:w-auto sm:flex-wrap">
-          {contentsOf(book).map(([href, label]) => (
+          {contentsOf(book, about).map(([href, label]) => (
             <li key={href}>
               <a
                 href={href}
@@ -361,7 +360,7 @@ function Intro({ book }: { book: Book }) {
         <Rise>
           <Kicker>Introduction</Kicker>
           <Title className="mt-4">{intro.title}</Title>
-          <p className="relative mt-6 pl-5 text-[18px] font-bold leading-snug sm:text-[20px]">
+          <p className="relative mt-6 pl-5 text-[19px] font-light leading-snug sm:text-[23px]">
             <Bar />
             {intro.lead}
           </p>
@@ -395,7 +394,7 @@ function Intro({ book }: { book: Book }) {
               >
                 {OUTCOME_ICONS[o.icon]}
               </svg>
-              <h3 className="mt-4 text-[16px] font-bold leading-snug">{o.title}</h3>
+              <h3 className="mt-4 text-[16px] font-medium leading-snug">{o.title}</h3>
               <p className="mt-1 text-[14px] leading-relaxed text-black/55">{o.text}</p>
             </div>
           </Rise>
@@ -558,7 +557,7 @@ function Start({ book, show }: { book: Book; show: (id: string) => void }) {
                   <span className={cn(HEAD, "text-[15px] text-black/35")}>
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <span className="text-[15px] font-bold">{s.name}</span>
+                  <span className="text-[15px] font-medium">{s.name}</span>
                   {glance.columns.map((c, k) => (
                     <span
                       key={c.label}
@@ -597,7 +596,7 @@ function Start({ book, show }: { book: Book; show: (id: string) => void }) {
                   className="press group flex h-full w-full flex-col justify-between gap-3 rounded-xl border border-black/[0.07] bg-[var(--card)] p-4 text-left transition hover:border-black/20 hover:shadow-[0_12px_30px_-18px_rgba(0,0,0,0.35)]"
                 >
                   <span className="text-[15px] leading-snug">{p.line}</span>
-                  <span className="flex items-center gap-1.5 text-[13px] font-bold">
+                  <span className="flex items-center gap-1.5 text-[13px] font-medium">
                     {name(p.service)}
                     <Arrow className="transition group-hover:translate-x-0.5" />
                   </span>
@@ -664,7 +663,7 @@ function Year({ book, show }: { book: Book; show: (id: string) => void }) {
                 </span>
                 <span
                   className={cn(
-                    "text-[15px] font-bold leading-snug",
+                    "text-[15px] font-medium leading-snug",
                     on ? "text-white" : "text-white/70",
                   )}
                 >
@@ -691,7 +690,7 @@ function Year({ book, show }: { book: Book; show: (id: string) => void }) {
               key={id}
               type="button"
               onClick={() => show(id)}
-              className="press group flex items-center gap-1.5 rounded-full bg-foreground/[0.06] px-4 py-2 text-[14px] font-bold transition hover:bg-foreground hover:text-background"
+              className="press group flex items-center gap-1.5 rounded-full bg-foreground/[0.06] px-4 py-2 text-[14px] font-medium transition hover:bg-foreground hover:text-background"
             >
               {name(id)}
               <Arrow className="transition group-hover:translate-x-0.5" />
@@ -773,7 +772,7 @@ function Services({
                 <span className={cn(HEAD, "text-[15px]", on ? "text-white" : "opacity-45")}>
                   {String(n + 1).padStart(2, "0")}
                 </span>
-                <span className="whitespace-nowrap text-[14px] font-bold lg:whitespace-normal">
+                <span className="whitespace-nowrap text-[14px] font-medium lg:whitespace-normal">
                   {x.name}
                 </span>
               </button>
@@ -787,7 +786,6 @@ function Services({
           n={i}
           total={list.length}
           word={book.itemWord}
-          italic={!!book.theme.italic}
           ask={ask}
           prev={i > 0 ? list[i - 1] : undefined}
           next={i < list.length - 1 ? list[i + 1] : undefined}
@@ -804,7 +802,6 @@ function ServicePage({
   n,
   total,
   word,
-  italic,
   ask,
   prev,
   next,
@@ -815,8 +812,6 @@ function ServicePage({
   total: number;
   /* "Service", "Film type", "Film" */
   word: string;
-  /* its line and closing words in the heading face's italic */
-  italic: boolean;
   ask: string;
   prev?: Service;
   next?: Service;
@@ -835,7 +830,7 @@ function ServicePage({
       key: "familiar",
       node: (
         <div className="h-full rounded-xl bg-muted p-5 sm:p-6">
-          <h4 className="text-[16px] font-bold">Does this sound familiar?</h4>
+          <h4 className="text-[16px] font-medium">Does this sound familiar?</h4>
           <Paras items={s.familiar} />
         </div>
       ),
@@ -849,7 +844,7 @@ function ServicePage({
           s.familiar?.length ? "p-1 sm:p-2" : "rounded-xl bg-muted p-5 sm:p-6",
         )}
       >
-        <h4 className="text-[16px] font-bold">{s.doesTitle ?? "What this film does"}</h4>
+        <h4 className="text-[16px] font-medium">{s.doesTitle ?? "What this film does"}</h4>
         <Paras items={s.does} />
       </div>
     ),
@@ -859,7 +854,7 @@ function ServicePage({
       key: "uses",
       node: (
         <div className="h-full p-1 sm:p-2">
-          <h4 className="text-[16px] font-bold">{s.usesTitle ?? "Where it is used"}</h4>
+          <h4 className="text-[16px] font-medium">{s.usesTitle ?? "Where it is used"}</h4>
           <ul className="mt-3 space-y-2.5">
             {s.uses.map((x) => (
               <li key={x} className="relative pl-4 text-[15px] leading-snug text-black/70">
@@ -890,7 +885,7 @@ function ServicePage({
     key: "receive",
     node: (
       <div className="h-full rounded-xl border border-black/[0.07] p-5 sm:p-6">
-        <h4 className="text-[16px] font-bold">{s.receiveTitle ?? "What you receive"}</h4>
+        <h4 className="text-[16px] font-medium">{s.receiveTitle ?? "What you receive"}</h4>
         <Ticks items={s.receive} />
       </div>
     ),
@@ -900,7 +895,7 @@ function ServicePage({
       key: "gain",
       node: (
         <div className="h-full rounded-xl border border-black/[0.07] p-5 sm:p-6">
-          <h4 className="text-[16px] font-bold">What you gain</h4>
+          <h4 className="text-[16px] font-medium">What you gain</h4>
           <Ticks items={s.gain} />
         </div>
       ),
@@ -927,7 +922,7 @@ function ServicePage({
                   className="absolute bottom-0.5 left-0 top-0.5 w-[2px] rounded-full"
                   style={{ background: "var(--tricolour-v)" }}
                 />
-                <p className="text-[15px] font-bold leading-snug">{w.title}</p>
+                <p className="text-[15px] font-medium leading-snug">{w.title}</p>
                 <p className="mt-1 text-[14px] leading-relaxed text-white/70">{w.text}</p>
               </li>
             ))}
@@ -951,14 +946,7 @@ function ServicePage({
         <h3 className={cn(HEAD, "mt-3 max-w-[80%] text-[28px] leading-[1.08] sm:text-[38px]")}>
           {s.name}
         </h3>
-        <p
-          className={cn(
-            "mt-3 max-w-xl text-[16px] leading-relaxed text-white/80",
-            italic && "text-[17px] italic [font-family:var(--bk-head)] sm:text-[18px]",
-          )}
-        >
-          {s.line}
-        </p>
+        <p className={cn("mt-3 max-w-xl text-[16px] leading-relaxed text-white/80")}>{s.line}</p>
         {s.tags.length > 0 && (
           <div className="mt-5 flex flex-wrap gap-2">
             {s.tags.map((t) => (
@@ -995,7 +983,7 @@ function ServicePage({
 
         {s.panels?.map((p) => (
           <div key={p.title} className="md:col-span-2">
-            <h4 className="text-[16px] font-bold">{p.title}</h4>
+            <h4 className="text-[16px] font-medium">{p.title}</h4>
             <div
               className={cn(
                 "mt-3 grid gap-3",
@@ -1008,7 +996,7 @@ function ServicePage({
             >
               {p.items.map((m) => (
                 <div key={m.name} className="rounded-xl border border-black/[0.07] p-4">
-                  <p className="text-[14px] font-bold">{m.name}</p>
+                  <p className="text-[14px] font-medium">{m.name}</p>
                   <p className="mt-1 text-[13px] leading-relaxed text-black/55">{m.text}</p>
                 </div>
               ))}
@@ -1020,7 +1008,7 @@ function ServicePage({
         {fits.length > 0 && (
           <div className="rounded-xl border border-black/[0.07] p-5 sm:p-6 md:col-span-2">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h4 className="text-[16px] font-bold">Is this right for you?</h4>
+              <h4 className="text-[16px] font-medium">Is this right for you?</h4>
               <p className="text-[13px] text-black/45">Tick what’s true for you</p>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -1068,14 +1056,14 @@ function ServicePage({
                 count ? "mt-4 max-h-40 opacity-100" : "mt-0 max-h-0 opacity-0",
               )}
             >
-              <p className="text-[15px] font-bold">
+              <p className="text-[15px] font-medium">
                 {count >= 2
                   ? `${count} of ${fits.length} sound like you. ${s.name} fits.`
                   : `1 of ${fits.length} sounds like you.`}
               </p>
               <a
                 href={mail}
-                className="press flex items-center gap-2 rounded-full bg-black px-5 py-2.5 text-[14px] font-bold text-white transition hover:bg-black/85"
+                className="press flex items-center gap-2 rounded-full bg-black px-5 py-2.5 text-[14px] font-medium text-white transition hover:bg-black/85"
               >
                 Ask about {s.name}
                 <Arrow />
@@ -1087,20 +1075,12 @@ function ServicePage({
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-black/[0.07] px-4 py-4 sm:px-7">
         {s.closing ? (
-          <p
-            className={cn(
-              HEAD,
-              "w-full text-[17px] sm:w-auto sm:text-[19px]",
-              italic && "italic [font-weight:400]",
-            )}
-          >
-            {s.closing}
-          </p>
+          <p className={cn(HEAD, "w-full text-[17px] sm:w-auto sm:text-[19px]")}>{s.closing}</p>
         ) : fits.length === 0 ? (
           // nothing to tick: ask about it here
           <a
             href={mail}
-            className="press flex items-center gap-2 rounded-full bg-black px-5 py-2.5 text-[14px] font-bold text-white transition hover:bg-black/85"
+            className="press flex items-center gap-2 rounded-full bg-black px-5 py-2.5 text-[14px] font-medium text-white transition hover:bg-black/85"
           >
             Ask about {s.name}
             <Arrow />
@@ -1113,7 +1093,7 @@ function ServicePage({
             <button
               type="button"
               onClick={() => go(prev.id)}
-              className="press flex-1 rounded-full border border-black/10 px-4 py-2 text-[13px] font-bold transition hover:bg-black/[0.03] sm:flex-none"
+              className="press flex-1 rounded-full border border-black/10 px-4 py-2 text-[13px] font-medium transition hover:bg-black/[0.03] sm:flex-none"
             >
               ← {String(n).padStart(2, "0")}
             </button>
@@ -1122,7 +1102,7 @@ function ServicePage({
             <button
               type="button"
               onClick={() => go(next.id)}
-              className="press flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground/[0.06] px-4 py-2 text-[13px] font-bold transition hover:bg-foreground hover:text-background sm:flex-none"
+              className="press flex flex-1 items-center justify-center gap-2 rounded-full bg-foreground/[0.06] px-4 py-2 text-[13px] font-medium transition hover:bg-foreground hover:text-background sm:flex-none"
             >
               Next: {next.name}
               <Arrow />
@@ -1154,7 +1134,7 @@ function Dark({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="relative h-full overflow-hidden rounded-xl bg-[#0a0a0a] p-5 text-white sm:p-6">
       <PrismEdge />
-      <h4 className="text-[16px] font-bold">{title}</h4>
+      <h4 className="text-[16px] font-medium">{title}</h4>
       {children}
     </div>
   );
@@ -1185,7 +1165,7 @@ function Portfolio({ book, show }: { book: Book; show: (id: string) => void }) {
                 onClick={() => show(r.service)}
                 className="group grid w-full gap-1 px-4 py-3 text-left transition hover:bg-muted sm:grid-cols-[1.2fr_1fr_1fr] sm:items-center sm:gap-3"
               >
-                <span className="text-[15px] font-bold leading-snug">{r.project}</span>
+                <span className="text-[15px] font-medium leading-snug">{r.project}</span>
                 <span className="text-[14px] text-black/55">{r.for}</span>
                 <span className="flex items-center gap-1.5 text-[14px] font-medium">
                   <span>
@@ -1245,7 +1225,7 @@ function Together({ book }: { book: Book }) {
                   )}
                 >
                   {last && <PrismEdge />}
-                  <p className="text-[16px] font-bold">{w.title}</p>
+                  <p className="text-[16px] font-medium">{w.title}</p>
                   <p
                     className={cn(
                       "mt-1 text-[14px] leading-relaxed",
@@ -1265,7 +1245,7 @@ function Together({ book }: { book: Book }) {
         <>
           {single && together.ways[1] && (
             <p className="mt-8 max-w-3xl text-[15px] leading-relaxed text-black/60">
-              <span className="font-bold text-foreground">{together.ways[1].title}.</span>{" "}
+              <span className="font-medium text-foreground">{together.ways[1].title}.</span>{" "}
               {together.ways[1].text}
             </p>
           )}
@@ -1297,7 +1277,7 @@ function Together({ book }: { book: Book }) {
                   big={
                     <>
                       {p.months}
-                      <span className="ml-1.5 text-[11px] font-bold uppercase tracking-[0.18em]">
+                      <span className="ml-1.5 text-[11px] font-medium uppercase tracking-[0.18em]">
                         months
                       </span>
                     </>
@@ -1330,7 +1310,7 @@ function Together({ book }: { book: Book }) {
                   {k + 1}
                 </span>
                 <span>
-                  <span className="block text-[13px] font-bold">{x.title}</span>
+                  <span className="block text-[13px] font-medium">{x.title}</span>
                   <span
                     className={cn("block text-[13px]", last ? "text-white/80" : "text-black/55")}
                   >
@@ -1350,7 +1330,7 @@ function Together({ book }: { book: Book }) {
             {together.expect.items.map((x) => (
               <div key={x.title} className="relative pt-5">
                 <TopLine />
-                <p className="text-[16px] font-bold">{x.title}</p>
+                <p className="text-[16px] font-medium">{x.title}</p>
                 <p className="mt-1.5 text-[14px] leading-relaxed text-black/60">{x.text}</p>
               </div>
             ))}
@@ -1372,7 +1352,7 @@ function Together({ book }: { book: Book }) {
                 type="button"
                 onClick={() => setPick(k)}
                 className={cn(
-                  "press shrink-0 rounded-full px-4 py-2 text-[13px] font-bold transition",
+                  "press shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition",
                   pick === k ? "bg-foreground text-background" : "bg-[var(--card)]",
                 )}
               >
@@ -1418,7 +1398,7 @@ function Together({ book }: { book: Book }) {
               <tbody>
                 {compare.rows.map((r, i) => (
                   <tr key={r.service} className={i % 2 ? "bg-muted/40" : ""}>
-                    <th scope="row" className="px-4 py-3 font-bold">
+                    <th scope="row" className="px-4 py-3 font-medium">
                       {r.service}
                     </th>
                     {r.cells.map((c, k) => (
@@ -1427,7 +1407,7 @@ function Together({ book }: { book: Book }) {
                         className={cn(
                           "px-4 py-3 align-top",
                           k !== pick && "hidden sm:table-cell",
-                          k === pick && "bg-muted font-bold",
+                          k === pick && "bg-muted font-medium",
                           !c && "italic text-black/40",
                         )}
                       >
@@ -1440,7 +1420,7 @@ function Together({ book }: { book: Book }) {
             </table>
           </div>
           <p className="mt-4 text-[13px] leading-relaxed text-black/50">{compare.note}</p>
-          <p className="relative mt-6 max-w-3xl pl-5 text-[16px] font-bold leading-snug">
+          <p className="relative mt-6 max-w-3xl pl-5 text-[16px] font-medium leading-snug">
             <Bar />
             {compare.advice}
           </p>
@@ -1480,7 +1460,7 @@ function OptionCard({
     >
       {on && <PrismEdge />}
       <span className={cn(HEAD, "flex items-baseline text-[34px] leading-none")}>{big}</span>
-      <span className="mt-3 text-[16px] font-bold">{name}</span>
+      <span className="mt-3 text-[16px] font-medium">{name}</span>
       <span
         className={cn("mt-1 text-[14px] leading-relaxed", on ? "text-white/75" : "text-black/55")}
       >
@@ -1528,7 +1508,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
           {talk.steps.map((x, k) => (
             <li key={x.title} className="relative pt-5">
               <TopLine />
-              <p className="text-[15px] font-bold">
+              <p className="text-[15px] font-medium">
                 {k + 1}. {x.title}
               </p>
               <p className="mt-1 text-[14px] leading-relaxed text-black/55">{x.text}</p>
@@ -1538,7 +1518,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
         <div className="mt-10 flex flex-wrap gap-3">
           <a
             href={`mailto:${SITE.email}?subject=${encodeURIComponent(ask)}`}
-            className="press flex items-center gap-2 rounded-full bg-black px-6 py-3 text-[15px] font-bold text-white transition hover:bg-black/85"
+            className="press flex items-center gap-2 rounded-full bg-black px-6 py-3 text-[15px] font-medium text-white transition hover:bg-black/85"
           >
             Write to us
             <Arrow />
@@ -1547,7 +1527,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
             <>
               <a
                 href={`tel:${phone}`}
-                className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-bold transition hover:bg-black/[0.03]"
+                className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-medium transition hover:bg-black/[0.03]"
               >
                 Call {SITE.phone}
               </a>
@@ -1555,7 +1535,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
                 href={`https://wa.me/${phone.replace("+", "")}`}
                 target="_blank"
                 rel="noreferrer"
-                className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-bold transition hover:bg-black/[0.03]"
+                className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-medium transition hover:bg-black/[0.03]"
               >
                 WhatsApp
               </a>
@@ -1563,7 +1543,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
           )}
           <Link
             to="/about"
-            className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-bold transition hover:bg-black/[0.03]"
+            className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-medium transition hover:bg-black/[0.03]"
           >
             Choose another perspective
           </Link>

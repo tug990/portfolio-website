@@ -2,13 +2,6 @@ import type { ServiceBook } from "@/content/service-books";
 
 /* "Insight Lab - Corporate Service Book.pdf", as the corporate world shows it */
 export const CORPORATE: ServiceBook = {
-  theme: {
-    head: '"Cormorant Garamond", Georgia, ui-serif, serif',
-    body: '"Jost", ui-sans-serif, system-ui, sans-serif',
-    headWeight: 600,
-    fonts:
-      "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Jost:wght@300;400;500;600&display=swap",
-  },
   itemWord: "Service",
   cover: {
     kicker: "For companies and leadership teams",

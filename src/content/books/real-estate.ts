@@ -2,13 +2,6 @@ import type { ServiceBook } from "@/content/service-books";
 
 /* "Insight Lab - Real Estate Service Book.pdf", as the real estate world shows it */
 export const REAL_ESTATE: ServiceBook = {
-  theme: {
-    head: '"Space Grotesk", ui-sans-serif, system-ui, sans-serif',
-    body: '"Manrope", ui-sans-serif, system-ui, sans-serif',
-    headWeight: 700,
-    fonts:
-      "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Manrope:wght@400;500;700&display=swap",
-  },
   itemWord: "Film",
   cover: {
     kicker: "For developers and real estate brands",

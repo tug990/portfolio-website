@@ -1,17 +1,6 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import {
-  Approach,
-  Awards,
-  Expertise,
-  Faq,
-  PerspectiveWorld,
-  Story,
-  Team,
-  Testimonials,
-  WorkedWith,
-} from "@/components/AboutSections";
+import { PerspectiveWorld } from "@/components/AboutSections";
 import { ABOUT_PERSPECTIVES } from "@/content/site";
-import { SERVICE_BOOKS } from "@/content/service-books";
 import { seo } from "@/lib/seo";
 
 export const Route = createFileRoute("/about/$perspective")({
@@ -20,37 +9,17 @@ export const Route = createFileRoute("/about/$perspective")({
     if (!p) throw notFound();
     return p;
   },
-  head: ({ loaderData }) => {
-    const book = loaderData && SERVICE_BOOKS[loaderData.id];
-    return {
-      ...seo(loaderData ? `About, for ${loaderData.label}` : "About", loaderData?.text),
-      // its Service Book's typefaces, for this page only
-      links: book ? [{ rel: "stylesheet", href: book.theme.fonts }] : [],
-    };
-  },
+  head: ({ loaderData }) =>
+    seo(loaderData ? `About, for ${loaderData.label}` : "About", loaderData?.text),
   component: World,
 });
 
 /*
-  A perspective's world, on the other side of the About page's door: what we
-  make for them (PerspectiveWorld), then the rest of who we are, each section
-  reading its content from content/site.ts.
+  A perspective's world, on the other side of the About page's door: its
+  Service Book, then who we are (both in PerspectiveWorld), each part
+  reading its content from content/.
 */
 function World() {
   const p = Route.useLoaderData();
-  return (
-    <div>
-      <PerspectiveWorld key={p.id} id={p.id} />
-      <div className="mx-auto max-w-6xl">
-        <Expertise />
-        <Approach />
-        <Testimonials />
-        <WorkedWith />
-        <Story />
-        <Team />
-        <Awards />
-        <Faq />
-      </div>
-    </div>
-  );
+  return <PerspectiveWorld key={p.id} id={p.id} />;
 }
