@@ -491,8 +491,51 @@ export const AWARDS: { name: string; result: string; year: number; project?: str
   large, on a line of the tricolour; `tagline` under it, smaller; `text`,
   smaller still; `hint` at the foot. `intro`: the page's description for
   search engines.
+
+  `names`: India in the languages of India, each in its own script, that the
+  title shapeshifts through after resting on INDIA (in this order; `script`
+  picks its typeface). They're drawn from outlines: after changing them, run
+  scripts/india-outlines.py to redraw them. One entry per spelling, with every
+  language that writes it so; together they cover all 22 of the Constitution's
+  languages. From Wikidata's names for India (Q668); Dogri and Bodo, which
+  it doesn't list, write भारत as Hindi does.
 */
+export type IndianScript =
+  | "devanagari"
+  | "bengali"
+  | "tamil"
+  | "gujarati"
+  | "telugu"
+  | "gurmukhi"
+  | "arabic"
+  | "kannada"
+  | "odia"
+  | "malayalam"
+  | "olchiki"
+  | "meetei";
 export const WORK_PAGE = {
+  names: [
+    {
+      word: "भारत",
+      script: "devanagari",
+      langs: "Hindi, Marathi, Nepali, Maithili, Konkani, Dogri, Bodo",
+    },
+    { word: "ভারত", script: "bengali", langs: "Bengali" },
+    { word: "இந்தியா", script: "tamil", langs: "Tamil" },
+    { word: "ભારત", script: "gujarati", langs: "Gujarati" },
+    { word: "భారతదేశం", script: "telugu", langs: "Telugu" },
+    { word: "ਭਾਰਤ", script: "gurmukhi", langs: "Punjabi" },
+    { word: "بھارت", script: "arabic", langs: "Urdu" },
+    { word: "ಭಾರತ", script: "kannada", langs: "Kannada" },
+    { word: "ଭାରତ", script: "odia", langs: "Odia" },
+    { word: "ഇന്ത്യ", script: "malayalam", langs: "Malayalam" },
+    { word: "ᱥᱤᱧᱚᱛ", script: "olchiki", langs: "Santali" },
+    { word: "ভাৰত", script: "bengali", langs: "Assamese" },
+    { word: "ꯏꯟꯗꯤꯌꯥ", script: "meetei", langs: "Manipuri" },
+    { word: "ڀارت", script: "arabic", langs: "Sindhi" },
+    { word: "भारतम्", script: "devanagari", langs: "Sanskrit" },
+    { word: "ہِندوستان", script: "arabic", langs: "Kashmiri" },
+  ] as { word: string; script: IndianScript; langs: string }[],
   title: "India",
   tagline: "Our Story – Our Identity",
   text: "Insight Lab celebrates the soul of India through its people, culture, heritage, achievements and untold stories.",

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { WORK_PAGE } from "@/content/site";
+import { IndiaTitle } from "@/components/work/IndiaTitle";
 import { cn } from "@/lib/utils";
 
 /*
@@ -68,6 +69,7 @@ const FOCUS = [0.49, 0.52] as const;
 
 /* India's tricolour, as the line under the government initiatives' names (WorkUI.tsx ClientBadge). */
 const TRICOLOUR = "linear-gradient(90deg, #ff7a1a, #ffb27a 28%, #f3f1ea 50%, #86c98a 72%, #1e8a3c)";
+
 /* The shade of deeper sky behind the words, so they read clearly over bright cloud: darkest at their heart. */
 const WORDS_SHADE =
   "radial-gradient(closest-side, rgba(6,24,70,0.5), rgba(6,24,70,0.3) 55%, rgba(6,24,70,0))";
@@ -425,10 +427,8 @@ export function WorkHero() {
         />
         <h1 className="flex flex-col items-center [text-shadow:0_1px_2px_rgba(0,15,45,0.6),0_0_18px_rgba(0,15,45,0.35),0_4px_30px_rgba(0,15,45,0.4)]">
           <span className="inline-flex flex-col items-stretch">
-            {/* (the left padding balances the spacing after the last letter, so it sits centred) */}
-            <span className="tracked pl-[0.32em] text-[clamp(2.5rem,5.2vw,4.5rem)] font-normal leading-none">
-              {WORK_PAGE.title}
-            </span>
+            {/* INDIA, shapeshifting into India's name in each language of India */}
+            <IndiaTitle />
             {/* the tricolour, as on the government initiatives' badges */}
             <span
               aria-hidden
