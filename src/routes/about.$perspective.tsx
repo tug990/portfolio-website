@@ -11,6 +11,7 @@ import {
   WorkedWith,
 } from "@/components/AboutSections";
 import { ABOUT_PERSPECTIVES } from "@/content/site";
+import { SERVICE_BOOKS } from "@/content/service-books";
 import { seo } from "@/lib/seo";
 
 export const Route = createFileRoute("/about/$perspective")({
@@ -19,8 +20,14 @@ export const Route = createFileRoute("/about/$perspective")({
     if (!p) throw notFound();
     return p;
   },
-  head: ({ loaderData }) =>
-    seo(loaderData ? `About, for ${loaderData.label}` : "About", loaderData?.text),
+  head: ({ loaderData }) => {
+    const book = loaderData && SERVICE_BOOKS[loaderData.id];
+    return {
+      ...seo(loaderData ? `About, for ${loaderData.label}` : "About", loaderData?.text),
+      // its Service Book's typefaces, for this page only
+      links: book ? [{ rel: "stylesheet", href: book.theme.fonts }] : [],
+    };
+  },
   component: World,
 });
 

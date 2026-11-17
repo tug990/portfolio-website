@@ -19,6 +19,8 @@ import {
   type PerspectiveId,
 } from "@/content/site";
 import { PROJECTS } from "@/content/projects";
+import { SERVICE_BOOKS } from "@/content/service-books";
+import { ServiceBook } from "@/components/ServiceBook";
 import { Poster } from "@/components/Poster";
 import { ClientBadge, VideoCard } from "@/components/work/WorkUI";
 import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
@@ -1306,6 +1308,8 @@ const WORLD_INK = {
 function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
   const hero = p.hero!;
   const ink = WORLD_INK[hero.tone];
+  // with a Service Book, its cover's words, in its typefaces
+  const book = SERVICE_BOOKS[p.id];
   // the picture at the foot on every screen, the words above it (centred, or to the left)
   const top = hero.words.startsWith("top");
   const topSide = hero.words === "top-left" || hero.words === "top-right"; // on landscape screens
@@ -1416,15 +1420,37 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
         >
           <PerspectiveIcon id={p.id} className={cn("h-6 w-6 sm:h-7 sm:w-7", ink.iconInk)} />
         </span>
-        <p className={cn("tracked mt-5 text-[10px] sm:mt-6", ink.label)}>Your world · {p.label}</p>
+        {book ? (
+          <p className="mt-5 sm:mt-6">
+            {/* a pill of glass, as the sign above it */}
+            <span
+              className={cn(
+                "inline-block rounded-full border px-3.5 py-1.5 text-[12px] font-medium backdrop-blur-xl",
+                ink.icon,
+                ink.text,
+              )}
+              style={{ fontFamily: book.theme.body }}
+            >
+              {book.cover.kicker}
+            </span>
+          </p>
+        ) : (
+          <p className={cn("tracked mt-5 text-[10px] sm:mt-6", ink.label)}>
+            Your world · {p.label}
+          </p>
+        )}
         <h1
           className={cn(
-            "mt-4 text-[32px] font-light leading-[1.1] tracking-tight sm:text-5xl xl:text-6xl",
+            "mt-4 text-[32px] leading-[1.1] sm:text-5xl xl:text-6xl",
+            book ? "tracking-[-0.015em]" : "font-light tracking-tight",
             top && !topSide ? "mx-auto max-w-3xl" : "portrait:mx-auto portrait:max-w-3xl",
             ink.halo,
           )}
+          style={
+            book ? { fontFamily: book.theme.head, fontWeight: book.theme.headWeight } : undefined
+          }
         >
-          {p.title}
+          {book ? book.cover.title : p.title}
         </h1>
         <div className={cn("prism-rule mt-6 w-20 sm:mt-7", centre)} />
         <p
@@ -1434,8 +1460,9 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
             ink.body,
             ink.halo,
           )}
+          style={book ? { fontFamily: book.theme.body } : undefined}
         >
-          {p.text}
+          {book ? book.cover.text : p.text}
         </p>
         <a
           href="#world"
@@ -1495,6 +1522,37 @@ export function PerspectiveWorld({ id }: { id: PerspectiveId }) {
       ? PROJECTS.filter((f) => f.client && p.clients.includes(f.client))
       : PROJECTS.filter((f) => !f.client)
   ).slice(0, 3);
+  // its Service Book, where it has one (content/service-books.ts)
+  const book = SERVICE_BOOKS[id];
+  // who we've made films with, and their films
+  const work = (
+    <>
+      {clients.length > 0 && (
+        <div className="mt-12 sm:mt-14">
+          <p className="tracked text-[10px] text-black/50">Who we've made films with</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {clients.map((c) => (
+              <Link key={c.name} to="/projects" search={{ client: c.name }} className="press">
+                <ClientBadge client={c} />
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      {films.length > 0 && (
+        <div className="mt-12 sm:mt-14">
+          <p className="tracked text-[10px] text-black/50">
+            {clients.length ? "Their films" : "From our films"}
+          </p>
+          <div className="mt-5 grid gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+            {films.map((f) => (
+              <VideoCard key={f.slug} project={f} bleed />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
   return (
     <>
       {/*
@@ -1587,63 +1645,50 @@ export function PerspectiveWorld({ id }: { id: PerspectiveId }) {
         </section>
       )}
 
-      <section id="world" className="scroll-mt-24 px-4 pb-8 pt-16 sm:px-6 sm:pt-24">
-        <div className="mx-auto max-w-6xl">
-          <p className="tracked text-[10px] text-black/50">What we make for you</p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3 sm:gap-4">
-            {p.offers.map((o) => (
-              <article
-                key={o.title}
-                className="rounded-2xl border border-black/[0.07] bg-white p-5 sm:p-6"
+      {book ? (
+        // the perspective's Service Book, its clients and their films after its services
+        <ServiceBook book={book} ask={p.ask}>
+          {(clients.length > 0 || films.length > 0) && (
+            <section className="px-4 pb-14 sm:px-6 sm:pb-20">
+              <div className="mx-auto max-w-6xl">{work}</div>
+            </section>
+          )}
+        </ServiceBook>
+      ) : (
+        <section id="world" className="scroll-mt-24 px-4 pb-8 pt-16 sm:px-6 sm:pt-24">
+          <div className="mx-auto max-w-6xl">
+            <p className="tracked text-[10px] text-black/50">What we make for you</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3 sm:gap-4">
+              {p.offers.map((o) => (
+                <article
+                  key={o.title}
+                  className="rounded-2xl border border-black/[0.07] bg-white p-5 sm:p-6"
+                >
+                  <h3 className="text-[16px] font-medium leading-snug">{o.title}</h3>
+                  <p className="mt-2 text-[14px] leading-relaxed text-black/60">{o.text}</p>
+                </article>
+              ))}
+            </div>
+
+            {work}
+
+            <div className="mt-12 flex flex-wrap items-center gap-3 sm:mt-14">
+              <a
+                href={`mailto:${SITE.email}?subject=${encodeURIComponent(p.ask)}`}
+                className="press rounded-full bg-black px-6 py-3 text-[14px] text-white transition hover:bg-black/85"
               >
-                <h3 className="text-[16px] font-medium leading-snug">{o.title}</h3>
-                <p className="mt-2 text-[14px] leading-relaxed text-black/60">{o.text}</p>
-              </article>
-            ))}
-          </div>
-
-          {clients.length > 0 && (
-            <div className="mt-12 sm:mt-14">
-              <p className="tracked text-[10px] text-black/50">Who we've made films with</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {clients.map((c) => (
-                  <Link key={c.name} to="/projects" search={{ client: c.name }} className="press">
-                    <ClientBadge client={c} />
-                  </Link>
-                ))}
-              </div>
+                Start a conversation
+              </a>
+              <Link
+                to="/about"
+                className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[14px] transition hover:bg-black/[0.03]"
+              >
+                Choose another perspective
+              </Link>
             </div>
-          )}
-
-          {films.length > 0 && (
-            <div className="mt-12 sm:mt-14">
-              <p className="tracked text-[10px] text-black/50">
-                {clients.length ? "Their films" : "From our films"}
-              </p>
-              <div className="mt-5 grid gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-                {films.map((f) => (
-                  <VideoCard key={f.slug} project={f} bleed />
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="mt-12 flex flex-wrap items-center gap-3 sm:mt-14">
-            <a
-              href={`mailto:${SITE.email}?subject=${encodeURIComponent(p.ask)}`}
-              className="press rounded-full bg-black px-6 py-3 text-[14px] text-white transition hover:bg-black/85"
-            >
-              Start a conversation
-            </a>
-            <Link
-              to="/about"
-              className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[14px] transition hover:bg-black/[0.03]"
-            >
-              Choose another perspective
-            </Link>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </>
   );
 }
