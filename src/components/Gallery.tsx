@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
-import { SITE, WORK_CLIENTS } from "@/content/site";
+import { LANDING, SITE, WORK_CLIENTS } from "@/content/site";
 import { PROJECTS, getProject } from "@/content/projects";
 import { ProjectSheet } from "@/components/work/ProjectSheet";
 import { setStageTone } from "@/lib/stage";
@@ -606,21 +606,24 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     const s = scene.current;
     const T = !!tunnel.current;
     const e = T ? band(p, THRESHOLD) : 0; // without the corridor the logo stays put
-    // (on a tall phone the logo is kept just small enough that the words under it clear "Scroll
-    // to enter" at the foot, above the phone's bottom bar)
-    const fit =
-      s.text && s.hint
-        ? (s.hint.offsetTop - 20 - s.text.offsetHeight - 34 - H * 0.4) / (686 - LOGO.center.y)
-        : Infinity;
+    // (on a tall phone the logo is kept just small enough that the words under it clear the hint
+    // at the foot, above the phone's bottom bar; on a short one, once it's as small as it goes,
+    // it rises instead, its top never nearer than 24 px to the screen's top)
+    const room =
+      s.text && s.hint ? s.hint.offsetTop - 20 - s.text.offsetHeight - 34 : Infinity; // the lowest the logo's foot may be
+    const fit = (room - H * 0.4) / (686 - LOGO.center.y);
     const base = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
     const s0 = Math.max(base * 0.55, Math.min(base, fit));
+    const markY = Math.max(
+      24 + (LOGO.center.y - LOGO.top.y) * s0,
+      Math.min(H * 0.4, room - (686 - LOGO.center.y) * s0),
+    );
     const zoomOf = (x: number) => Math.exp(Math.log(T ? DOOR_ZOOM : 120) * Math.pow(x, 1.7));
     const zoom = zoomOf(e);
     // The 3D doors take over at the size the logo has reached
     if (T)
       tunnel.current!.setDoorFraction((LOGO.height * s0 * zoomOf(band(HANDOVER, THRESHOLD))) / H);
     const scale = s0 * zoom;
-    const markY = H * 0.4;
     const restX = W / 2 + (LOGO.focus.x - LOGO.center.x) * s0;
     const restY = markY + (LOGO.focus.y - LOGO.center.y) * s0;
     const k = smooth(e);
@@ -2545,20 +2548,22 @@ function IntroDoor({
         style={{ top: "70%" }}
       >
         <p className="tracked text-[clamp(1.05rem,2.6vw,1.9rem)] font-light">{SITE.tagline}</p>
-        <span className="mt-5 block h-px w-16 bg-black/60" />
-        <p className="mt-5 max-w-md text-[13px] leading-relaxed text-black/60">
-          {SITE.description}
-        </p>
+        {/* a little of India's tricolour: the line under the tagline, and the hint's falling light */}
+        <span className="prism-rule mt-5 block w-24" />
+        <p className="mt-5 max-w-md text-[13px] leading-relaxed text-black/60">{LANDING.text}</p>
       </div>
       <p
         ref={set("hint")}
         className="tracked pointer-events-none absolute inset-x-0 bottom-[calc(1.75rem+var(--dock,0px))] flex flex-col items-center gap-3 text-[10px] text-black/50"
       >
-        Scroll to enter
+        {LANDING.hint}
         <span className="h-8 w-px overflow-hidden bg-black/10">
           <span
-            className="block h-1/2 w-full bg-black/60"
-            style={{ animation: "hint-line 1.8s ease-in-out infinite" }}
+            className="block h-1/2 w-full"
+            style={{
+              background: "var(--tricolour-v)",
+              animation: "hint-line 1.8s ease-in-out infinite",
+            }}
           />
         </span>
       </p>
