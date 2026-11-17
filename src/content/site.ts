@@ -18,6 +18,16 @@ export const SITE = {
 };
 
 /*
+  The landing (/): `text` under the tagline, what Insight Lab is; `hint` at
+  its foot, the scroll that carries you to the Work page. (SITE.description
+  stays what search engines read.)
+*/
+export const LANDING = {
+  text: "Insight Lab is a non-fiction studio by Famecast. We make documentaries, series and impact films about India's people, culture and untold stories, told with care from first question to final cut.",
+  hint: "Scroll to explore our work",
+};
+
+/*
   Contact page (/contact). Its hero (components/ContactHero.tsx): `eyebrow`
   and `title` above the door, then the email and phone (SITE); `hint` at its
   foot, to the form. The form below: `formEyebrow`, `formTitle`, `formIntro`;
