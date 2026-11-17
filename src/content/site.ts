@@ -18,12 +18,15 @@ export const SITE = {
 };
 
 /*
-  The landing (/): `text` under the tagline, what Insight Lab is; `hint` at
-  its foot, the scroll that carries you to the Work page. (SITE.description
-  stays what search engines read.)
+  The landing (/): `text` under the tagline, a line short enough to quote:
+  why real stories matter now, and what Insight Lab does, in plain words
+  anyone understands (no film terms); `hint` at its foot, the scroll that
+  carries you to the Work page. (SITE.description stays what search
+  engines read.)
 */
 export const LANDING = {
-  text: "Insight Lab is a non-fiction studio by Famecast. We make documentaries, series and impact films about India's people, culture and untold stories, told with care from first question to final cut.",
+  // (\u00a0 and \u2011 keep "Insight Lab" and "non-fiction" from breaking across lines)
+  text: "In the age of AI, people want to know what is real. Insight\u00a0Lab, a non\u2011fiction visual studio by Famecast, films true stories across India that people can trust.",
   hint: "Scroll to explore our work",
 };
 

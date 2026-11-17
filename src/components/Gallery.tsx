@@ -2550,7 +2550,9 @@ function IntroDoor({
         <p className="tracked text-[clamp(1.05rem,2.6vw,1.9rem)] font-light">{SITE.tagline}</p>
         {/* a little of India's tricolour: the line under the tagline, and the hint's falling light */}
         <span className="prism-rule mt-5 block w-24" />
-        <p className="mt-5 max-w-md text-[13px] leading-relaxed text-black/60">{LANDING.text}</p>
+        <p className="mt-5 max-w-md text-[13px] leading-relaxed text-balance text-black/60">
+          {LANDING.text}
+        </p>
       </div>
       <p
         ref={set("hint")}
