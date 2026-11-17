@@ -43,7 +43,6 @@ const MOTION = {
 // so the white folders stand out against it.
 const SHADOW = "rgba(40,30,90,"; // the site's shadows are a deep violet, not grey
 const PRISM = "var(--prism)";
-const PRISM_SOLID = "linear-gradient(90deg, #1f2cff, #2bb8ff 40%, #ff8a1f 60%, #ff3d1f)"; // without its white middle
 
 /*
   The leather: its pebble grain is noise lit from the top left (an SVG filter,
@@ -422,7 +421,8 @@ export function TestimonialDrawer() {
                             <mark
                               className="bg-transparent pb-[2px] font-normal text-black [box-decoration-break:clone] [-webkit-box-decoration-break:clone]"
                               style={{
-                                backgroundImage: `${PRISM_SOLID}, linear-gradient(90deg, rgba(43,140,255,0.13), rgba(255,138,31,0.15))`,
+                                // the line under the words is the tricolour; the tint behind them stays the prism's
+                                backgroundImage: `var(--tricolour), linear-gradient(90deg, rgba(43,140,255,0.13), rgba(255,138,31,0.15))`,
                                 backgroundSize: "100% 1.5px, 100% 0.55em",
                                 backgroundPosition: "0 100%, 0 100%",
                                 backgroundRepeat: "no-repeat",
@@ -516,10 +516,13 @@ function DrawerFront({ g }: { g: ReturnType<typeof geometry> }) {
       }}
     >
       {/* the light along its top edge */}
-      <span className="absolute inset-x-[8%] top-0 h-px opacity-80" style={{ background: PRISM }} />
+      <span
+        className="absolute inset-x-[8%] top-0 h-px opacity-80"
+        style={{ background: "var(--tricolour)" }}
+      />
       <span
         className="absolute inset-x-[14%] -top-1 h-3 rounded-full opacity-40 blur-md"
-        style={{ background: PRISM }}
+        style={{ background: "var(--tricolour)" }}
       />
       {/* the stitching, a groove beside it */}
       <Stitches inset={g.phone ? 8 : 10} radius={g.phone ? 9 : 11} />

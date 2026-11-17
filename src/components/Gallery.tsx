@@ -606,7 +606,14 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     const s = scene.current;
     const T = !!tunnel.current;
     const e = T ? band(p, THRESHOLD) : 0; // without the corridor the logo stays put
-    const s0 = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
+    // (on a tall phone the logo is kept just small enough that the words under it clear "Scroll
+    // to enter" at the foot, above the phone's bottom bar)
+    const fit =
+      s.text && s.hint
+        ? (s.hint.offsetTop - 20 - s.text.offsetHeight - 34 - H * 0.4) / (686 - LOGO.center.y)
+        : Infinity;
+    const base = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
+    const s0 = Math.max(base * 0.55, Math.min(base, fit));
     const zoomOf = (x: number) => Math.exp(Math.log(T ? DOOR_ZOOM : 120) * Math.pow(x, 1.7));
     const zoom = zoomOf(e);
     // The 3D doors take over at the size the logo has reached
@@ -2040,7 +2047,7 @@ function stopName(s: GalleryScene, st?: Stop) {
 
 /*
   The journey bar, as a game shows your objective: how far through the
-  gallery you are (a line of prism light, and on larger screens "4 / 27"),
+  gallery you are (a line of the tricolour, and on larger screens "4 / 27"),
   the stop you're making for (its name, which way it is from where you're
   looking, how far along the way), and ‹ and Next to walk the route back or
   on. It's the same journey a scroll, N / P, a flick up or down on a phone,
@@ -2110,7 +2117,7 @@ function JourneyBar({
           <div className="mt-1.5 h-[2px] w-full min-w-[120px] overflow-hidden rounded-full bg-black/10">
             <div
               className="h-full rounded-full transition-[width] duration-700"
-              style={{ width: `${progress * 100}%`, background: "var(--prism)" }}
+              style={{ width: `${progress * 100}%`, background: "var(--tricolour)" }}
             />
           </div>
         </div>
@@ -2334,7 +2341,7 @@ function HallMap({
         <span
           aria-hidden
           className="absolute inset-y-[30%] left-0 w-[3px] -translate-x-1/2 rounded-full"
-          style={{ background: "var(--prism)" }}
+          style={{ background: "var(--tricolour-v)" }}
         />
         {plan.prism && (
           <span

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+} from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import type { Project } from "@/content/projects";
@@ -6,6 +14,8 @@ import type { WorkClient } from "@/content/site";
 import { Poster } from "@/components/Poster";
 import { SORTS, UI, clientOf, coverSources, filmOf, kindOf, type SortKey } from "@/lib/work";
 import { usePlayer } from "@/lib/player";
+import { ScrubFrame } from "@/components/work/ScrubFrame";
+import { BLURRED, BlurredFilm, STAGE } from "@/components/work/BlurredFilm";
 import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 
@@ -17,9 +27,10 @@ import { cn } from "@/lib/utils";
   site's --prism) as the one accent.
 */
 
-export const INK = "#0a0a0a";
-export const MUTED = "#6b6b6b";
-/* the prism's light: the accent (a card's hover line, progress, rules) */
+// (the page's own ink, from its colour tokens in styles.css)
+export const INK = "var(--foreground)";
+export const MUTED = "var(--muted-foreground)";
+/* the prism's light (lines are the tricolour now, --tricolour: a card's hover line, progress, rules) */
 export const PRISM = "var(--prism)";
 
 /*
@@ -37,8 +48,18 @@ export function WorkBackdrop({
   wide?: boolean;
   flush?: boolean;
 }) {
+  // a computer's screen: the film's glow is grander there (Ambient, CINEMA)
+  const [pc, setPc] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia(CINEMA_SCREENS);
+    const apply = () => setPc(q.matches);
+    apply();
+    q.addEventListener("change", apply);
+    return () => q.removeEventListener("change", apply);
+  }, []);
   return (
-    <div className="relative overflow-x-clip bg-[#fcfcfc]" style={{ ...UI, color: INK }}>
+    <div className="relative isolate overflow-x-clip bg-background" style={{ ...UI, color: INK }}>
+      <Ambient cinema={pc} />
       <div
         className={cn(
           // phones: the header is at the bottom (SiteNav), so the page starts at the top
@@ -51,6 +72,445 @@ export function WorkBackdrop({
       </div>
     </div>
   );
+}
+
+/* ---------- the film's light on the page ---------- */
+
+/*
+  While a film plays from this page, the page takes on its light, as YouTube's
+  ambient light: the film blurred so far that only its light is left, behind
+  the page, strongest round the film and softening out across it to nothing
+  well below. The light changes smoothly: its base is YouTube's pictures of
+  the film (at a quarter, half and three quarters through: lib/player.tsx
+  `ambient`), each fading in slowly over the last; on a computer the film
+  itself, live and in step (BlurredFilm), is laid over that base, not fully,
+  so a cut in the film shifts the light rather than flashing it. Phones have
+  the same light from the pictures alone (a second, live film would cost a
+  phone data and battery, and iPhone's Safari won't blur or cut a YouTube
+  frame). A video file is drawn live, on phones too (no second copy needed).
+  On phones the bar round the notch, above the page, takes the light too
+  (`useNotchLight`). Tune here:
+*/
+const LIGHT = {
+  glow: 0.55, // how strong, round the film (0 to 1)
+  saturate: 1.8, // light, not grey: richer…
+  brightness: 1.15, // …and brighter than the film
+  reach: 2.4, // how far down the page it reaches, in the film's heights below it
+  blur: 42, // px, at the small size the film's drawn at (BlurredFilm): about ×3 on screen
+  fade: 2600, // ms for a new picture's light to fade in over the last
+  live: 0.5, // on a computer, how much of the live film is laid over the pictures' light
+};
+/* how it fades from the film out: [how far (of the way to the light's edge), how strong] */
+const FALLOFF: [number, number][] = [
+  [0, 1],
+  [0.4, 0.6],
+  [0.92, 0],
+];
+/* a computer's screen: where the live film joins the light */
+const CINEMA_SCREENS = "(min-width: 1024px) and (hover: hover)";
+
+type Box = { x: number; y: number; w: number; h: number };
+
+function Ambient({ cinema }: { cinema: boolean }) {
+  const { ambient, slot, docked } = usePlayer();
+  const root = useRef<HTMLDivElement>(null);
+  // where the film's box is on this page (none: its box is on another page)
+  const [box, setBox] = useState<Box | null>(null);
+  // the pictures' light: the newest fading in over the one before (the two are all that's kept)
+  const [shots, setShots] = useState<{ key: number; src: string }[]>([]);
+
+  useEffect(() => {
+    const host = root.current?.parentElement;
+    const el = slot?.el;
+    if (!host || !el || !host.contains(el)) {
+      setBox(null);
+      return;
+    }
+    const measure = () => {
+      const a = host.getBoundingClientRect();
+      const b = el.getBoundingClientRect();
+      setBox({ x: b.left - a.left, y: b.top - a.top, w: b.width, h: b.height });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(host);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [slot]);
+
+  // a picture of the film: once it's loaded, it fades in over the last
+  const frame = ambient?.frame;
+  useEffect(() => {
+    if (!frame) return;
+    let gone = false;
+    const img = new Image();
+    img.onload = () => {
+      if (!gone) setShots((was) => [...was.slice(-1), { src: frame, key: performance.now() }]);
+    };
+    img.src = frame;
+    return () => {
+      gone = true;
+    };
+  }, [frame]);
+
+  const on = !!ambient && docked && !!box;
+  // the live film: a computer's (YouTube), or a video file anywhere
+  const live = (cinema && !!ambient?.youtube) || !!ambient?.video;
+  const band = useRef<HTMLDivElement>(null);
+  useNotchLight({ phone: !cinema, on, box, root, band, frame, video: ambient?.video });
+  return (
+    <>
+      <div
+        ref={root}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 transition-opacity duration-[1200ms] motion-reduce:transition-none"
+        style={{ opacity: on ? 1 : 0 }}
+      >
+        {box && (
+          <div
+            className="absolute inset-x-0 top-0"
+            style={{
+              height: box.y + box.h * (1 + LIGHT.reach),
+              opacity: LIGHT.glow,
+              filter: `saturate(${LIGHT.saturate}) brightness(${LIGHT.brightness})`,
+              maskImage: `radial-gradient(120% 100% at ${box.x + box.w / 2}px ${box.y + box.h / 2}px, ${FALLOFF.map(([at, s]) => `rgba(0,0,0,${s}) ${at * 100}%`).join(", ")})`,
+            }}
+          >
+            {/* the pictures' light, each fading in slowly over the last */}
+            {shots.map((s) => (
+              <div
+                key={s.key}
+                className="absolute inset-0 animate-in fade-in motion-reduce:animate-none"
+                style={{ animationDuration: `${LIGHT.fade}ms` }}
+              >
+                <BlurredFilm still={s.src} blur={LIGHT.blur} className="absolute inset-0" />
+              </div>
+            ))}
+            {/* the film itself, live, over them */}
+            {live && ambient && (
+              <div
+                className="absolute inset-0"
+                style={{ opacity: ambient.youtube ? LIGHT.live : 1 }}
+              >
+                <BlurredFilm
+                  youtube={cinema ? ambient.youtube : undefined}
+                  video={ambient.video}
+                  clock={ambient.clock}
+                  blur={LIGHT.blur}
+                  className="absolute inset-0"
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {/* phones: from the page's top down to the film, over the light, the bar's own colour
+          (useNotchLight), so the bar round the notch runs straight down to the film */}
+      {!cinema && (
+        <div
+          ref={band}
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 sm:hidden"
+          style={{ height: box?.y ?? 0 }}
+        />
+      )}
+    </>
+  );
+}
+
+/*
+  The light round a phone's notch: the bar above the page takes the colour the
+  light has at the top of the screen, so the film's light runs on up under
+  the notch. A bar can only be one colour, not a picture: it's worked out as
+  the page draws the light there (`notchColour`): a small copy of the film's
+  picture blurred at that point as BlurredFilm blurs it (thinning out past the
+  picture's edge), made richer and brighter as the light is, and laid over the
+  page as strongly as the light is there; so it fades away as you scroll down
+  past the light, and as a new picture's light fades in over the last, so
+  does the bar's. Safari (since 26) colours its bar from the page's own
+  background (body's, unseen behind the page; pulled down past its top, the
+  light shows there too: a strip fixed at the top edge would be seen, and
+  Safari passes over one that's hidden), Chrome on Android and older Safari
+  from the page's theme colour (meta theme-color); both are given back as
+  the light goes.
+*/
+
+type RGB = [number, number, number];
+/* a film's picture, small (its letterbox bars cut off): rgb, row by row */
+type Picture = { px: Uint8ClampedArray; w: number; h: number };
+/* the pictures' light: the newest (`cur`) fading in over the one before since `at`, over `fade` ms */
+type Pictures = { prev: Picture | null; cur: Picture | null; at: number; fade: number };
+
+function useNotchLight({
+  phone,
+  on,
+  box,
+  root,
+  band,
+  frame,
+  video,
+}: {
+  phone: boolean;
+  on: boolean;
+  box: Box | null;
+  root: RefObject<HTMLDivElement | null>;
+  /* the page from its top down to the film, given the bar's colour */
+  band: RefObject<HTMLDivElement | null>;
+  frame?: string;
+  video?: HTMLVideoElement;
+}) {
+  const now = useRef({ on, box });
+  now.current = { on, box };
+  const pics = useRef<Pictures>({ prev: null, cur: null, at: 0, fade: LIGHT.fade });
+  const kick = useRef(() => {});
+  const take = (p: Picture | null, fade: number) => {
+    if (!p) return;
+    const was = pics.current;
+    pics.current = { prev: was.cur, cur: p, at: performance.now(), fade };
+    kick.current();
+  };
+
+  // from YouTube's picture of the film (letterboxed: its bars are an eighth of it, top and bottom)…
+  useEffect(() => {
+    if (!phone || !frame) return;
+    let gone = false;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (!gone) take(pictureOf(img, img.naturalWidth, img.naturalHeight, 0.125), LIGHT.fade);
+    };
+    img.src = frame;
+    return () => {
+      gone = true;
+    };
+  }, [phone, frame]);
+
+  // …or a video file, as it plays
+  useEffect(() => {
+    if (!phone || !video) return;
+    const every = 1000;
+    const look = () => {
+      if (video.readyState >= 2)
+        take(pictureOf(video, video.videoWidth, video.videoHeight, 0), every);
+    };
+    look();
+    const t = window.setInterval(look, every);
+    return () => window.clearInterval(t);
+  }, [phone, video]);
+
+  // the bar's colour, given to the page's background and theme colour as it changes
+  useEffect(() => {
+    if (!phone) return;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const was = meta?.content;
+    const strip = band.current;
+    const page = hexColour(
+      getComputedStyle(document.documentElement).getPropertyValue("--background"),
+    );
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let raf = 0;
+    let last = 0;
+    let shown = "";
+    // how far on the light is (0 to 1): it fades in and out as the page's does
+    let lit = 0;
+
+    const step = (t: number) => {
+      raf = 0;
+      const dt = t - last;
+      last = t;
+      const p = pics.current;
+      const k = !p.prev || still ? 1 : Math.min(1, (t - p.at) / p.fade);
+      const { on, box } = now.current;
+      const goal = on && box && p.cur ? 1 : 0;
+      lit = still
+        ? goal
+        : goal > lit
+          ? Math.min(goal, lit + dt / 1200)
+          : Math.max(goal, lit - dt / 1200);
+
+      const el = root.current;
+      const top = el?.getBoundingClientRect().top ?? 1;
+      const c =
+        el && box && p.cur && lit > 0 && top <= 1
+          ? notchColour(page, p, smooth(k), lit, box, el.clientWidth, -top)
+          : null;
+      const colour = c ? hex(c) : "";
+      if (colour !== shown) {
+        shown = colour;
+        // ("": the page's own again)
+        document.body.style.backgroundColor = colour;
+        if (strip) strip.style.backgroundColor = colour;
+        if (meta && was) meta.content = colour || was;
+      }
+      if (k < 1 || lit !== goal) raf = requestAnimationFrame(step);
+    };
+    const go = () => {
+      if (raf) return;
+      last = performance.now();
+      raf = requestAnimationFrame(step);
+    };
+    kick.current = go;
+    window.addEventListener("scroll", go, { passive: true });
+    window.addEventListener("resize", go);
+    go();
+    return () => {
+      kick.current = () => {};
+      window.removeEventListener("scroll", go);
+      window.removeEventListener("resize", go);
+      cancelAnimationFrame(raf);
+      document.body.style.backgroundColor = "";
+      if (strip) strip.style.backgroundColor = "";
+      if (meta && was) meta.content = was;
+    };
+  }, [phone, root, band]);
+
+  // the light came on or went, or the film's box moved
+  useEffect(() => kick.current(), [on, box]);
+}
+
+/*
+  The light's colour at `y` px down the page's light (the screen's top, as
+  it's scrolled), as Ambient draws it there: the film covering the light's
+  area (BlurredFilm: its small size scaled up to cover, a little larger),
+  blurred, faded towards the edge as the light is (FALLOFF), over the page.
+*/
+function notchColour(
+  page: RGB,
+  p: Pictures,
+  k: number,
+  lit: number,
+  box: Box,
+  width: number,
+  y: number,
+): RGB | null {
+  const tall = box.y + box.h * (1 + LIGHT.reach);
+  const SH = (STAGE * 9) / 16;
+  const scale = Math.max(width / STAGE, tall / SH) * BLURRED.zoom;
+  // where `y` is on the film, in its small size's px, and how much of the screen's width it spans
+  const sy = (y - (tall - SH * scale) / 2) / scale;
+  const half = width / scale / 2;
+  const at = (q: Picture) => blurredAt(q, sy, half, LIGHT.blur);
+  const film = p.prev && k < 1 && p.cur ? mix(at(p.prev), at(p.cur), k) : p.cur ? at(p.cur) : null;
+  if (!film) return null;
+  // the blurred picture thins out past its edges (towards the page)
+  const s = LIGHT.blur;
+  const cover = normal(sy / s) - normal((sy - SH) / s);
+  // how strong the light is there, across the screen's width (the page's mask: an ellipse
+  // round the film, 120% of the width across and the light's height tall)
+  const down = (y - (box.y + box.h / 2)) / tall;
+  let across = 0;
+  for (let i = 0; i < 9; i++) {
+    const side = (((i + 0.5) / 9) * width - (box.x + box.w / 2)) / (1.2 * width);
+    across += falloff(Math.hypot(side, down)) / 9;
+  }
+  const strength = LIGHT.glow * across * lit * cover;
+  return strength > 0.004 ? mix(page, lightOf(film), strength) : null;
+}
+
+/* a picture, small, its letterbox bars (`bars` of its height, top and bottom) cut off */
+function pictureOf(src: CanvasImageSource, w: number, h: number, bars: number): Picture | null {
+  if (!w || !h) return null;
+  const c = document.createElement("canvas");
+  c.width = 48;
+  c.height = 27;
+  const x = c.getContext("2d", { willReadFrequently: true });
+  if (!x) return null;
+  x.drawImage(src, 0, h * bars, w, h * (1 - 2 * bars), 0, 0, c.width, c.height);
+  try {
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    const px = new Uint8ClampedArray(c.width * c.height * 3);
+    for (let i = 0, o = 0; i < d.length; i += 4, o += 3) {
+      px[o] = d[i];
+      px[o + 1] = d[i + 1];
+      px[o + 2] = d[i + 2];
+    }
+    return { px, w: c.width, h: c.height };
+  } catch {
+    return null; // (a picture from somewhere that doesn't allow it to be read)
+  }
+}
+
+/*
+  A picture's colour blurred (by `s`, in the small size's px) at `sy` px down
+  it, across its middle `half` px either side (the screen's width): weighted
+  as a blur weighs it, within the picture.
+*/
+function blurredAt(q: Picture, sy: number, half: number, s: number): RGB {
+  const SH = (STAGE * 9) / 16;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  for (let j = 0; j < q.h; j++) {
+    const dy = ((j + 0.5) / q.h) * SH - sy;
+    const wy = Math.exp(-(dy * dy) / (2 * s * s));
+    if (wy < 0.01) continue;
+    for (let i = 0; i < q.w; i++) {
+      const dx = Math.max(0, Math.abs(((i + 0.5) / q.w) * STAGE - STAGE / 2) - half);
+      const wgt = wy * Math.exp(-(dx * dx) / (2 * s * s));
+      const o = (j * q.w + i) * 3;
+      r += q.px[o] * wgt;
+      g += q.px[o + 1] * wgt;
+      b += q.px[o + 2] * wgt;
+      n += wgt;
+    }
+  }
+  return n ? [r / n, g / n, b / n] : [0, 0, 0];
+}
+
+/* how much of a blur lies below `z` of its width (the normal distribution) */
+function normal(z: number) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp((-z * z) / 2);
+  const tail =
+    d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - tail : tail;
+}
+
+/* the film's colour as the light on the page has it: the blurred film's, then the light's own */
+function lightOf(c: RGB): RGB {
+  return saturate(saturate(c, BLURRED.saturate), LIGHT.saturate).map(
+    (v) => v * LIGHT.brightness,
+  ) as RGB;
+}
+
+/* as CSS's saturate() */
+function saturate([r, g, b]: RGB, s: number): RGB {
+  return [
+    (0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b,
+    (0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b,
+    (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b,
+  ].map((v) => Math.min(255, Math.max(0, v))) as RGB;
+}
+
+/* how strong the light is, `at` of the way to its edge (FALLOFF, as the page's mask) */
+function falloff(at: number) {
+  for (let i = 1; i < FALLOFF.length; i++) {
+    const [a, sa] = FALLOFF[i - 1];
+    const [b, sb] = FALLOFF[i];
+    if (at <= b) return sa + ((sb - sa) * (Math.max(at, a) - a)) / (b - a);
+  }
+  return 0;
+}
+
+const mix = (a: RGB, b: RGB, k: number): RGB => [
+  a[0] + (b[0] - a[0]) * k,
+  a[1] + (b[1] - a[1]) * k,
+  a[2] + (b[2] - a[2]) * k,
+];
+const smooth = (k: number) => k * k * (3 - 2 * k);
+const hex = (c: RGB) =>
+  "#" +
+  c
+    .map((v) =>
+      Math.round(Math.min(255, Math.max(0, v)))
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("");
+function hexColour(s: string): RGB {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(s.trim());
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [252, 252, 252];
 }
 
 /* ---------- avatars ---------- */
@@ -119,8 +579,8 @@ export function Chip({
       className={cn(
         "press flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] outline-none transition focus-visible:ring-2 focus-visible:ring-black/30",
         active
-          ? "bg-[#0a0a0a] text-white"
-          : "bg-[#0a0a0a]/[0.06] text-[#0a0a0a] hover:bg-[#0a0a0a]/[0.11]",
+          ? "bg-foreground text-background"
+          : "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.11]",
       )}
     >
       {children}
@@ -250,7 +710,17 @@ export function Cover({
   );
 }
 
-/* The picture in a card: the cover (or the stand-in poster), its length, and on hover a line of prism light. */
+/* A time as a film's player shows it: 1:05 */
+const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+
+/*
+  The picture in a card: the cover (or the stand-in poster), its length, and on
+  hover a line of the tricolour. A card whose film can play here, under a
+  mouse: after a moment's rest on it (so passing over cards loads nothing), the
+  film itself, at the point across the card the pointer is at (ScrubFrame):
+  move along and it runs through the film, rest and it plays on silently from
+  there; the tricolour line and the time show where in it you are.
+*/
 function Thumb({
   project,
   sizes,
@@ -260,8 +730,41 @@ function Thumb({
   sizes: string;
   className?: string;
 }) {
+  const film = filmOf(project);
+  const scrubbable = !!(film?.youtube || film?.file);
+  /* where across the card the pointer is (0 to 1), while scrubbing */
+  const [part, setPart] = useState<number | null>(null);
+  const [length, setLength] = useState(0);
+  const pending = useRef(0);
+  const intent = useRef(0);
+  useEffect(() => () => window.clearTimeout(intent.current), []);
+  const across = (e: React.PointerEvent<HTMLElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  };
+  const scrub = scrubbable
+    ? {
+        onPointerEnter: (e: React.PointerEvent<HTMLElement>) => {
+          if (e.pointerType !== "mouse") return;
+          pending.current = across(e);
+          intent.current = window.setTimeout(() => setPart(pending.current), 250);
+        },
+        onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+          if (e.pointerType !== "mouse") return;
+          pending.current = across(e);
+          setPart((p) => (p === null ? p : pending.current));
+        },
+        onPointerLeave: () => {
+          window.clearTimeout(intent.current);
+          setPart(null);
+        },
+      }
+    : {};
   return (
-    <span className={cn("relative block aspect-video overflow-hidden bg-[#0d0d16]", className)}>
+    <span
+      className={cn("relative block aspect-video overflow-hidden bg-[#0d0d16]", className)}
+      {...scrub}
+    >
       {coverSources(project) ? (
         <Cover
           project={project}
@@ -277,16 +780,45 @@ function Thumb({
         aria-hidden
         className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10"
       />
+      {part !== null && film && (
+        <>
+          <ScrubFrame
+            youtube={film.youtube}
+            file={film.file}
+            part={part}
+            onLength={setLength}
+            className="absolute inset-0 duration-200 animate-in fade-in"
+          />
+          {length > 0 && (
+            <span className="absolute bottom-1.5 left-1.5 rounded-[5px] bg-[#0b0b14]/75 px-1.5 py-px text-[12px] font-medium tabular-nums text-white backdrop-blur-sm">
+              {clock(part * length)}
+            </span>
+          )}
+        </>
+      )}
       {project.duration && (
         <span className="absolute bottom-1.5 right-1.5 rounded-[5px] bg-[#0b0b14]/75 px-1.5 py-px text-[12px] font-medium tabular-nums text-white backdrop-blur-sm">
           {project.duration}
         </span>
       )}
-      <span
-        aria-hidden
-        className="absolute inset-x-0 bottom-0 h-[3px] origin-left scale-x-0 transition-transform duration-500 group-hover:scale-x-100"
-        style={{ background: PRISM }}
-      />
+      {part === null ? (
+        <span
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-[3px] origin-left scale-x-0 transition-transform duration-500 group-hover:scale-x-100"
+          style={{ background: "var(--tricolour)" }}
+        />
+      ) : (
+        // where in the film: the tricolour up to the pointer
+        <span aria-hidden className="absolute inset-x-0 bottom-0 h-[3px] bg-white/30">
+          <span
+            className="absolute inset-0"
+            style={{
+              background: "var(--tricolour)",
+              clipPath: `inset(0 ${((1 - part) * 100).toFixed(2)}% 0 0)`,
+            }}
+          />
+        </span>
+      )}
     </span>
   );
 }
@@ -467,7 +999,7 @@ export function CardMenu({ project }: { project: Project }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="grid h-8 w-8 place-items-center rounded-full opacity-80 transition hover:bg-[#0a0a0a]/[0.07] hover:opacity-100"
+        className="grid h-8 w-8 place-items-center rounded-full opacity-80 transition hover:bg-foreground/[0.07] hover:opacity-100"
       >
         <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="currentColor" aria-hidden>
           <circle cx="12" cy="5" r="1.8" />

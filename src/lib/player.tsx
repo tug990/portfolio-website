@@ -17,6 +17,12 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
   sheet over the gallery) the film just leaves its box for the corner, until
   it's played there again. Scrolling past its box floats it to the corner
   too, and back into the box when you scroll back (`setOffscreen`, FilmBox).
+
+  `ambient`: the light of the film playing over its page, for the page around
+  it to take on (WorkUI.tsx `Ambient`): a frame of it (YouTube's pictures of
+  the film at a quarter, half and three quarters, picked by where it's at),
+  or the video itself (a file, read live). Set by the player while the film
+  is over its page and has started; null otherwise.
 */
 
 export type Film = {
@@ -31,6 +37,17 @@ export type Film = {
 
 type Slot = { slug: string; el: HTMLElement };
 
+/* where the playing film is, for a copy of it kept in step (WorkUI.tsx's blurred film behind
+   the page in cinema) */
+export type FilmClock = { now: () => number; playing: () => boolean };
+export type Ambient = {
+  frame?: string;
+  video?: HTMLVideoElement;
+  /* the film on YouTube, and its clock: for the blurred copy of it behind the page */
+  youtube?: string;
+  clock?: FilmClock;
+} | null;
+
 type PlayerState = {
   film: Film | null;
   slot: Slot | null;
@@ -43,6 +60,8 @@ type PlayerState = {
   /* its box has scrolled out of sight (the film floats to the corner meanwhile) */
   setOffscreen: (off: boolean) => void;
   setSlot: (slug: string, el: HTMLElement | null) => void;
+  ambient: Ambient;
+  setAmbient: (a: Ambient) => void;
 };
 
 const PlayerContext = createContext<PlayerState | null>(null);
@@ -55,6 +74,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   /* minimised while its box is still on screen */
   const [held, setHeld] = useState(false);
   const [offscreen, setOffscreen] = useState(false);
+  const [ambient, setAmbient] = useState<Ambient>(null);
 
   const play = useCallback((f: Film) => {
     setFilm((cur) => (cur?.slug === f.slug ? cur : f));
@@ -82,8 +102,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const docked = !!film && !!slot && slot.slug === film.slug && !held && !offscreen;
   const value = useMemo(
-    () => ({ film, slot, docked, play, close, minimise, setOffscreen, setSlot }),
-    [film, slot, docked, play, close, minimise, setSlot],
+    () => ({
+      film,
+      slot,
+      docked,
+      play,
+      close,
+      minimise,
+      setOffscreen,
+      setSlot,
+      ambient,
+      setAmbient,
+    }),
+    [film, slot, docked, play, close, minimise, setSlot, ambient],
   );
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

@@ -33,8 +33,9 @@ function Contact() {
   from); then a line says so.
 */
 const LABEL = "tracked mb-2 block text-[10px] text-black/55";
+// (16 px on phones: an iPhone zooms the whole page into a field whose words are any smaller)
 const FIELD =
-  "w-full rounded-xl border border-black/10 bg-white px-4 text-[15px] text-black outline-none transition placeholder:text-black/30 focus:border-[#6d7bff]/60 focus:ring-4 focus:ring-[#6d7bff]/10";
+  "w-full rounded-xl border border-black/10 bg-white px-4 text-base text-black outline-none transition placeholder:text-black/30 focus:border-[#6d7bff]/60 focus:ring-4 focus:ring-[#6d7bff]/10 sm:text-[15px]";
 
 function ContactForm() {
   const [sent, setSent] = useState(false);

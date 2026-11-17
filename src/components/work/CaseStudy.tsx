@@ -97,7 +97,7 @@ export function CaseStudy({
           </FilmBox>
 
           <div data-sheet-fade>
-            {/* the title as the site sets its titles: light, wide-spaced capitals, a line of prism light */}
+            {/* the title as the site sets its titles: light, wide-spaced capitals, a line of the tricolour */}
             {kind && kind.toLowerCase() !== project.title.toLowerCase() && (
               <p className="eyebrow mt-4" style={{ fontSize: 10.5 }}>
                 {kind}
@@ -147,7 +147,7 @@ function Owner({ project }: { project: Project }) {
         <Link
           to="/projects"
           search={{ client: client.name }}
-          className="press ml-1 flex h-9 shrink-0 items-center rounded-md bg-[#0a0a0a] px-4 text-[14px] text-white transition hover:bg-[#2a2a2a]"
+          className="press ml-1 flex h-9 shrink-0 items-center rounded-md bg-foreground px-4 text-[14px] text-background transition hover:opacity-85"
         >
           Their films
         </Link>
@@ -173,7 +173,7 @@ function Actions({ project }: { project: Project }) {
     }
   };
   const pill =
-    "press flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-black/[0.05] px-3.5 text-[14px] transition hover:bg-black/[0.09]";
+    "press flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-foreground/[0.06] px-3.5 text-[14px] transition hover:bg-foreground/[0.1]";
   const icon = (d: string) => (
     <svg
       aria-hidden
@@ -239,12 +239,12 @@ function Description({ project }: { project: Project }) {
     <div
       onClick={() => !open && setOpen(true)}
       className={cn(
-        "mt-5 rounded-2xl border border-black/[0.08] bg-white p-4 text-[15px] leading-[1.65] sm:p-5",
-        !open && "cursor-pointer transition hover:border-black/20",
+        "mt-5 rounded-2xl border border-foreground/[0.09] bg-[var(--card)] p-4 text-[15px] leading-[1.65] transition-colors duration-1000 sm:p-5",
+        !open && "cursor-pointer transition hover:border-foreground/20",
       )}
     >
       <p className="text-[13px]" style={{ color: MUTED }}>
-        <span className="font-medium text-[#0a0a0a]">
+        <span className="font-medium text-foreground">
           {[project.year, kindOf(project), project.duration, project.series, project.place]
             .filter(Boolean)
             .join(" · ")}
@@ -258,7 +258,7 @@ function Description({ project }: { project: Project }) {
                 to="/projects"
                 search={{ q: t.label }}
                 onClick={(e) => e.stopPropagation()}
-                className="press flex h-8 items-center gap-1.5 rounded-full border border-black/[0.12] bg-white px-3 text-[13px] transition hover:border-black/30 hover:bg-black/[0.03]"
+                className="press flex h-8 items-center gap-1.5 rounded-full border border-foreground/[0.14] bg-[var(--card)] px-3 text-[13px] transition hover:border-foreground/30 hover:bg-foreground/[0.04]"
               >
                 <ThemeGlyph icon={t.icon} />
                 {t.label}
@@ -286,7 +286,7 @@ function Description({ project }: { project: Project }) {
             </div>
           ))}
           {project.quote && (
-            <blockquote className="border-l-2 pl-4" style={{ borderImage: "var(--prism) 1" }}>
+            <blockquote className="border-l-2 pl-4" style={{ borderImage: "var(--tricolour-v) 1" }}>
               <p className="text-[19px] font-light leading-snug">“{project.quote.text}”</p>
               <footer className="mt-2 text-[13px]" style={{ color: MUTED }}>
                 {project.quote.name}
@@ -299,7 +299,7 @@ function Description({ project }: { project: Project }) {
               <h3 className={head}>Stills</h3>
               <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {stills.slice(0, 4).map((src, i) => (
-                  <li key={src} className="aspect-video overflow-hidden rounded-lg bg-black/5">
+                  <li key={src} className="aspect-video overflow-hidden rounded-lg bg-foreground/5">
                     <img
                       src={src}
                       alt={`${project.title}, still ${i + 1}`}
@@ -327,7 +327,7 @@ function Description({ project }: { project: Project }) {
             </div>
           )}
           {client && (
-            <div className="flex items-center gap-3 border-t border-[#0a0a0a]/10 pt-4">
+            <div className="flex items-center gap-3 border-t border-foreground/10 pt-4">
               <Avatar client={client} size={48} />
               <div className="min-w-0">
                 <p className="font-medium" style={{ color: client.color }}>
@@ -347,7 +347,7 @@ function Description({ project }: { project: Project }) {
           setOpen((o) => !o);
         }}
         aria-expanded={open}
-        className="press mt-4 inline-flex h-10 items-center gap-2 rounded-md bg-[#0a0a0a] px-4 text-[14px] text-white transition hover:bg-[#2a2a2a]"
+        className="press mt-4 inline-flex h-10 items-center gap-2 rounded-md bg-foreground px-4 text-[14px] text-background transition hover:opacity-85"
       >
         {open ? "Show less" : "Read more"}
         <svg

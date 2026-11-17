@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
-import { usePlayer, type Film } from "@/lib/player";
+import { usePlayer, type Film, type FilmClock } from "@/lib/player";
 import { GLASS_PANEL } from "@/lib/menu";
 import { YT_HOST, loadYouTubeApi, type YTPlayer } from "@/lib/youtube";
+import { ScrubFrame } from "@/components/work/ScrubFrame";
 import { cn } from "@/lib/utils";
 
 /*
@@ -26,17 +27,25 @@ import { cn } from "@/lib/utils";
   F full screen, I mini player, ? the list of them (ShortcutsPanel). Each
   shows a small sign over the film for a moment.
 
-  Full screen: F (or YouTube's own button) fills the screen and turns a
-  phone to landscape where the browser allows (Android). Turning a phone to
-  landscape while a film plays on its page fills the screen with it too, as
-  YouTube's app does (on iPhone as well, without the browser's full screen);
-  turning back, or the ⌄, returns it.
+  Full screen: F (or the button) fills the screen and turns a phone to
+  landscape by itself: the browser's full screen, locked to landscape where
+  the browser allows (Android); where it doesn't (iPhone), the film is drawn
+  turned on its side across the upright screen, filling it, ready to watch
+  with the phone held sideways. Turning a phone to landscape while a film
+  plays on its page fills the screen with it too, as YouTube's app does;
+  turning back, or the ⌄, returns it. On a phone, dragging the playing film
+  down minimises it, as on YouTube.
 */
 
 const PHONE = "(max-width: 639px)";
 const isPhone = () => window.matchMedia(PHONE).matches;
 /* a phone held sideways */
 const LANDSCAPE_PHONE = "(orientation: landscape) and (max-height: 520px) and (pointer: coarse)";
+/* how long YouTube shows its own title, channel and logo when a film starts, resumes or
+   replays on iPhone (ms): measured at 3.1 to 4.4 s, so a little longer */
+const FRESH = 4500;
+/* a phone held upright */
+const PORTRAIT_PHONE = "(orientation: portrait) and (max-width: 520px) and (pointer: coarse)";
 
 /* Opens the list of keyboard shortcuts (the film page's "Shortcuts" button). */
 export const openShortcuts = () => window.dispatchEvent(new Event("insight:shortcuts"));
@@ -168,7 +177,7 @@ function fixedAncestor(el: HTMLElement) {
 }
 
 function Player({ film }: { film: Film }) {
-  const { slot, docked, close, minimise, play } = usePlayer();
+  const { slot, docked, close, minimise, play, setAmbient } = usePlayer();
   const navigate = useNavigate();
   const box = useRef<HTMLDivElement>(null);
   const screen = useRef<HTMLDivElement>(null);
@@ -176,6 +185,30 @@ function Player({ film }: { film: Film }) {
   const lastRect = useRef<DOMRect | null>(null);
   const [inSheet, setInSheet] = useState(false);
   const media = useMedia(film);
+
+  // The film's light, for the page around it (WorkUI.tsx Ambient), while its own page is open
+  // and it has started (floated to the corner as you scroll down it too, so the page stays dim):
+  // YouTube's picture of the film near where it's at (a quarter, half, three quarters
+  // through), or a video file itself, read live.
+  const part = media.duration ? media.time / media.duration : 0;
+  const frame = film.youtube
+    ? `https://i.ytimg.com/vi/${film.youtube}/hq${part < 0.375 ? 1 : part < 0.625 ? 2 : 3}.jpg`
+    : undefined;
+  const videoRef = media.videoRef;
+  const onItsPage = slot?.slug === film.slug;
+  // (the film's clock, one for its life, so a copy of it can keep in step)
+  const mediaNow = useRef(media);
+  mediaNow.current = media;
+  const [clock] = useState<FilmClock>(() => ({
+    now: () => mediaNow.current.now(),
+    playing: () => mediaNow.current.isPlaying(),
+  }));
+  useEffect(() => {
+    if (!onItsPage || !media.started) setAmbient(null);
+    else if (frame) setAmbient({ frame, youtube: film.youtube, clock });
+    else if (videoRef.current) setAmbient({ video: videoRef.current, clock });
+  }, [onItsPage, media.started, frame, film.youtube, clock, videoRef, setAmbient]);
+  useEffect(() => () => setAmbient(null), [setAmbient]);
 
   // Full screen without asking the browser: a phone turned sideways while the
   // film plays on its page (rotated), or F where the browser has no full
@@ -195,6 +228,16 @@ function Player({ film }: { film: Film }) {
     return () => q.removeEventListener("change", apply);
   }, []);
   const full = docked && ((rotated && !dismissed) || forced);
+  // full screen on an upright phone: the film drawn on its side, filling the screen
+  const [upright, setUpright] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia(PORTRAIT_PHONE);
+    const apply = () => setUpright(q.matches);
+    apply();
+    q.addEventListener("change", apply);
+    return () => q.removeEventListener("change", apply);
+  }, []);
+  const turned = full && upright;
   /* the browser's full screen is on (for the icon) */
   const [fsOn, setFsOn] = useState(false);
   useEffect(() => {
@@ -214,7 +257,14 @@ function Player({ film }: { film: Film }) {
         lock?: (o: string) => Promise<void>;
       };
       if (document.fullscreenElement && box.current?.contains(document.fullscreenElement)) {
-        o?.lock?.("landscape").catch(() => {});
+        // an upright phone that can't be turned to landscape: our own full screen, on its side
+        const cannot = () => {
+          if (!window.matchMedia(PORTRAIT_PHONE).matches) return;
+          document.exitFullscreen().catch(() => {});
+          setForced(true);
+        };
+        if (o?.lock) o.lock("landscape").catch(cannot);
+        else cannot();
       } else {
         try {
           o?.unlock?.();
@@ -329,7 +379,7 @@ function Player({ film }: { film: Film }) {
       }
       s.width = `${r.width}px`;
       s.height = `${r.height}px`;
-      lastRect.current = r;
+      if (!pulling.current) lastRect.current = r;
       if (r.width !== lastW) {
         lastW = r.width;
         s.borderRadius = getComputedStyle(slot.el).borderRadius;
@@ -371,19 +421,70 @@ function Player({ film }: { film: Film }) {
   }, [docked]);
 
   // Phones: swiping the bar. Up opens the film; down or sideways closes it.
+  // And the playing film on its page: dragged down, it shrinks after the
+  // finger and, let go far enough, minimises (as YouTube's does).
   const drag = useRef<{ x: number; y: number; id: number; axis?: "x" | "y" } | null>(null);
   const dragged = useRef(false);
   const grab = useRef<number | null>(null);
+  /* the playing film is being dragged down (its last place is kept for the flight) */
+  const pulling = useRef(false);
+  const pull = {
+    down: (e: React.PointerEvent) => {
+      const on = (e.target as HTMLElement).closest?.("button, a, [role=slider]");
+      if (full || !media.started || on) return;
+      drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    },
+    move: (e: React.PointerEvent, el: HTMLDivElement, d: NonNullable<typeof drag.current>) => {
+      const dy = e.clientY - d.y;
+      if (!d.axis) {
+        if (Math.hypot(e.clientX - d.x, dy) < 10) return;
+        d.axis = dy > 0 && Math.abs(dy) > Math.abs(e.clientX - d.x) ? "y" : "x";
+        if (d.axis === "x") return void (drag.current = null);
+        dragged.current = true;
+        pulling.current = true;
+        try {
+          el.setPointerCapture(d.id);
+        } catch {
+          /* the pointer is already gone */
+        }
+      }
+      const y = Math.max(0, dy);
+      el.style.transformOrigin = "50% 0";
+      el.style.transform = `translateY(${y}px) scale(${1 - Math.min(0.45, y / 700)})`;
+    },
+    up: (e: React.PointerEvent, el: HTMLDivElement, d: NonNullable<typeof drag.current>) => {
+      if (!d.axis) return;
+      window.setTimeout(() => (dragged.current = false), 0);
+      const dy = e.clientY - d.y;
+      if (dy > 80) {
+        // fly to the corner from where it is now
+        lastRect.current = el.getBoundingClientRect();
+        el.style.transform = "";
+        pulling.current = false;
+        minimise();
+        return;
+      }
+      el.animate([{ transform: "none" }], { duration: 220, easing: "ease-out" }).finished.then(
+        () => {
+          el.style.transform = "";
+          pulling.current = false;
+        },
+        () => (pulling.current = false),
+      );
+    },
+  };
   const swipe = {
     onPointerDown: (e: React.PointerEvent) => {
       dragged.current = false;
-      if (docked || !isPhone()) return;
+      if (!isPhone()) return;
+      if (docked) return pull.down(e);
       drag.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
     },
     onPointerMove: (e: React.PointerEvent) => {
       const d = drag.current;
       const el = box.current;
-      if (docked || !d || !el) return;
+      if (!d || !el) return;
+      if (docked) return pull.move(e, el, d);
       const dx = e.clientX - d.x;
       const dy = e.clientY - d.y;
       if (!d.axis) {
@@ -405,8 +506,8 @@ function Player({ film }: { film: Film }) {
     onPointerUp: (e: React.PointerEvent) => {
       const d = drag.current;
       const el = box.current;
-      if (docked) return;
       drag.current = null;
+      if (docked) return void (d && el && pull.up(e, el, d));
       if (!d?.axis || !el) return;
       // the tap a swipe may end in is ignored (onClickCapture), then taps work again
       window.setTimeout(() => (dragged.current = false), 0);
@@ -434,8 +535,8 @@ function Player({ film }: { film: Film }) {
       }
     },
     onPointerCancel: () => {
-      if (docked) return;
       drag.current = null;
+      pulling.current = false;
       if (box.current) {
         box.current.style.transform = "";
         box.current.style.opacity = "";
@@ -486,7 +587,7 @@ function Player({ film }: { film: Film }) {
         full
           ? "fixed inset-0 z-[100] bg-black"
           : docked
-            ? cn("overflow-hidden bg-black", inSheet ? "z-[71]" : "z-20")
+            ? cn("overflow-hidden bg-black max-sm:touch-none", inSheet ? "z-[71]" : "z-20")
             : cn(
                 GLASS_PANEL,
                 "fixed inset-x-2 bottom-[calc(var(--dock,env(safe-area-inset-bottom))+0.5rem)] z-[80] flex touch-none items-center gap-2.5 rounded-2xl p-1.5 sm:touch-auto",
@@ -498,11 +599,24 @@ function Player({ film }: { film: Film }) {
       <div
         ref={screen}
         className={cn(
-          "relative overflow-hidden bg-black",
-          docked
-            ? "h-full w-full"
-            : "aspect-video w-[118px] shrink-0 rounded-[10px] sm:w-full sm:rounded-xl",
+          "overflow-hidden bg-black",
+          turned
+            ? "absolute left-1/2 top-1/2"
+            : docked
+              ? "relative h-full w-full"
+              : "relative aspect-video w-[118px] shrink-0 rounded-[10px] sm:w-full sm:rounded-xl",
         )}
+        // full screen on an upright phone: on its side, filling the screen, to watch with the
+        // phone tipped to the left (the film's top along the screen's left edge)
+        style={
+          turned
+            ? {
+                width: "100dvh",
+                height: "100dvw",
+                transform: "translate(-50%, -50%) rotate(-90deg)",
+              }
+            : undefined
+        }
       >
         <div
           className="absolute left-0 top-0 h-full w-full origin-top-left"
@@ -514,6 +628,20 @@ function Player({ film }: { film: Film }) {
         >
           {media.element}
         </div>
+        {/* until it plays (and on iPhone a moment more): the film's cover over YouTube's own
+            screen, and a ring turning */}
+        {docked && (!media.started || media.fresh) && !media.blocked && (
+          <div className="pointer-events-none absolute inset-0 z-[4] grid place-items-center bg-black">
+            {film.cover && (
+              <img
+                src={film.cover}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            )}
+            <span className="relative h-11 w-11 animate-spin rounded-full border-2 border-white/25 border-t-white motion-reduce:animate-none" />
+          </div>
+        )}
         {/* what a key just did */}
         {sign && (
           <span
@@ -554,8 +682,11 @@ function Player({ film }: { film: Film }) {
             cover={film.cover}
             title={film.title}
             full={full || fsOn}
+            turned={turned}
             onFull={fullscreen}
             onMini={minimise}
+            youtube={film.youtube}
+            file={film.file}
           />
         )}
         {/* phones: ⌄ minimises (tap, or swipe down on it), like YouTube's */}
@@ -625,8 +756,8 @@ function Player({ film }: { film: Film }) {
               className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-white/30"
             >
               <span
-                className="block h-full bg-[image:var(--prism)]"
-                style={{ width: `${progress * 100}%` }}
+                className="absolute inset-0 bg-[image:var(--tricolour)]"
+                style={{ clipPath: played(progress) }}
               />
             </span>
           </>
@@ -685,6 +816,12 @@ function Player({ film }: { film: Film }) {
   );
 }
 
+/*
+  How much of the progress line is lit: the whole line is the tricolour, uncovered as the film
+  plays, so it's saffron at the start, white by the middle and green at the end.
+*/
+const played = (p: number) => `inset(0 ${((1 - p) * 100).toFixed(3)}% 0 0)`;
+
 const clock = (t: number) => {
   if (!Number.isFinite(t) || t < 0) return "0:00";
   return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
@@ -692,7 +829,7 @@ const clock = (t: number) => {
 
 /*
   The controls over a playing film, in the site's language (Jost, white on a
-  soft shade, the prism for progress): a progress line you can press or drag,
+  soft shade, the tricolour for progress): a progress line you can press or drag,
   play / pause, the time, sound, the keyboard list (PC), the mini player and
   full screen. They fade away while it plays and come back when you move
   over it or tap it. On a computer a click on the film plays / pauses; on a
@@ -706,13 +843,21 @@ function Controls({
   cover,
   title,
   full,
+  turned,
   onFull,
   onMini,
+  youtube,
+  file,
 }: {
   media: ReturnType<typeof useMedia>;
+  /* the film itself, for the preview over the progress line (ScrubFrame) */
+  youtube?: string;
+  file?: string;
   cover?: string;
   title: string;
   full: boolean;
+  /* drawn on its side (full screen on an upright phone): the line runs down the screen */
+  turned: boolean;
   onFull: () => void;
   onMini: () => void;
 }) {
@@ -724,15 +869,32 @@ function Controls({
     timer.current = window.setTimeout(() => setShown(false), 2600);
   };
   useEffect(() => () => window.clearTimeout(timer.current), []);
-  const visible = shown || !media.playing;
   const bar = useRef<HTMLDivElement>(null);
-  const seekAt = (x: number) => {
+  // A mouse over the progress line: that moment of the film in a small frame above it, and the
+  // time (ScrubFrame, made on the first hover and kept, hidden, for the next)
+  const [peek, setPeek] = useState<{ part: number; x: number; w: number } | null>(null);
+  const lastPeek = useRef({ part: 0, x: 0, w: 1 });
+  if (peek) lastPeek.current = peek;
+  const [armed, setArmed] = useState(false);
+  const look = (e: React.PointerEvent) => {
+    const r = bar.current?.getBoundingClientRect();
+    if (e.pointerType !== "mouse" || turned || !r || !(youtube || file)) return;
+    const x = Math.min(r.width, Math.max(0, e.clientX - r.left));
+    setPeek({ part: x / r.width, x, w: r.width });
+    setArmed(true);
+  };
+  const visible = shown || !media.playing || !!peek;
+  const seekAt = (e: React.PointerEvent) => {
     const r = bar.current?.getBoundingClientRect();
     if (!r || !media.duration) return;
-    media.seek(Math.min(0.999, Math.max(0, (x - r.left) / r.width)) * media.duration);
+    // (on its side the line runs up the screen: its start at the bottom)
+    const at = turned ? (r.bottom - e.clientY) / r.height : (e.clientX - r.left) / r.width;
+    media.seek(Math.min(0.999, Math.max(0, at)) * media.duration);
   };
   const progress = media.duration ? Math.min(1, media.time / media.duration) : 0;
   if (!media.started) return null;
+  const p = lastPeek.current;
+  const peekW = Math.round(Math.min(240, Math.max(150, p.w * 0.24)));
 
   const icon =
     "grid h-10 w-10 shrink-0 place-items-center rounded-full transition hover:bg-white/15";
@@ -765,9 +927,26 @@ function Controls({
           alt=""
           className={cn(
             "pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-300",
-            media.playing ? "opacity-0" : "opacity-100",
+            media.playing && !media.fresh ? "opacity-0" : "opacity-100",
           )}
         />
+      )}
+      {/* started without sound (the phone wouldn't start it with sound): a tap gives it */}
+      {media.quiet && media.playing && (
+        <button
+          type="button"
+          onClick={() => {
+            media.sound();
+            wake();
+          }}
+          className="press absolute right-3 top-3 z-10 flex items-center gap-2 rounded-full border border-white/40 bg-black/45 py-2 pl-3 pr-3.5 text-[13px] font-medium backdrop-blur-md"
+        >
+          <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px]" {...stroke}>
+            <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="none" />
+            <path d="M16 9.5l5 5m0-5l-5 5" />
+          </svg>
+          Tap for sound
+        </button>
       )}
       {/* the shade the controls sit on */}
       <span
@@ -834,18 +1013,49 @@ function Controls({
           aria-valuetext={`${clock(media.time)} of ${clock(media.duration)}`}
           onPointerDown={(e) => {
             e.currentTarget.setPointerCapture(e.pointerId);
-            seekAt(e.clientX);
+            seekAt(e);
             wake();
           }}
           onPointerMove={(e) => {
-            if (e.currentTarget.hasPointerCapture(e.pointerId)) seekAt(e.clientX);
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) seekAt(e);
+            look(e);
           }}
+          onPointerLeave={() => setPeek(null)}
           className="group/bar relative flex h-4 cursor-pointer touch-none items-center"
         >
-          <span className="relative block h-[3px] w-full overflow-hidden rounded-full bg-white/30 transition-[height] group-hover/bar:h-[5px]">
+          {/* that moment of the film, above the pointer */}
+          {armed && (
             <span
-              className="absolute inset-y-0 left-0 bg-[image:var(--prism)]"
-              style={{ width: `${progress * 100}%` }}
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute bottom-full mb-3 transition-opacity duration-150",
+                peek ? "opacity-100" : "opacity-0",
+              )}
+              style={{ width: peekW, left: Math.min(p.w - peekW, Math.max(0, p.x - peekW / 2)) }}
+            >
+              <ScrubFrame
+                youtube={youtube}
+                file={file}
+                part={p.part}
+                active={!!peek}
+                className="relative block aspect-video w-full rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.55)] ring-1 ring-white/30"
+              />
+              <span className="mt-1.5 block text-center text-[12.5px] font-medium tabular-nums [text-shadow:0_1px_4px_rgba(0,0,0,0.7)]">
+                {clock(p.part * media.duration)}
+              </span>
+            </span>
+          )}
+          <span className="relative block h-[3px] w-full overflow-hidden rounded-full bg-white/30 transition-[height] group-hover/bar:h-[5px]">
+            {/* up to the pointer, a lighter line (as YouTube's) */}
+            {peek && (
+              <span
+                className="absolute inset-0 bg-white/40"
+                style={{ clipPath: played(peek.part) }}
+              />
+            )}
+            <span
+              className="absolute inset-0 bg-[image:var(--tricolour)]"
+              style={{ clipPath: played(progress) }}
             />
           </span>
           <span
@@ -941,24 +1151,45 @@ function Controls({
 /* The film itself, a YouTube player or a video file, and what the mini controls need. */
 function useMedia(film: Film) {
   const [playing, setPlaying] = useState(false);
-  /* it has played (until then, on iPhone, YouTube's own play button may be needed) */
+  /* it has played */
   const [started, setStarted] = useState(false);
+  /* started without sound, as a phone wouldn't start it with sound: sound waits for a tap */
+  const [quiet, setQuiet] = useState(false);
+  /* it wouldn't start even silently (an iPhone in Low Power Mode): YouTube's frame is shown,
+     for its own play button, the one way left */
+  const [blocked, setBlocked] = useState(false);
   const [ended, setEnded] = useState(false);
   const [muted, setMuted] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const host = useRef<HTMLDivElement>(null);
   const yt = useRef<YTPlayer | null>(null);
+  /* an iPhone or iPad (see the frame, below) */
+  const [apple, setApple] = useState(false);
+  const appleRef = useRef(false);
+  useEffect(() => {
+    const n = navigator;
+    appleRef.current =
+      /iP(hone|ad|od)/.test(n.userAgent) || (n.platform === "MacIntel" && n.maxTouchPoints > 1);
+    setApple(appleRef.current);
+  }, []);
+  /* just started or resumed, on iPhone: YouTube shows its title, channel and logo over the
+     film for its first seconds there, so the cover stays over it till they've gone */
+  const [fresh, setFresh] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
 
   // YouTube, through its IFrame API, with sound and none of its own controls
   // or branding: ours are drawn over it (Controls), and the frame is cut so
-  // YouTube's title bar and logo fall outside it
+  // YouTube's title bar and logo fall outside it. Until it plays, the film's
+  // cover hides YouTube's screen (Player). Where a browser won't start it with
+  // sound (iPhone), it starts silently and a "Tap for sound" button shows.
   useEffect(() => {
     const el = host.current;
     if (!film.youtube || !el) return;
     let cancelled = false;
     let poll = 0;
+    let wait = 0;
+    let reveal = 0;
     // YouTube replaces the element it's given, so give it one React doesn't own
     const mount = document.createElement("div");
     el.appendChild(mount);
@@ -984,12 +1215,41 @@ function useMedia(film: Film) {
             onReady: () => {
               if (cancelled) return;
               yt.current?.playVideo();
+              // not playing soon (or buffering): it was refused sound, so start it without
+              const going = () => [1, 3].includes(yt.current?.getPlayerState() ?? -1);
+              wait = window.setTimeout(() => {
+                const p = yt.current;
+                if (cancelled || !p || going()) return;
+                p.mute();
+                p.playVideo();
+                setQuiet(true);
+                wait = window.setTimeout(() => !cancelled && !going() && setBlocked(true), 2000);
+              }, 1200);
+              let first = true;
+              let was = -1;
               poll = window.setInterval(() => {
                 const p = yt.current;
                 if (!p) return;
                 const state = p.getPlayerState();
                 setPlaying(state === 1);
-                if (state === 1) setStarted(true);
+                if (state === 1 && first) {
+                  first = false;
+                  setStarted(true);
+                }
+                // YouTube turns its own captions on for a film playing silently, and again on
+                // its own after a replay, seconds in: kept off all the while it plays
+                if (state === 1) {
+                  const q = p as YTPlayer & { unloadModule?: (m: string) => void };
+                  q.unloadModule?.("captions");
+                  q.unloadModule?.("cc");
+                }
+                // (re)started on iPhone: covered while YouTube's own title and logo show
+                if (state === 1 && was !== 1 && appleRef.current) {
+                  setFresh(true);
+                  window.clearTimeout(reveal);
+                  reveal = window.setTimeout(() => !cancelled && setFresh(false), FRESH);
+                }
+                was = state;
                 setEnded(state === 0);
                 setMuted(p.isMuted());
                 setTime(p.getCurrentTime());
@@ -1005,6 +1265,8 @@ function useMedia(film: Film) {
     return () => {
       cancelled = true;
       window.clearInterval(poll);
+      window.clearTimeout(wait);
+      window.clearTimeout(reveal);
       yt.current?.destroy();
       yt.current = null;
       mount.remove();
@@ -1034,10 +1296,15 @@ function useMedia(film: Film) {
       ref={host}
       // taller than the frame (the film letterboxed inside stays the frame's
       // size), so YouTube's title bar and logo sit outside it, cut off; and
-      // untouchable once it plays (Controls take the taps)
+      // untouchable once it plays (Controls take the taps). Not on iPhone and
+      // iPad: their Safari draws a YouTube frame past its box's edges whatever
+      // the box says (overflow, clip-path, masks), so the title bar would show
+      // above the film; there the frame is the film's size and the cover
+      // stays a moment longer, till YouTube's title bar has faded (Player).
       className={cn(
-        "absolute inset-x-0 -inset-y-[20%] [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0",
-        started && "pointer-events-none",
+        "absolute [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0",
+        apple ? "inset-0" : "inset-x-0 -inset-y-[20%]",
+        (started || !blocked) && "pointer-events-none",
       )}
     />
   ) : (
@@ -1089,8 +1356,28 @@ function useMedia(film: Film) {
 
   return {
     element,
+    videoRef: video,
     playing,
     started,
+    fresh,
+    quiet,
+    blocked,
+    /* the sound, for a film that started silently */
+    sound: () => {
+      const p = yt.current;
+      if (video.current) video.current.muted = false;
+      setQuiet(false);
+      setMuted(false);
+      if (!p) return;
+      p.unMute();
+      // a phone that still won't have sound pauses it instead: back to playing silently
+      window.setTimeout(() => {
+        if (yt.current !== p || p.getPlayerState() !== 2) return;
+        p.mute();
+        p.playVideo();
+        setQuiet(true);
+      }, 700);
+    },
     ended,
     muted,
     time,

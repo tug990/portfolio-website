@@ -59,7 +59,8 @@ export function marbleFloorMaterial({ dark = false }: { dark?: boolean } = {}) {
         "#include <common>",
         /* glsl */ `#include <common>
         varying vec3 vMarblePos;
-        float mHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        // (a hash without sin(), which is too rough on phone GPUs)
+        float mHash(vec2 p) { vec3 q = fract(p.xyx * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
         float mNoise(vec2 p) {
           vec2 i = floor(p), f = fract(p);
           vec2 u = f * f * (3.0 - 2.0 * f);
