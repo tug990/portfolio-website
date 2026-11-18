@@ -6,7 +6,7 @@ export type Project = {
   year: number;
   tags: string[];
   featured?: boolean;
-  image?: string; // poster or still hung in the gallery, e.g. "/work/my-film.webp" (put the file in public/work/)
+  image?: string; // its thumbnail (1920 x 1080), e.g. "/work/my-film.webp" in public/work/: its card, its page, its gallery screen
   client?: string; // who it was made for (the Work page groups films by this)
   series?: string; // the programme, campaign or series it belongs to (shown under its title on the Work page)
   duration?: string; // the film's length, e.g. "07:32": a badge on its thumbnails, and on its page (meta line, Duration)
@@ -31,50 +31,6 @@ export type Project = {
 /* The icons a theme can have ("In This Film"): simple line drawings. */
 export type ThemeIcon =
   "leaf" | "people" | "sprout" | "handshake" | "chart" | "heart" | "drop" | "home";
-
-/* Stand-in chapters, quote and credits (Murga Fight, the showreel), until real ones are written. */
-const SAMPLE_CASE = {
-  themes: [
-    { label: "Women Empowerment", icon: "leaf" },
-    { label: "Rural Enterprises", icon: "people" },
-    { label: "Climate Resilience", icon: "sprout" },
-    { label: "Income & Inclusivity", icon: "handshake" },
-    { label: "Sustainable Rural Growth", icon: "chart" },
-  ] as Project["themes"],
-  story: [
-    {
-      heading: "The question",
-      text: [
-        "What the film set out to understand, in two or three sentences. The thing you didn't know when you started, and why it mattered enough to spend a year finding out.",
-      ],
-    },
-    {
-      heading: "Getting in",
-      text: [
-        "How you earned access: the months of visits before the camera came out, the person who opened the door, and what you promised them.",
-      ],
-    },
-    {
-      heading: "Making it",
-      text: [
-        "The approach on the ground: a small crew, available light, long takes. One moment from the shoot that changed the film.",
-      ],
-    },
-  ],
-  quote: {
-    text: "A line from someone in the film, or the person who commissioned it. The sentence that says what it meant to them.",
-    name: "Name Surname",
-    role: "Subject of the film",
-  },
-  credits: [
-    { role: "Director", name: "Name Surname" },
-    { role: "Producer", name: "Name Surname" },
-    { role: "Cinematography", name: "Name Surname" },
-    { role: "Editor", name: "Name Surname" },
-    { role: "Sound", name: "Name Surname" },
-    { role: "Music", name: "Name Surname" },
-  ],
-};
 
 /* Each theme's icon ("In This Film"), so a theme looks the same on every film. */
 const THEME_ICONS: Record<string, ThemeIcon> = {
@@ -136,8 +92,7 @@ const chapters = (question: string, gettingIn: string | null, makingIt: string) 
   come for all of them, so not shown yet: the real release year (2026 is a
   placeholder), stills (the frames to take are noted by each), credits, and
   for most, how we got in. Their clients: Rising of Bastar, the Chhattisgarh
-  government; Karanj Oil, MLINDA; the other ten, the central government. Then
-  Murga Fight and the showreel.
+  government; Karanj Oil, MLINDA; the other ten, the central government.
 */
 export const PROJECTS: Project[] = [
   {
@@ -151,6 +106,7 @@ export const PROJECTS: Project[] = [
     duration: "4:43",
     place: "Khunti, Jharkhand",
     youtube: "https://youtu.be/ZGZk_bpPfrc",
+    image: "/work/nutrition-garden.webp",
     themes: themes(
       "Nutrition Security",
       "Mother and Child Health",
@@ -180,6 +136,7 @@ export const PROJECTS: Project[] = [
     duration: "5:03",
     place: "Bastar, Chhattisgarh",
     youtube: "https://youtu.be/KXoRbAmZ_QA",
+    image: "/work/rising-of-bastar.webp",
     themes: themes(
       "Conflict to Development",
       "Rehabilitation",
@@ -209,6 +166,7 @@ export const PROJECTS: Project[] = [
     duration: "4:40",
     place: "Bastar, Chhattisgarh",
     youtube: "https://youtu.be/wE6e9CZA9XQ",
+    image: "/work/light-over-shadows.webp",
     themes: themes(
       "Rural Electrification",
       "Conflict Affected Areas",
@@ -238,6 +196,7 @@ export const PROJECTS: Project[] = [
     duration: "9:24",
     place: "Tribal India",
     youtube: "https://youtu.be/HhOFYqJnLTw",
+    image: "/work/dharti-aaba.webp",
     themes: themes(
       "Tribal Development",
       "Rural Enterprises",
@@ -271,6 +230,7 @@ export const PROJECTS: Project[] = [
     duration: "3:52",
     place: "Gumla, Jharkhand",
     youtube: "https://youtu.be/XzON6b9pbXk",
+    image: "/work/karanj-oil-gumla.webp",
     themes: themes(
       "Women Empowerment",
       "Rural Enterprises",
@@ -303,6 +263,7 @@ export const PROJECTS: Project[] = [
     duration: "4:00",
     place: "Bastar, Chhattisgarh",
     youtube: "https://youtu.be/yBvg38qOidM",
+    image: "/work/dokra-art.webp",
     themes: themes(
       "Heritage Crafts",
       "One District One Product",
@@ -332,6 +293,7 @@ export const PROJECTS: Project[] = [
     duration: "4:58",
     place: "Jharkhand",
     youtube: "https://youtu.be/OoOk-3AkCr4",
+    image: "/work/sohrai-khovar.webp",
     themes: themes(
       "Folk Art",
       "Cultural Heritage",
@@ -366,6 +328,7 @@ export const PROJECTS: Project[] = [
     duration: "4:43",
     place: "Bastar, Chhattisgarh",
     youtube: "https://youtu.be/3YlufA888qk",
+    image: "/work/khushbu-nag.webp",
     themes: themes(
       "Sports",
       "Women Empowerment",
@@ -395,6 +358,7 @@ export const PROJECTS: Project[] = [
     duration: "4:15",
     place: "Abujhmad, Chhattisgarh",
     youtube: "https://youtu.be/bgoLjkpqujQ",
+    image: "/work/mallakhamb.webp",
     themes: themes(
       "Sports",
       "Youth",
@@ -527,36 +491,6 @@ export const PROJECTS: Project[] = [
     ),
     quote: { text: "It becomes a collectible piece for them.", name: "A speaker at a showroom" },
     // stills to take: the ghats at the start (0:01), the weaver in the loom shed (3:33), the aarti (6:03)
-  },
-  {
-    slug: "murga-fight",
-    title: "Murga Fight",
-    summary: "A non-fiction impact film based on the cockfight culture of Bastar.",
-    year: 2020,
-    tags: ["Non-fiction", "Impact film"],
-    client: "Famecast",
-    featured: true,
-    youtube: "https://youtu.be/P_hKXgQoj0k",
-    link: "https://youtu.be/P_hKXgQoj0k",
-    ...SAMPLE_CASE,
-    body: [
-      "Describe the story and the question it set out to answer.",
-      "Describe how it was made: the access, the team, the approach.",
-      "Share where it was released and how it was received.",
-    ],
-  },
-  {
-    slug: "showreel",
-    title: "Showreel",
-    summary: "A reel of Famecast's work.",
-    year: 2026,
-    tags: ["Showreel"],
-    featured: true,
-    client: "Famecast",
-    youtube: "https://youtu.be/n1VZJdnV594",
-    link: "https://youtu.be/n1VZJdnV594",
-    ...SAMPLE_CASE,
-    body: ["Write the story of this project here."],
   },
 ];
 
