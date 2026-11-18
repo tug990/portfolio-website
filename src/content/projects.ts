@@ -97,9 +97,12 @@ const THEME_ICONS: Record<string, ThemeIcon> = {
   "Inclusive Growth": "people",
   Infrastructure: "chart",
   "Khelo India": "chart",
+  "Kitchen Gardens": "sprout",
   Livelihoods: "handshake",
+  "Mother and Child Health": "heart",
   "Museum and Archive": "home",
   "Next Generation": "sprout",
+  "Nutrition Security": "leaf",
   "One District One Product": "chart",
   "Public Safety": "home",
   Rehabilitation: "heart",
@@ -124,15 +127,48 @@ const chapters = (question: string, gettingIn: string | null, makingIt: string) 
   ].filter((c): c is { heading: string; text: string[] } => c !== null);
 
 /*
-  The films. The twelve from "All Project Page Details (12 Films)": still to
-  come for each, so not shown yet: the real release year (2026 is a
-  placeholder), a way to play it here (a YouTube link, `youtube`, or a video
-  file; until then its page shows a stand-in), stills (the frames to take
-  are noted by each), credits, and for most, how we got in. Their clients:
-  Rising of Bastar, the Chhattisgarh government; Karanj Oil, MLINDA; the
-  other ten, the central government. Then Murga Fight and the showreel.
+  The films. First Nutrition Garden (written from the film itself, as it has
+  no write-up yet: Better World Foundation's, with the Khunti district
+  administration, as its closing card says). Then the twelve from "All Project
+  Page Details (12 Films)". Each plays from its YouTube link (`youtube`), all
+  but Om Prakash Sahu, Pandum Cafe, Mirzapur Carpet and Banarasi Saree, whose
+  links are still to come (until then their pages show a stand-in). Still to
+  come for all of them, so not shown yet: the real release year (2026 is a
+  placeholder), stills (the frames to take are noted by each), credits, and
+  for most, how we got in. Their clients: Rising of Bastar, the Chhattisgarh
+  government; Karanj Oil, MLINDA; the other ten, the central government. Then
+  Murga Fight and the showreel.
 */
 export const PROJECTS: Project[] = [
+  {
+    slug: "nutrition-garden",
+    title: "Nutrition Garden",
+    summary:
+      "In Khunti, Jharkhand, families and anganwadi centres grow gardens of greens, vegetables and fruit, so that mothers and young children eat better.",
+    year: 2026,
+    tags: ["Case study film"],
+    client: "Better World Foundation",
+    duration: "4:43",
+    place: "Khunti, Jharkhand",
+    youtube: "https://youtu.be/ZGZk_bpPfrc",
+    themes: themes(
+      "Nutrition Security",
+      "Mother and Child Health",
+      "Kitchen Gardens",
+      "Women Empowerment",
+      "Sustainable Rural Growth",
+    ),
+    body: [
+      "Poshan baadi means nutrition garden. The film opens on the sun rising over water, then on young children and their mothers, at home and at the anganwadi. Then the work: ground dug and prepared, compost made, seeds sown, each crop named on screen as it goes in: spinach, bathua, amaranth, fenugreek, mint, mustard, tomato; carrot and radish in a round garden seen from above; gourds and beans along the fence; papaya and lemon trees. Water runs down the channels, women gather and cook the harvest, and the film ends at the anganwadi, where a child is fed. Its closing card reads: Fostering Nutrition Security of Khunti.",
+    ],
+    story: chapters(
+      "Can a patch of ground beside a home or an anganwadi put greens, vegetables and fruit on a child's plate every day?",
+      "The film carries the marks of the Khunti district administration and Better World Foundation, so it was made with their support.",
+      "Low shots from the soil as seeds are sown, each crop named on screen in Hindi beside a small drawing of it, the round garden from the air, and quiet scenes at the anganwadi and at home by a window.",
+    ),
+    // (written from the film's pictures: add a quote, and check the words, once there's a write-up)
+    // stills to take: the title over the sunrise (0:04), the greens named as they're sown (2:10), the round garden from the air (2:28)
+  },
   {
     slug: "rising-of-bastar",
     title: "Rising of Bastar",
@@ -143,6 +179,7 @@ export const PROJECTS: Project[] = [
     client: "Chhattisgarh Govt.",
     duration: "5:03",
     place: "Bastar, Chhattisgarh",
+    youtube: "https://youtu.be/KXoRbAmZ_QA",
     themes: themes(
       "Conflict to Development",
       "Rehabilitation",
@@ -171,6 +208,7 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "4:40",
     place: "Bastar, Chhattisgarh",
+    youtube: "https://youtu.be/wE6e9CZA9XQ",
     themes: themes(
       "Rural Electrification",
       "Conflict Affected Areas",
@@ -199,6 +237,7 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "9:24",
     place: "Tribal India",
+    youtube: "https://youtu.be/HhOFYqJnLTw",
     themes: themes(
       "Tribal Development",
       "Rural Enterprises",
@@ -231,6 +270,7 @@ export const PROJECTS: Project[] = [
     client: "MLINDA Charitable Trust",
     duration: "3:52",
     place: "Gumla, Jharkhand",
+    youtube: "https://youtu.be/XzON6b9pbXk",
     themes: themes(
       "Women Empowerment",
       "Rural Enterprises",
@@ -262,6 +302,7 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "4:00",
     place: "Bastar, Chhattisgarh",
+    youtube: "https://youtu.be/yBvg38qOidM",
     themes: themes(
       "Heritage Crafts",
       "One District One Product",
@@ -290,6 +331,7 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "4:58",
     place: "Jharkhand",
+    youtube: "https://youtu.be/OoOk-3AkCr4",
     themes: themes(
       "Folk Art",
       "Cultural Heritage",
@@ -323,6 +365,7 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "4:43",
     place: "Bastar, Chhattisgarh",
+    youtube: "https://youtu.be/3YlufA888qk",
     themes: themes(
       "Sports",
       "Women Empowerment",
@@ -351,6 +394,7 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "4:15",
     place: "Abujhmad, Chhattisgarh",
+    youtube: "https://youtu.be/bgoLjkpqujQ",
     themes: themes(
       "Sports",
       "Youth",
