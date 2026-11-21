@@ -153,11 +153,12 @@ function Testimonials() {
   const [i, setI] = useState(0);
   if (!TESTIMONIALS.length) return null;
   const t = TESTIMONIALS[i];
+  const film = t.film ? PROJECTS.find((p) => p.slug === t.film) : undefined;
   // the words they're known for, marked with the tricolour
   const [before, after] = t.highlight ? t.quote.split(t.highlight) : [t.quote, undefined];
   return (
     <Part className="bg-muted/60">
-      <Kicker>What people say</Kicker>
+      <Kicker>From our films</Kicker>
       <Title className="mt-4">In their words</Title>
       <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_17rem] lg:gap-8">
         <figure
@@ -195,11 +196,31 @@ function Testimonials() {
               </span>
             </span>
           </figcaption>
+          {/* the film they're in: opens its page, where it plays */}
+          {film && (
+            <Link
+              to="/projects/$slug"
+              params={{ slug: film.slug }}
+              className="press mt-7 flex w-fit max-w-full items-center gap-3 rounded-2xl border border-white/15 bg-white/[0.06] py-2 pl-2 pr-5 transition hover:bg-white/[0.12]"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black">
+                <svg aria-hidden viewBox="0 0 24 24" className="ml-0.5 h-4 w-4" fill="currentColor">
+                  <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+                </svg>
+              </span>
+              <span className="min-w-0 leading-snug">
+                <span className="block text-[11px] uppercase tracking-[0.2em] text-white/55">
+                  Watch the film{film.duration ? ` · ${film.duration}` : ""}
+                </span>
+                <span className="block text-[15px] font-medium">{film.title}</span>
+              </span>
+            </Link>
+          )}
         </figure>
         {TESTIMONIALS.length > 1 && (
           <div
             role="tablist"
-            aria-label="What people say"
+            aria-label="From our films"
             className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0"
           >
             {TESTIMONIALS.map((x, j) => (

@@ -378,11 +378,14 @@ export const HISTORY: {
 ];
 
 /*
-  "In their words": on the About page (a slideshow) and the Contact page (a
-  drawer of folders, one each). `image` is optional (a portrait in public/).
-  `highlight`: a few words of the quote, marked as with a highlighter on the
-  Contact page. `stars`: 1 to 5, shown on the Contact page (leave it out for
-  none). These are placeholders: replace them with what people really said.
+  "In their words": on the About page (a slideshow; the Contact page's drawer is unused). Voices
+  from our films: what people say on camera, word for word from the films' English subtitles
+  ("…" where a few words are left out), under their names and roles as the films' own captions
+  give them; `company` is where (the card's label and its tab). `film`: the film's slug, for
+  a button that opens it. `image`: their face, a frame of
+  the film cropped to a square (256 × 256, public/voices/; shown in grey). `highlight`: a few of
+  its words, marked with the tricolour. No `stars`: these people didn't rate us. A client's own
+  words, once they give them, can join: their name, role and company.
 */
 export const TESTIMONIALS: {
   quote: string;
@@ -392,56 +395,69 @@ export const TESTIMONIALS: {
   company: string;
   stars?: number;
   image?: string;
+  film?: string; // the slug of the film it's from (content/projects.ts): a button to watch it
 }[] = [
   {
+    // Lucknow: Swachh Bharat Mission, 2:09–2:14
+    quote: "Everyone at home is still asleep. I quietly get up and put on my uniform.",
+    highlight: "I quietly get up",
+    name: "Durgawati",
+    role: "Sanitation worker, Nagar Nigam",
+    company: "Lucknow",
+    image: "/voices/durgawati.webp",
+    film: "lucknow-swachh-bharat",
+  },
+  {
+    // Mallakhamb, 1:45–1:53
     quote:
-      "Replace this with something a client said about working with you, in their own words. Two or three sentences are plenty.",
-    highlight: "in their own words",
-    name: "Name Surname",
-    role: "Role",
-    company: "Company",
-    stars: 5,
+      "I was unable to make it to the Olympics personally… I intend to create an environment that will enable these children to reach the Olympics. That is my dream.",
+    highlight: "That is my dream",
+    name: "Manoj Prasad",
+    role: "Ex-army man, mallakhamb coach",
+    company: "Abujhmad",
+    image: "/voices/manoj-prasad.webp",
+    film: "mallakhamb",
   },
   {
+    // Light Over Shadows, 3:57–4:01
     quote:
-      "A second quote. Keep each one to two or three sentences, and choose a few words to mark, as here.",
-    highlight: "a few words to mark",
-    name: "Name Surname",
-    role: "Role",
-    company: "Company",
-    stars: 5,
+      "The fear of snakes and scorpions is gone from their lives. Now every home has electricity.",
+    highlight: "every home has electricity",
+    name: "Aarti Tati",
+    role: "Sarpanch, Palnar",
+    company: "Bastar",
+    image: "/voices/aarti-tati.webp",
+    film: "light-over-shadows",
   },
   {
-    quote: "A third: what they came to you with, and what the film did for them.",
-    highlight: "what the film did",
-    name: "Name Surname",
-    role: "Role",
-    company: "Company",
-    stars: 5,
+    // Maa Subhadra, 3:33
+    quote: "The money I received has helped me a lot.",
+    highlight: "helped me a lot",
+    name: "Prabhati Behra",
+    role: "Subhadra Yojana beneficiary",
+    company: "Odisha",
+    image: "/voices/prabhati-behra.webp",
+    film: "maa-subhadra",
   },
   {
-    quote: "A fourth: how it felt to work together, from the first call to the premiere.",
-    highlight: "from the first call",
-    name: "Name Surname",
-    role: "Role",
-    company: "Company",
-    stars: 5,
+    // Banarasi Shehnai, 3:20–3:23
+    quote: "My father taught me this art and gave me a means of earning my livelihood.",
+    highlight: "My father taught me this art",
+    name: "Ramesh Kumar",
+    role: "GI-certified shehnai artisan",
+    company: "Banaras",
+    image: "/voices/ramesh-kumar.webp",
+    film: "banarasi-shehnai",
   },
   {
-    quote: "A fifth: a moment of the shoot or the edit they still remember.",
-    highlight: "they still remember",
-    name: "Name Surname",
-    role: "Role",
-    company: "Company",
-    stars: 5,
-  },
-  {
-    quote: "A sixth: who they would tell about you, and why.",
-    highlight: "and why",
-    name: "Name Surname",
-    role: "Role",
-    company: "Company",
-    stars: 5,
+    // Sohrai-Khovar: A Living Heritage, 3:38
+    quote: "It's no longer just art, it's a movement.",
+    highlight: "it's a movement",
+    name: "Gustav Imam",
+    role: "Curator, Sanskriti Museum",
+    company: "Jharkhand",
+    image: "/voices/gustav-imam.webp",
+    film: "sohrai-khovar",
   },
 ];
 
