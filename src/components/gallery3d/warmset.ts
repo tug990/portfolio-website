@@ -740,6 +740,7 @@ export function addFramedPicture(
   label.position.y = at.y - size.h / 2 + 0.12;
   label.lookAt(label.position.clone().add(normal));
   scene.add(label);
+  return { pic }; // (its picture, which may be given a film instead: GalleryScene, `shows`)
 }
 
 /* ---------- the floor's reflection ---------- */

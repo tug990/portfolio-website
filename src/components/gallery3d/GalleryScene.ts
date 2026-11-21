@@ -9,7 +9,15 @@ import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLigh
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { CSS3DObject, CSS3DRenderer } from "three/examples/jsm/renderers/CSS3DRenderer.js";
 import { StereoEffect } from "three/examples/jsm/effects/StereoEffect.js";
-import { buildWorld, roomSpots, UPPER, type Collider, type World, type Zone } from "./world";
+import {
+  buildWorld,
+  roomPlan,
+  UPPER,
+  type Collider,
+  type Cutout,
+  type World,
+  type Zone,
+} from "./world";
 import { makeSurfaces, type Surfaces } from "./surfaces";
 import type { Project } from "@/content/projects";
 import { WORK_CLIENTS } from "@/content/site";
@@ -38,7 +46,6 @@ import {
   addPrismPlinth,
   PRISM_TOP,
   addCoveLighting,
-  PHONE_GLASS_OPACITY,
   microcement,
   addWallTitle,
   sizeFloorReflection,
@@ -81,7 +88,8 @@ const LABEL = { w: 0.34, h: 0.21 };
 
 export type Pose = { x: number; z: number; yaw: number }; // yaw: 0 looks down the room (-z)
 export type StopKind = "centre" | "work" | "doors" | "place";
-export type Stop = Pose & { s: number; kind: StopKind; index: number; y?: number }; // y: its floor (0 if not given)
+// y: its floor (0 if not given); pitch: how far you look up there (0 if not given)
+export type Stop = Pose & { s: number; kind: StopKind; index: number; y?: number; pitch?: number };
 export type Pick = { kind: "work" | "door" | "bench"; index: number } | null;
 
 type WorkSpot = {
@@ -366,13 +374,65 @@ type WallYouTube = {
   box: HTMLDivElement;
   started: boolean;
   pending?: number; // the timer that will load it
-  player?: YTPlayer;
+  player?: YTPlayer; // set once it's ready (before that, YouTube's player has none of its methods)
+  making?: YTPlayer; // the player while it's still getting ready
+  showing?: number; // the timer that shows it once YouTube's own title and logo have gone
+  show?: (on: boolean) => void; // show it (after that wait) or hide it, the cover showing instead
+  seen?: boolean; // shown over its screen last frame
+  width: number; // its screen's width (m)
+  height: number;
+  corners: THREE.Vector3[]; // its screen's corners, where it hangs
   poll?: number;
   placed: boolean;
   near: boolean;
 };
 const YT_PX = 1280; // the overlay's width in CSS pixels, scaled down to the screen's size
 const YT_LOAD_DELAY = 1200; // ms after you first come near (past the way in's settle)
+/*
+  The films that play by themselves (muted, looping, not stops on the journey), by slug: one on
+  each of the hall's two big screens on its side walls (`hallWalls`: left, right), one on each of
+  its passage screens, seen through the far wall's openings (`hall`), and one in each of the
+  atrium's two great frames (`atrium`). A slug that isn't a film with a YouTube link leaves that
+  screen showing its stand-in (or, for the big screens, its frame dark).
+*/
+export const SHOWING = {
+  hallWalls: ["light-over-shadows", "mallakhamb"],
+  hall: ["rising-of-bastar", "banarasi-shehnai"],
+  atrium: ["dharti-aaba", "banarasi-saree"],
+};
+/* The hall's two big screens, on its side walls near the far wall (m): their size and middle */
+const BIG_SCREEN = { w: 4.4, h: 2.475, y: 2.05, fromFar: 3.6 };
+// YouTube draws its own title, logo and play button over a film for its first seconds (from a
+// start or a resume): the screen keeps the film's cover until they've gone (as the mini player)
+const YT_CLEAN_MS = 4500;
+
+/* The box round some points on the screen: [minX, minY, maxX, maxY]. */
+const bounds = (pts: [number, number][]) =>
+  pts.reduce(
+    (b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)],
+    [Infinity, Infinity, -Infinity, -Infinity],
+  );
+
+/* Do two convex outlines on the screen overlap (not just touch)? (Separating axes) */
+function convexOverlap(a: [number, number][], b: [number, number][]) {
+  for (const poly of [a, b])
+    for (let i = 0; i < poly.length; i++) {
+      const [x0, y0] = poly[i];
+      const [x1, y1] = poly[(i + 1) % poly.length];
+      const nx = y0 - y1;
+      const ny = x1 - x0;
+      const span = (pp: [number, number][]) =>
+        pp.reduce(
+          ([lo, hi], [x, y]) => [Math.min(lo, x * nx + y * ny), Math.max(hi, x * nx + y * ny)],
+          [Infinity, -Infinity],
+        );
+      const [a0, a1] = span(a);
+      const [b0, b1] = span(b);
+      const eps = 0.5 * Math.hypot(nx, ny);
+      if (a1 <= b0 + eps || b1 <= a0 + eps) return false;
+    }
+  return true;
+}
 
 /* The convex hull of some points, in order round the outside (Andrew's monotone chain). */
 function convexHull(points: [number, number][]) {
@@ -432,6 +492,17 @@ export class GalleryScene {
   // YouTube players laid over wall screens (see WallYouTube); made only if a film needs one
   private css?: CSS3DRenderer;
   private cssScene = new THREE.Scene();
+  /* the screens that play a film by themselves (SHOWING), each in view only from its space */
+  private shows: {
+    screen: THREE.Mesh;
+    yt: WallYouTube;
+    inside: (eye: THREE.Vector3) => boolean;
+  }[] = [];
+  /* what stands in front of those films and the wall films, cut out of the layer they play in */
+  private cutouts: (Cutout & {
+    when: (eye: THREE.Vector3) => boolean; // from where it can be in front of one
+    box?: boolean; // its points are a box's 8 corners (min/max): seen up close, cut at your eye
+  })[] = [];
   private canvas: HTMLCanvasElement;
   private disposed = false;
   private prismPoints: THREE.Vector3[] = []; // the glass pyramid's outline, for the hole in the YouTube layer
@@ -450,6 +521,12 @@ export class GalleryScene {
   private hallCount = 0;
   private roomClients: typeof WORK_CLIENTS = [];
   private perRoom: number[] = [];
+  /*
+    Each room film's room (by work index; the hall's films have none): its
+    YouTube player is drawn over the room and can't pass behind a wall, so it
+    shows only while you're inside that room
+  */
+  private workRoom: ({ minX: number; maxX: number; minZ: number; maxZ: number } | undefined)[] = [];
   world?: World;
   private static BACK = 7; // the side gallery behind the far wall
   /* the room's warm evening fill (softer in the daylit world, where the probes light it) */
@@ -488,14 +565,22 @@ export class GalleryScene {
     const L = buildLayout(this.hallCount, aspect, this.front);
     if (!this.worldOn) return L;
     const zA = -(L.D + GalleryScene.BACK);
-    const spots = roomSpots(zA, this.perRoom);
+    const { rooms } = roomPlan(zA, this.perRoom);
+    const spots = rooms.flatMap((r) => r.spots);
     const works = [...L.works, ...spots];
+    this.workRoom = [
+      ...L.works.map(() => undefined),
+      ...rooms.flatMap((r) =>
+        r.spots.map(() => ({ minX: r.x0, maxX: r.x1, minZ: r.z0, maxZ: r.z1 })),
+      ),
+    ];
     const along = L.stacked ? 0 : (LABEL.w + 0.14) / 2;
     const places: Stop[] = (this.world?.places ?? []).map((p, k) => ({
       x: p.x,
       y: p.y,
       z: p.z,
       yaw: p.yaw,
+      pitch: p.pitch,
       s: 0,
       kind: "place" as const,
       index: k,
@@ -794,6 +879,14 @@ export class GalleryScene {
       });
       this.benches.push(...this.world.benches);
       this.pickables.push(...this.world.pickDoors);
+      // the atrium's two great frames, a film playing in each, and what stands in front of them
+      const a = this.world.atrium;
+      const inAtrium = (e: THREE.Vector3) =>
+        e.x > a.minX && e.x < a.maxX && e.z > a.minZ && e.z < a.maxZ;
+      this.world.frames.forEach((f, k) =>
+        this.addShow(f.pic, f.w, f.h, SHOWING.atrium[k], inAtrium),
+      );
+      this.cutouts.push(...this.world.cutouts.map((c) => ({ ...c, when: inAtrium })));
       const rt = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
       this.probe = {
         cam: new THREE.CubeCamera(0.1, 200, rt),
@@ -892,11 +985,58 @@ export class GalleryScene {
 
     // In each passage, a film on the outer wall, seen through the opening:
     // a glimpse of more work (not one of the stops)
+    // in the hall (or its passages, the side gallery behind the far wall)
+    const inHall = (e: THREE.Vector3) => e.y < UPPER.y && e.z > this.zA && Math.abs(e.x) < W / 2;
     for (const sx of [-1, 1]) {
       const n = v(-sx, 0, 0);
       const at = v(sx * (W / 2 - 0.004), SCREEN.y, -D - 1.95);
-      this.addGlimpseFilm(at, n, sx > 0 ? 7 : 8, aniso);
+      this.addGlimpseFilm(at, n, sx > 0 ? 7 : 8, aniso, {
+        slug: SHOWING.hall[sx < 0 ? 0 : 1],
+        inside: inHall,
+      });
     }
+    // the big screens on the side walls, near the far wall: our films, large
+    const front0 = (e: THREE.Vector3) => e.y < UPPER.y && e.z > -D && Math.abs(e.x) < W / 2;
+    for (const sx of [-1, 1]) {
+      const g = new THREE.Group();
+      const at = v(sx * (W / 2 - 0.004), BIG_SCREEN.y, -D + BIG_SCREEN.fromFar);
+      g.position.copy(at);
+      g.lookAt(at.clone().add(v(-sx, 0, 0)));
+      const bezelGeo = new THREE.BoxGeometry(BIG_SCREEN.w + 0.09, BIG_SCREEN.h + 0.09, 0.05);
+      const bezelMat = new THREE.MeshStandardMaterial({
+        color: 0x0b0b0c,
+        roughness: 0.38,
+        metalness: 0.25,
+      });
+      const scrGeo = new THREE.PlaneGeometry(BIG_SCREEN.w, BIG_SCREEN.h);
+      const scrMat = new THREE.MeshBasicMaterial({ color: 0x050506 });
+      this.disposables.push(bezelGeo, bezelMat, scrGeo, scrMat);
+      const bezel = new THREE.Mesh(bezelGeo, bezelMat);
+      bezel.position.z = 0.025;
+      bezel.castShadow = this.hq;
+      const screen = new THREE.Mesh(scrGeo, scrMat);
+      screen.position.z = 0.0505;
+      g.add(bezel, screen);
+      this.scene.add(g);
+      this.addShow(screen, BIG_SCREEN.w, BIG_SCREEN.h, SHOWING.hallWalls[sx < 0 ? 0 : 1], front0);
+    }
+
+    // what stands in front of those films from the hall: the far wall's solid middle and the
+    // lintels over its openings (boxes: min and max corners)
+    const OPEN = this.worldOn ? 1.6 : 1.0;
+    const OPEN_H = 3.0;
+    const front = (e: THREE.Vector3) => e.y < UPPER.y && e.z > -D;
+    this.cutouts.push(
+      { pts: [v(-(W / 2 - OPEN), 0, -D - 0.2), v(W / 2 - OPEN, H, -D)], box: true, when: front },
+      ...[-1, 1].map((sx) => ({
+        pts: [
+          v(sx > 0 ? W / 2 - OPEN : -W / 2, OPEN_H, -D - 0.2),
+          v(sx > 0 ? W / 2 : -(W / 2 - OPEN), H, -D),
+        ],
+        box: true,
+        when: front,
+      })),
+    );
 
     // The prism on its plinth, a set distance ahead of where you arrive (never
     // further back than its old spot out from the far wall). But never so close
@@ -911,6 +1051,8 @@ export class GalleryScene {
     const prismAt = v(0, 0, Math.max(z0 - ahead, -D + 3.6));
     this.prismAt = prismAt;
     this.prismPoints = addPrismPlinth(set, prismAt, "/brand/mark-transparent.webp").pyramidPoints;
+    // (in front of the films from the hall)
+    this.cutouts.push({ pts: this.prismPoints, when: front });
   }
 
   /*
@@ -1586,7 +1728,13 @@ export class GalleryScene {
 
   /* A film playing in a passage: a glimpse of more work, seen from the room. */
   private glimpses: THREE.ShaderMaterial[] = [];
-  private addGlimpseFilm(at: THREE.Vector3, normal: THREE.Vector3, seed: number, aniso: number) {
+  private addGlimpseFilm(
+    at: THREE.Vector3,
+    normal: THREE.Vector3,
+    seed: number,
+    aniso: number,
+    film?: { slug: string; inside: (eye: THREE.Vector3) => boolean },
+  ) {
     const g = new THREE.Group();
     g.position.copy(at);
     g.lookAt(at.clone().add(normal));
@@ -1621,6 +1769,8 @@ export class GalleryScene {
     g.add(bezel, screen);
     this.scene.add(g);
     this.glimpses.push(mat);
+    // a real film playing there (SHOWING), else the stand-in
+    if (film) this.addShow(screen, SCREEN.w, SCREEN.h, film.slug, film.inside);
   }
 
   /*
@@ -1861,15 +2011,39 @@ export class GalleryScene {
         ctx.scale(k, k);
         ctx.fillStyle = "#fbfaf7";
         ctx.fillRect(0, 0, 1024, 634);
+        // (dark enough to read under the room's warm light, which washes pale greys out)
         ctx.fillStyle = "#121212";
         ctx.font = "500 74px Jost, ui-sans-serif, system-ui";
         ctx.fillText(p.title, 70, 150, 884);
-        ctx.fillStyle = "#6f6f6f";
+        ctx.fillStyle = "#3f3f3f";
         ctx.font = "400 46px Jost, ui-sans-serif, system-ui";
-        ctx.fillText(`${p.year}${p.client ? `, for ${p.client}` : ""}`, 70, 230, 884);
-        ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(`${p.year}${p.client ? `, for ${p.client}` : ""}`, 70, 228, 884);
+        // what it's about, as a museum label says, in up to four lines
+        ctx.fillStyle = "#262626";
+        ctx.font = "400 38px Jost, ui-sans-serif, system-ui";
+        const lines: string[] = [];
+        let line = "";
+        for (const word of p.summary.split(/\s+/)) {
+          const next = line ? `${line} ${word}` : word;
+          if (ctx.measureText(next).width > 884 && line) {
+            lines.push(line);
+            line = word;
+          } else line = next;
+        }
+        if (line) lines.push(line);
+        if (lines.length > 4) {
+          lines.length = 4;
+          lines[3] = `${lines[3].replace(/[\s,.;:]*\S*$/, "")}…`;
+        }
+        lines.forEach((l, k) => ctx.fillText(l, 70, 310 + k * 52, 884));
+        ctx.fillStyle = "#555555";
         ctx.font = "400 40px Jost, ui-sans-serif, system-ui";
-        ctx.fillText(p.tags.join(", "), 70, 544, 884);
+        ctx.fillText(
+          [p.format ?? p.tags[0], p.duration].filter(Boolean).join("  ·  "),
+          70,
+          570,
+          884,
+        );
       },
       this.many ? 640 : 1024,
       this.many ? 396 : 634,
@@ -1900,7 +2074,7 @@ export class GalleryScene {
   }
 
   /* A YouTube player over a wall screen (see WallYouTube). The iframe itself loads in playNear. */
-  private addWallYouTube(id: string): WallYouTube {
+  private addWallYouTube(id: string, width = SCREEN.w, height = SCREEN.h): WallYouTube {
     if (!this.css) {
       this.css = new CSS3DRenderer();
       const el = this.css.domElement;
@@ -1914,7 +2088,7 @@ export class GalleryScene {
     const box = document.createElement("div");
     Object.assign(box.style, {
       width: `${YT_PX}px`,
-      height: `${Math.round((YT_PX * SCREEN.h) / SCREEN.w)}px`,
+      height: `${Math.round((YT_PX * height) / width)}px`,
       overflow: "hidden",
       position: "relative",
       pointerEvents: "none",
@@ -1925,7 +2099,7 @@ export class GalleryScene {
     obj.element.style.pointerEvents = "none";
     obj.visible = false;
     this.cssScene.add(obj);
-    return { id, obj, box, started: false, placed: false, near: false };
+    return { id, obj, box, started: false, placed: false, near: false, width, height, corners: [] };
   }
 
   /* Load a wall's YouTube player the first time it's needed; it then stays, looping. */
@@ -1946,10 +2120,19 @@ export class GalleryScene {
     const mount = document.createElement("div"); // YouTube replaces this with its iframe
     wrap.appendChild(mount);
     yt.box.appendChild(wrap);
+    const show = (on: boolean) => {
+      window.clearTimeout(yt.showing);
+      if (!on) wrap.style.opacity = "0";
+      else if (wrap.style.opacity !== "1")
+        yt.showing = window.setTimeout(() => {
+          if (!this.disposed) wrap.style.opacity = "1";
+        }, YT_CLEAN_MS);
+    };
+    yt.show = show;
     loadYouTubeApi()
       .then((YT) => {
         if (this.disposed) return;
-        yt.player = new YT.Player(mount, {
+        const player: YTPlayer = new YT.Player(mount, {
           videoId: yt.id,
           host: YT_HOST,
           width: "100%",
@@ -1957,7 +2140,9 @@ export class GalleryScene {
           playerVars: ytPlayerVars(),
           events: {
             onReady: () => {
-              const f = yt.player?.getIframe();
+              if (this.disposed) return;
+              yt.player = player;
+              const f = player.getIframe();
               if (f) {
                 f.tabIndex = -1;
                 Object.assign(f.style, {
@@ -1968,19 +2153,25 @@ export class GalleryScene {
                   pointerEvents: "none",
                 });
               }
-              // Some phones ignore autoplay in the embed but allow a muted play() call
-              yt.player?.mute();
-              yt.player?.playVideo();
+              // Some phones ignore autoplay in the embed but allow a muted play() call; asked
+              // to play with sound before it was ready (toggleWork): from the start, with sound
+              if (this.works[this.sounding]?.yt === yt) {
+                player.unMute();
+                player.seekTo(0, true);
+              } else player.mute();
+              player.playVideo();
               yt.poll = window.setInterval(() => yt.player && keepLooping(yt.player), 200);
             },
-            // Playing (1): show it. Not started, paused, ended or cued (-1, 2, 0, 5), as
-            // when a phone blocks autoplay: back to the cover. Buffering (3): leave as is.
+            // Playing (1): show it (once YouTube's own title and logo have gone). Not
+            // started, paused, ended or cued (-1, 2, 0, 5), as when a phone blocks
+            // autoplay: back to the cover. Buffering (3): leave as is.
             onStateChange: (e) => {
-              if (e.data === 1) wrap.style.opacity = "1";
-              else if (e.data !== 3) wrap.style.opacity = "0";
+              if (e.data === 1) show(true);
+              else if (e.data !== 3) show(false);
             },
           },
         });
+        yt.making = player;
       })
       .catch(() => {
         /* no YouTube (offline, blocked): the screen keeps the cover */
@@ -1992,80 +2183,236 @@ export class GalleryScene {
     if (!this.css) return;
     const toCam = new THREE.Vector3();
     const normal = new THREE.Vector3();
-    let anyShown = false;
-    this.works.forEach((w) => {
+    const shown: WallYouTube[] = [];
+    const eye = this.camera.position;
+    this.works.forEach((w, i) => {
       const yt = w.yt;
       if (!yt) return;
-      if (!yt.placed) {
-        w.screen.updateWorldMatrix(true, false);
-        w.screen.matrixWorld.decompose(yt.obj.position, yt.obj.quaternion, yt.obj.scale);
-        yt.obj.scale.multiplyScalar(SCREEN.w / YT_PX);
-        yt.placed = true;
-      }
+      if (!yt.placed) this.placeWallYouTube(yt, w.screen);
       // in front of the screen, not behind it
       normal.set(0, 0, 1).applyQuaternion(yt.obj.quaternion);
       toCam.copy(this.camera.position).sub(yt.obj.position);
-      yt.obj.visible = yt.near && toCam.dot(normal) > 0.05;
-      anyShown ||= yt.obj.visible;
+      // (and in a room upstairs, only from inside it: the walls would hide it)
+      const room = this.workRoom[i];
+      const inRoom =
+        !room ||
+        (eye.y > UPPER.y &&
+          eye.x > room.minX - 0.2 &&
+          eye.x < room.maxX + 0.2 &&
+          eye.z > room.minZ - 0.2 &&
+          eye.z < room.maxZ + 0.2);
+      yt.obj.visible = yt.near && inRoom && toCam.dot(normal) > 0.05;
+      // shown again (you've come back into its room): YouTube draws its title and logo over it
+      // again, so the cover first, the film once they've gone
+      if (yt.obj.visible && !yt.seen && yt.player) {
+        yt.show?.(false);
+        if (yt.player.getPlayerState() === 1) yt.show?.(true);
+      }
+      yt.seen = yt.obj.visible;
+      if (yt.obj.visible) shown.push(yt);
     });
-    this.clipPrism(anyShown);
+    // the films that play by themselves: loaded the first time you're in their space, shown from it
+    this.shows.forEach(({ screen, yt, inside }) => {
+      if (!yt.placed) this.placeWallYouTube(yt, screen);
+      const here = inside(eye);
+      yt.near = here || yt.near;
+      if (here && !yt.started && !yt.pending)
+        yt.pending = window.setTimeout(() => {
+          yt.pending = undefined;
+          if (!this.disposed) this.loadWallYouTube(yt);
+        }, YT_LOAD_DELAY);
+      normal.set(0, 0, 1).applyQuaternion(yt.obj.quaternion);
+      toCam.copy(eye).sub(yt.obj.position);
+      yt.obj.visible = here && toCam.dot(normal) > 0.05;
+      if (yt.obj.visible && !yt.seen && yt.player) {
+        yt.show?.(false);
+        if (yt.player.getPlayerState() === 1) yt.show?.(true);
+      }
+      yt.seen = yt.obj.visible;
+      if (yt.obj.visible) shown.push(yt);
+    });
+    this.clipCutouts(shown);
     this.css.render(this.cssScene, this.camera);
+  }
+
+  /* Lay a YouTube player over its screen (a plane mesh as wide as the player's `width`). */
+  private placeWallYouTube(yt: WallYouTube, screen: THREE.Mesh) {
+    screen.updateWorldMatrix(true, false);
+    screen.matrixWorld.decompose(yt.obj.position, yt.obj.quaternion, yt.obj.scale);
+    yt.obj.scale.multiplyScalar(yt.width / YT_PX);
+    yt.corners = [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ].map(([a, b]) =>
+      new THREE.Vector3((a * yt.width) / 2, (b * yt.height) / 2, 0).applyMatrix4(
+        screen.matrixWorld,
+      ),
+    );
+    yt.placed = true;
+  }
+
+  /*
+    A film that plays by itself on `screen` (a plane `w` by `h`): a still from the film on the
+    screen (its YouTube cover, not the site's titled thumbnail: where something stands in front of
+    it, a sliver of the still can show beside that, and a still blends in), its YouTube player over
+    it, in view only while `inside` you.
+  */
+  private addShow(
+    screen: THREE.Mesh,
+    w: number,
+    h: number,
+    slug: string,
+    inside: (eye: THREE.Vector3) => boolean,
+  ) {
+    const p = this.projects.find((q) => q.slug === slug);
+    const id = p?.youtube ? youtubeId(p.youtube) : undefined;
+    if (!p || !id) return;
+    const tex = new THREE.TextureLoader().load(youtubeCoverJpeg(id));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    this.disposables.push(tex, mat);
+    screen.material = mat;
+    this.shows.push({ screen, yt: this.addWallYouTube(id, w, h), inside });
   }
 
   /*
     The YouTube layer is drawn over the room, so it can't pass behind anything.
-    The prism can stand in front of a far-wall film: cut the pyramid's outline
-    out of the layer, and the room (which draws the glass over the screen)
-    shows through there instead.
+    What can stand in front of a film (the prism, the far wall's edges, the
+    atrium's pieces: `cutouts`) has its outline cut out of the layer, and the
+    room (which draws it in front of the film's cover) shows through there
+    instead. Only the outlines over a film playing in view are cut. A clip path
+    (a CSS mask doesn't reach the players inside the 3D layer): the whole layer,
+    then each outline as a hole; outlines that overlap are joined into one, as
+    overlapping holes would cancel out. Set only when it changes.
   */
-  private clipPrism(anyShown: boolean) {
+  private clipCutouts(shown: WallYouTube[]) {
     const el = this.css!.domElement;
     const w = el.clientWidth;
     const h = el.clientHeight;
     let key = "";
     let clip = "";
-    if (anyShown && this.prismPoints.length && w && h) {
+    if (shown.length && this.cutouts.length && w && h) {
       this.camera.updateMatrixWorld();
-      const v = new THREE.Vector3();
-      const pts: [number, number][] = [];
-      for (const p of this.prismPoints) {
-        v.copy(p).project(this.camera);
-        if (v.z > 1) break; // behind you: it can't be in front of a film
-        pts.push([((v.x + 1) / 2) * w, ((1 - v.y) / 2) * h]);
+      const eye = this.camera.position;
+      // where the films in view are on the screen
+      const rects = shown
+        .map((yt) => this.screenHull(yt.corners, false, w, h))
+        .filter((r): r is [number, number][] => !!r)
+        .map(bounds);
+      const over = (a: number[], b: number[]) =>
+        a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+      let hulls: [number, number][][] = [];
+      const bands: [number, number][][] = [];
+      for (const c of this.cutouts) {
+        if (!c.when(eye)) continue;
+        const out = c.band
+          ? this.screenBand(c.pts, c.band, w, h)
+          : this.screenHull(c.pts, !!c.box, w, h);
+        if (out && rects.some((f) => over(bounds(out), f))) (c.band ? bands : hulls).push(out);
       }
-      if (pts.length === this.prismPoints.length) {
-        const hull = convexHull(pts);
-        const ring = hull.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`);
-        key = `${w}x${h}:${ring.join(",")}`;
-        if (this.hq) {
-          // Refracting glass: a clean hole, so the room's refraction shows there.
-          // The whole layer, then the hull: with evenodd, the hull is a hole
-          // (the seam back to the corner is drawn both ways, so it cancels out)
-          clip = `polygon(evenodd, 0 0, ${w}px 0, ${w}px ${h}px, 0 ${h}px, 0 0, ${ring.join(", ")}, ${ring[0]})`;
-        } else {
-          // Plain see-through glass (phones): a soft hole. Inside the prism the live
-          // video shows at (1 - the glass's opacity) over the room's glass, which is
-          // just how a pane that faint mixes them
-          const poly = hull.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-          const svg =
-            `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
-            `<path fill-rule="evenodd" fill="#fff" d="M0 0H${w}V${h}H0Z M${poly.replace(/ /g, " L")}Z"/>` +
-            `<polygon fill="#fff" fill-opacity="${(1 - PHONE_GLASS_OPACITY).toFixed(2)}" points="${poly}"/></svg>`;
-          clip = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-        }
+      // join the outlines that overlap (only touching, as the far wall's parts, they stay apart)
+      for (let joined = true; joined;) {
+        joined = false;
+        for (let i = 0; i < hulls.length && !joined; i++)
+          for (let j = i + 1; j < hulls.length && !joined; j++)
+            if (convexOverlap(hulls[i], hulls[j])) {
+              hulls[i] = convexHull([...hulls[i], ...hulls[j]]);
+              hulls = hulls.filter((_, k) => k !== j);
+              joined = true;
+            }
+      }
+      const all = [...hulls, ...bands];
+      if (all.length) {
+        const rings = all.map((hu) => {
+          const ring = hu.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`);
+          return [...ring, ring[0]].join(", ");
+        });
+        key = `${w}x${h}:${rings.join(";")}`;
+        // (from the corner to each hole and back: the seams are drawn both ways, so they cancel)
+        clip = `polygon(evenodd, 0 0, ${w}px 0, ${w}px ${h}px, 0 ${h}px, 0 0, ${rings.join(", 0 0, ")})`;
       }
     }
     if (key === this.clipKey) return; // unchanged: don't touch the style
     this.clipKey = key;
-    const st = el.style as CSSStyleDeclaration & {
-      webkitClipPath?: string;
-      webkitMaskImage?: string;
-    };
-    const isMask = clip.startsWith("url(");
-    st.clipPath = st.webkitClipPath = isMask ? "" : clip;
-    st.maskImage = st.webkitMaskImage = isMask ? clip : "";
-    st.maskSize = isMask ? "100% 100%" : "";
-    st.maskRepeat = isMask ? "no-repeat" : "";
+    const st = el.style as CSSStyleDeclaration & { webkitClipPath?: string };
+    st.clipPath = st.webkitClipPath = clip;
+  }
+
+  /*
+    The outline on the screen (CSS pixels) of a band running along some points, `half` metres
+    either side of them (drawn as a thick line through them, capped at its ends), or null if any
+    of it is behind you.
+  */
+  private screenBand(pts: THREE.Vector3[], half: number, w: number, h: number) {
+    const view = this.camera.matrixWorldInverse;
+    const P = this.camera.projectionMatrix;
+    const near = -(this.camera.near * 1.5);
+    const sp: [number, number, number][] = [];
+    for (const p of pts) {
+      const q = p.clone().applyMatrix4(view);
+      if (q.z >= near) return null;
+      const a = q.clone().applyMatrix4(P);
+      const b = q
+        .clone()
+        .setX(q.x + half)
+        .applyMatrix4(P);
+      sp.push([((a.x + 1) / 2) * w, ((1 - a.y) / 2) * h, Math.abs(((b.x - a.x) / 2) * w)]);
+    }
+    const left: [number, number][] = [];
+    const right: [number, number][] = [];
+    let first: [number, number] = [0, 0];
+    let last: [number, number] = [0, 0];
+    sp.forEach(([x, y, r], i) => {
+      const p0 = sp[Math.max(0, i - 1)];
+      const p1 = sp[Math.min(sp.length - 1, i + 1)];
+      const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1;
+      const tx = (p1[0] - p0[0]) / len;
+      const ty = (p1[1] - p0[1]) / len;
+      left.push([x - ty * r, y + tx * r]);
+      right.push([x + ty * r, y - tx * r]);
+      if (i === 0) first = [x - tx * r, y - ty * r];
+      if (i === sp.length - 1) last = [x + tx * r, y + ty * r];
+    });
+    return [first, ...left, last, ...right.reverse()];
+  }
+
+  /*
+    The outline on the screen (CSS pixels) of some points in the room, or null if they're behind
+    you. `box`: they're a box's two opposite corners; seen up close (some of it behind you), its
+    edges are cut where they pass your eye, so the part in front still counts.
+  */
+  private screenHull(pts: THREE.Vector3[], box: boolean, w: number, h: number) {
+    const view = this.camera.matrixWorldInverse;
+    const near = -(this.camera.near * 1.5);
+    const toView = (q: THREE.Vector3) => q.clone().applyMatrix4(view);
+    let inView: THREE.Vector3[];
+    if (box) {
+      const [lo, hi] = pts;
+      const c = [0, 1, 2, 3, 4, 5, 6, 7].map((k) =>
+        toView(new THREE.Vector3(k & 1 ? hi.x : lo.x, k & 2 ? hi.y : lo.y, k & 4 ? hi.z : lo.z)),
+      );
+      inView = c.filter((q) => q.z < near);
+      for (let i = 0; i < 8; i++)
+        for (const bit of [1, 2, 4]) {
+          const j = i | bit;
+          if (j === i) continue;
+          const [p, q] = [c[i], c[j]];
+          if (p.z < near !== q.z < near) inView.push(p.clone().lerp(q, (near - p.z) / (q.z - p.z)));
+        }
+      if (inView.length < 3) return null;
+    } else {
+      inView = pts.map(toView);
+      if (inView.some((q) => q.z >= near)) return null;
+    }
+    return convexHull(
+      inView.map((q) => {
+        q.applyMatrix4(this.camera.projectionMatrix);
+        return [((q.x + 1) / 2) * w, ((1 - q.y) / 2) * h] as [number, number];
+      }),
+    );
   }
 
   private addDoor(text: string, x: number, parent: THREE.Object3D, i: number, aniso: number) {
@@ -2400,8 +2747,9 @@ export class GalleryScene {
     this.works.forEach((w, i) => {
       if (!w.video && !w.yt) return;
       const k = stops.findIndex((s) => s.kind === "work" && s.index === i);
-      // From the overview every film is in view, so they all play.
-      const atCentre = stops[stopIndex]?.kind === "centre";
+      // From the overview every film in the hall is in view, so they all play (not
+      // the rooms' films upstairs, out of sight)
+      const atCentre = stops[stopIndex]?.kind === "centre" && !this.workRoom[i];
       const near = stopIndex >= 0 && (Math.abs(k - stopIndex) <= 1 || atCentre);
       if (w.yt) {
         const yt = w.yt;
@@ -2882,11 +3230,16 @@ export class GalleryScene {
       }
     });
     this.disposed = true;
-    this.works.forEach((w) => {
-      if (!w.yt) return;
-      window.clearTimeout(w.yt.pending);
-      window.clearInterval(w.yt.poll);
-      w.yt.player?.destroy();
+    [...this.works.map((w) => w.yt), ...this.shows.map((sh) => sh.yt)].forEach((yt) => {
+      if (!yt) return;
+      window.clearTimeout(yt.pending);
+      window.clearTimeout(yt.showing);
+      window.clearInterval(yt.poll);
+      try {
+        (yt.player ?? yt.making)?.destroy();
+      } catch {
+        /* still getting ready: it goes with the layer below */
+      }
     });
     this.css?.domElement.remove(); // and the YouTube players in it
     if (this.probe) {
