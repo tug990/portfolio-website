@@ -258,7 +258,7 @@ function TopLine() {
   );
 }
 
-function Tick({ className }: { className?: string }) {
+function Tick({ className, check = "white" }: { className?: string; check?: string }) {
   return (
     <svg
       aria-hidden
@@ -269,7 +269,7 @@ function Tick({ className }: { className?: string }) {
       <circle cx="10" cy="10" r="10" fill="currentColor" />
       <path
         d="M6 10.3l2.6 2.6L14.2 7.5"
-        stroke="white"
+        stroke={check}
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -296,12 +296,16 @@ export function Arrow({ className }: { className?: string }) {
 }
 
 /* a list, each line ticked */
-function Ticks({ items }: { items: string[] }) {
+function Ticks({ items, light }: { items: string[]; light?: boolean }) {
   return (
     <ul className="mt-4 space-y-3">
       {items.map((x) => (
-        <li key={x} className="flex gap-3 text-[15px] leading-snug">
-          <Tick className="mt-px text-foreground" />
+        <li key={x} className={cn("flex gap-3 text-[15px] leading-snug", light && "text-white/90")}>
+          {light ? (
+            <Tick className="mt-px text-white" check="#0a0a0a" />
+          ) : (
+            <Tick className="mt-px text-foreground" />
+          )}
           {x}
         </li>
       ))}
@@ -2005,9 +2009,9 @@ function Clippings({ book }: { book: Book }) {
 }
 
 /*
-  A service's details, in a sheet over the page (from the foot on a phone, the right on a
-  computer): its shot in colour edge to edge, fading into the page under its number, name and
-  line, then what it's for, what it does, what you receive and an example (`FilmDetail`). Closes with its button, Esc,
+  A service's details, over the whole screen: its film fills it, held steady and slow (no cuts)
+  and darkened, its number, name and line at the foot of the first screen, then what it's for,
+  what it does, what you receive and an example (`FilmDetail`). Closes with its button, Esc,
   or a tap outside it; the page behind doesn't move.
 */
 function FilmSheet({
@@ -2044,58 +2048,55 @@ function FilmSheet({
       onClose={() => {
         if (!ref.current?.open) onClose();
       }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      className="fixed inset-0 m-0 mt-auto h-[92svh] max-h-none w-full max-w-none overflow-y-auto overscroll-contain rounded-t-2xl border-0 bg-background p-0 text-foreground backdrop:bg-black/60 backdrop:backdrop-blur-sm duration-300 animate-in fade-in slide-in-from-bottom-8 sm:ml-auto sm:mt-0 sm:h-full sm:max-w-2xl sm:rounded-none sm:rounded-l-2xl sm:slide-in-from-bottom-0 sm:slide-in-from-right-8"
+      className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none overflow-y-auto overscroll-contain border-0 bg-black p-0 text-white backdrop:bg-black duration-500 animate-in fade-in"
     >
-      <div className="min-h-full pb-12">
-        {/* Close, floating over the film (it takes no room of its own) */}
-        <div className="sticky top-0 z-10 flex h-0 justify-end px-3 pt-3 sm:px-4 sm:pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="press flex h-fit items-center gap-2 rounded-full bg-white/85 px-4 py-2 text-[14px] font-medium shadow-[0_6px_20px_-8px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white"
-          >
-            Close
-            <svg
-              aria-hidden
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-            >
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
+      {/* its film over the whole screen, held steady and slow behind the words, darkened so they read */}
+      <div aria-hidden className="pointer-events-none fixed inset-0">
+        <ShapedLoop
+          name={book.reel!.services[s.id] ?? book.reel!.loops.intro}
+          phone="reel"
+          wide="wide"
+          grain={0.18}
+          steady
+          className="absolute inset-0"
+        />
+        <span
+          className="absolute inset-0 z-[2]"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.2) 30%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.85))",
+          }}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="press fixed right-4 top-4 z-20 flex items-center gap-2 rounded-full bg-white/85 px-4 py-2 text-[14px] font-medium text-black shadow-[0_6px_20px_-8px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white"
+      >
+        Close
+        <svg
+          aria-hidden
+          viewBox="0 0 24 24"
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+        >
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
+      <div className="relative z-10 mx-auto max-w-3xl px-5 sm:px-8">
+        {/* its name at the foot of the first screen, the film above it */}
+        <div className="flex min-h-[72svh] flex-col justify-end pb-8">
+          <p className={cn(HEAD, "text-[15px] text-white/75")}>{String(n + 1).padStart(2, "0")}</p>
+          <h3 className={cn(LOUD, "mt-1 text-[44px] leading-[0.94] sm:text-[64px]")}>{s.name}</h3>
+          <p className="mt-3 max-w-2xl text-[17px] leading-relaxed text-white/90">{s.line}</p>
+          {s.madeFor && <p className="mt-3 text-[13px] text-white/70">Made for: {s.madeFor}</p>}
         </div>
-        {/* its film, edge to edge, fading into the page so the words carry straight on from it */}
-        <div className="relative aspect-[16/10] w-full">
-          <Loop
-            name={book.reel!.services[s.id] ?? book.reel!.loops.intro}
-            shape="wide"
-            grain={0.22}
-            vignette={false}
-            className="absolute inset-0"
-          />
-          <span
-            aria-hidden
-            className="absolute inset-x-0 -bottom-1 top-1/4 z-[2]"
-            style={{
-              background:
-                "linear-gradient(180deg, color-mix(in srgb, var(--background) 0%, transparent), color-mix(in srgb, var(--background) 55%, transparent) 45%, color-mix(in srgb, var(--background) 88%, transparent) 75%, var(--background) 94%)",
-            }}
-          />
-        </div>
-        <div className="relative z-[3] -mt-20 px-5 sm:-mt-24 sm:px-8">
-          <p className={cn(HEAD, "text-[15px] text-black/50")}>{String(n + 1).padStart(2, "0")}</p>
-          <h3 className={cn(LOUD, "mt-1 text-[36px] leading-[0.94] sm:text-[46px]")}>{s.name}</h3>
-          <p className="mt-2 text-[16px] leading-relaxed text-black/65">{s.line}</p>
-          {s.madeFor && <p className="mt-3 text-[13px] text-black/45">Made for: {s.madeFor}</p>}
-          <span aria-hidden className="mt-6 block h-px bg-black/10" />
-          <FilmDetail s={s} ask={ask} single />
+        {/* then everything about it, on dark glass over the film */}
+        <div className="mb-[calc(var(--dock,0px)+2.5rem)] rounded-2xl bg-black/55 px-5 pb-6 ring-1 ring-white/10 backdrop-blur-md sm:mb-12 sm:px-8 sm:pb-8">
+          <FilmDetail s={s} ask={ask} dark />
         </div>
       </div>
     </dialog>
@@ -2103,35 +2104,40 @@ function FilmSheet({
 }
 
 /* a service's details: what it's for, what it does, what you get, an example */
-function FilmDetail({ s, ask, single }: { s: Service; ask: string; single?: boolean }) {
+function FilmDetail({ s, ask, dark }: { s: Service; ask: string; dark?: boolean }) {
   const mail = `mailto:${SITE.email}?subject=${encodeURIComponent(`${ask}: ${s.name}`)}`;
   return (
-    <div className={cn("grid gap-8 pb-4 pt-8", !single && "lg:grid-cols-2 lg:gap-14")}>
+    <div className="grid gap-8 pb-4 pt-8 lg:grid-cols-2 lg:gap-12">
       <div className="space-y-8">
         {s.familiar?.length ? (
           <div>
             <h4 className="text-[16px] font-medium">Does this sound familiar?</h4>
-            <Paras items={s.familiar} />
+            <Paras items={s.familiar} light={dark} />
           </div>
         ) : null}
         <div>
           <h4 className="text-[16px] font-medium">{s.doesTitle ?? "What this film does"}</h4>
-          <Paras items={s.does} />
+          <Paras items={s.does} light={dark} />
         </div>
         {s.uses?.length ? (
           <div>
             <h4 className="text-[16px] font-medium">{s.usesTitle ?? "Where it is used"}</h4>
-            <Ticks items={s.uses} />
+            <Ticks items={s.uses} light={dark} />
           </div>
         ) : null}
       </div>
       <div className="space-y-8">
         <div>
           <h4 className="text-[16px] font-medium">{s.receiveTitle ?? "What you receive"}</h4>
-          <Ticks items={s.receive} />
+          <Ticks items={s.receive} light={dark} />
         </div>
         {s.example?.length ? (
-          <div className="relative overflow-hidden rounded-xl bg-[#0a0a0a] p-5 text-white sm:p-6">
+          <div
+            className={cn(
+              "relative overflow-hidden rounded-xl p-5 text-white sm:p-6",
+              dark ? "bg-white/[0.08] ring-1 ring-white/15" : "bg-[#0a0a0a]",
+            )}
+          >
             <PrismEdge />
             <h4 className="text-[16px] font-medium">For example</h4>
             <Paras items={s.example} light />
@@ -2139,7 +2145,12 @@ function FilmDetail({ s, ask, single }: { s: Service; ask: string; single?: bool
         ) : null}
         <a
           href={mail}
-          className="press inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-[15px] font-medium text-white transition hover:bg-black/85"
+          className={cn(
+            "press inline-flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-medium transition",
+            dark
+              ? "bg-white text-black hover:bg-white/85"
+              : "bg-black text-white hover:bg-black/85",
+          )}
         >
           Ask about this film
           <Arrow />

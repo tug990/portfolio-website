@@ -64,6 +64,9 @@ export const ABOUT_INTRO =
   `ask` is the subject line of the email it offers.
 */
 export const ABOUT_PERSPECTIVE_TITLE = "Know us from the perspective of you";
+/* who we are, in a few lines in the sky between the picker and the door (the studio's own words) */
+export const ABOUT_STUDIO =
+  "Insight Lab is a non-fiction visual storytelling studio by Famecast. Since 2019, Famecast has built its creative journey around finding and telling stories across diverse landscapes, from major film promotions and election campaigns to government communication and advertising films. Now, Insight Lab takes this legacy forward through documentary filmmaking, ground-level research and cinematic visual journalism.";
 export type PerspectiveId = "ngo" | "corporate" | "government" | "real-estate" | "education";
 export const ABOUT_PERSPECTIVES: {
   id: PerspectiveId;
