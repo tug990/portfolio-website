@@ -44,6 +44,10 @@ const LANDSCAPE_PHONE = "(orientation: landscape) and (max-height: 520px) and (p
 /* how long YouTube shows its own title, channel and logo when a film starts, resumes or
    replays on iPhone (ms): measured at 3.1 to 4.4 s, so a little longer */
 const FRESH = 4500;
+/* Starting a YouTube film (ms): how long it has to start with sound before it's started
+   silently, and silently before YouTube's own frame is shown (each counted only while it isn't
+   loading; `stuck`: even loading, no longer than this), and for YouTube to get ready at all. */
+const START = { sound: 1200, silent: 2000, stuck: 8000, ready: 12000 };
 /* a phone held upright */
 const PORTRAIT_PHONE = "(orientation: portrait) and (max-width: 520px) and (pointer: coarse)";
 
@@ -1190,12 +1194,16 @@ function useMedia(film: Film) {
     let poll = 0;
     let wait = 0;
     let reveal = 0;
+    /* it has played */
+    let begun = false;
     // YouTube replaces the element it's given, so give it one React doesn't own
     const mount = document.createElement("div");
     el.appendChild(mount);
     loadYouTubeApi()
       .then((YT) => {
         if (cancelled) return;
+        // YouTube never got ready (a slow or broken connection): its own frame, as it is
+        wait = window.setTimeout(() => !cancelled && setBlocked(true), START.ready);
         yt.current = new YT.Player(mount, {
           videoId: film.youtube!,
           host: YT_HOST,
@@ -1212,29 +1220,48 @@ function useMedia(film: Film) {
             iv_load_policy: 3,
           },
           events: {
+            // it can't start (an error before it plays): YouTube's frame shows what's wrong
+            onError: () => !cancelled && !begun && setBlocked(true),
             onReady: () => {
               if (cancelled) return;
+              window.clearTimeout(wait);
               yt.current?.playVideo();
-              // not playing soon (or buffering): it was refused sound, so start it without
-              const going = () => [1, 3].includes(yt.current?.getPlayerState() ?? -1);
-              wait = window.setTimeout(() => {
-                const p = yt.current;
-                if (cancelled || !p || going()) return;
-                p.mute();
-                p.playVideo();
-                setQuiet(true);
-                wait = window.setTimeout(() => !cancelled && !going() && setBlocked(true), 2000);
-              }, 1200);
+              // Starting it: with sound first. A phone that won't give it sound (iPhone) leaves
+              // it unstarted or paused, or loading on and on: then it starts silently. Refused
+              // even that (Low Power Mode): YouTube's own frame, for its play button. Watched
+              // every tick, not checked once, as YouTube may still be loading at any one moment.
+              let stage: "sound" | "silent" | "done" = "sound";
+              let since = Date.now();
               let first = true;
-              let was = -1;
+              // the last state that wasn't loading (3): a film catching up isn't a fresh start
+              let settled = -1;
               poll = window.setInterval(() => {
                 const p = yt.current;
                 if (!p) return;
                 const state = p.getPlayerState();
+                if (stage !== "done") {
+                  const waited = Date.now() - since;
+                  const stuck = (patience: number) =>
+                    (state !== 3 && waited > patience) || waited > START.stuck;
+                  if (state === 1) stage = "done";
+                  else if (stage === "sound" && stuck(START.sound)) {
+                    p.mute();
+                    p.playVideo();
+                    setQuiet(true);
+                    stage = "silent";
+                    since = Date.now();
+                  } else if (stage === "silent" && stuck(START.silent)) {
+                    setBlocked(true);
+                    stage = "done";
+                  }
+                }
                 setPlaying(state === 1);
                 if (state === 1 && first) {
                   first = false;
+                  begun = true;
                   setStarted(true);
+                  // (started from YouTube's own button after all: our controls take over)
+                  setBlocked(false);
                 }
                 // YouTube turns its own captions on for a film playing silently, and again on
                 // its own after a replay, seconds in: kept off all the while it plays
@@ -1243,13 +1270,14 @@ function useMedia(film: Film) {
                   q.unloadModule?.("captions");
                   q.unloadModule?.("cc");
                 }
-                // (re)started on iPhone: covered while YouTube's own title and logo show
-                if (state === 1 && was !== 1 && appleRef.current) {
+                // (re)started on iPhone: covered while YouTube's own title and logo show (not
+                // when it only caught up after loading mid-film: YouTube shows nothing then)
+                if (state === 1 && settled !== 1 && appleRef.current) {
                   setFresh(true);
                   window.clearTimeout(reveal);
                   reveal = window.setTimeout(() => !cancelled && setFresh(false), FRESH);
                 }
-                was = state;
+                if (state !== 3) settled = state;
                 setEnded(state === 0);
                 setMuted(p.isMuted());
                 setTime(p.getCurrentTime());
