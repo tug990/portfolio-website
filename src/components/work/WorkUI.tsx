@@ -18,6 +18,7 @@ import { ScrubFrame } from "@/components/work/ScrubFrame";
 import { BLURRED, BlurredFilm, STAGE } from "@/components/work/BlurredFilm";
 import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
 import { cn } from "@/lib/utils";
+import { PlayButton } from "@/components/work/PlayButton";
 
 /*
   The pieces of the Work page and a film's page: laid out after YouTube's,
@@ -1108,10 +1109,19 @@ export function FilmBox({
   sizes: string;
   children?: ReactNode;
 }) {
-  const { film, docked, play, setSlot, setOffscreen } = usePlayer();
+  const { film, docked, play, setSlot, setOffscreen, prime, unprime } = usePlayer();
   const playable = filmOf(project);
   const here = film?.slug === project.slug;
   const showing = here && docked;
+
+  // Its YouTube player made now, unseen over this box, so the tap on play starts it at once,
+  // with sound (lib/player.tsx `primed`); a film file plays from this button as ever
+  useEffect(() => {
+    const f = filmOf(project);
+    if (!f?.youtube) return;
+    prime(f);
+    return () => unprime(f.slug);
+  }, [project, prime, unprime]);
 
   // Scrolled past while its film plays: it floats to the corner (and back).
   // Out once less than a quarter is left above the top; back at half.
@@ -1192,29 +1202,6 @@ export function FilmBox({
         </button>
       )}
     </div>
-  );
-}
-
-/* A round glass play button, with a ring of prism light when you're over it. */
-export function PlayButton({ className }: { className?: string }) {
-  return (
-    <span aria-hidden className={cn("relative grid place-items-center", className)}>
-      <span
-        className="absolute inset-[-3px] rounded-full opacity-0 blur-[2px] transition-opacity duration-500 group-hover:opacity-100"
-        style={{
-          background:
-            "conic-gradient(from 200deg, #1f2cff, #2bb8ff, #ffffff, #ff8a1f, #ff3d1f, #1f2cff)",
-        }}
-      />
-      <span className="absolute inset-0 rounded-full border border-white/60 bg-white/20 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md transition-transform duration-300 group-hover:scale-105" />
-      <svg
-        viewBox="0 0 24 24"
-        className="relative ml-[8%] h-[38%] w-[38%] text-white"
-        fill="currentColor"
-      >
-        <path d="M7 4.5v15l13-7.5z" />
-      </svg>
-    </span>
   );
 }
 

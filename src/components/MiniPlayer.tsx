@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { usePlayer, type Film, type FilmClock } from "@/lib/player";
 import { GLASS_PANEL } from "@/lib/menu";
+import { PlayButton } from "@/components/work/PlayButton";
 import { YT_HOST, loadYouTubeApi, type YTPlayer } from "@/lib/youtube";
 import { ScrubFrame } from "@/components/work/ScrubFrame";
 import { cn } from "@/lib/utils";
@@ -59,7 +60,11 @@ const typing = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
 export function MiniPlayer() {
-  const { film } = usePlayer();
+  const { film, primed, slot } = usePlayer();
+  // the film whose page is open, waiting for its tap (lib/player.tsx `primed`), unless it's
+  // the one playing; keyed with the playing one, so starting it keeps its player as it is
+  const waiting =
+    primed?.youtube && primed.slug !== film?.slug && slot?.slug === primed.slug ? primed : null;
   const [mounted, setMounted] = useState(false);
   const [keys, setKeys] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -83,7 +88,7 @@ export function MiniPlayer() {
   return createPortal(
     <>
       {/* a new film gets a new player */}
-      {film && <Player key={film.slug} film={film} />}
+      {[film, waiting].map((f) => f && <Player key={f.slug} film={f} waiting={f === waiting} />)}
       {keys && <ShortcutsPanel onClose={() => setKeys(false)} />}
     </>,
     document.body,
@@ -180,15 +185,23 @@ function fixedAncestor(el: HTMLElement) {
   return null;
 }
 
-function Player({ film }: { film: Film }) {
-  const { slot, docked, close, minimise, play, setAmbient } = usePlayer();
+/*
+  A film's player. `waiting`: its page is open and it hasn't been played yet: its YouTube frame
+  lies unseen over the page's own play button (FilmBox), so a tap there lands in YouTube's frame
+  and starts it at once, with sound; the moment it starts it's the film playing (`play`), the
+  same player carrying on.
+*/
+function Player({ film, waiting = false }: { film: Film; waiting?: boolean }) {
+  const ctx = usePlayer();
+  const { slot, close, minimise, play, setAmbient } = ctx;
+  const docked = waiting || ctx.docked;
   const navigate = useNavigate();
   const box = useRef<HTMLDivElement>(null);
   const screen = useRef<HTMLDivElement>(null);
   /* where the film was last drawn, for the shrink / grow animation */
   const lastRect = useRef<DOMRect | null>(null);
   const [inSheet, setInSheet] = useState(false);
-  const media = useMedia(film);
+  const media = useMedia(film, !waiting, () => play(film));
 
   // The film's light, for the page around it (WorkUI.tsx Ambient), while its own page is open
   // and it has started (floated to the corner as you scroll down it too, so the page stays dim):
@@ -231,7 +244,7 @@ function Player({ film }: { film: Film }) {
     q.addEventListener("change", apply);
     return () => q.removeEventListener("change", apply);
   }, []);
-  const full = docked && ((rotated && !dismissed) || forced);
+  const full = !waiting && docked && ((rotated && !dismissed) || forced);
   // full screen on an upright phone: the film drawn on its side, filling the screen
   const [upright, setUpright] = useState(false);
   useEffect(() => {
@@ -312,6 +325,14 @@ function Player({ film }: { film: Film }) {
     if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
     const t = e.target as HTMLElement;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    // waiting on its page: Space or K plays it, when no other film is playing
+    if (waiting) {
+      if (!ctx.film && (k === "k" || (k === " " && !t.closest?.("button, a, [role=slider]")))) {
+        e.preventDefault();
+        play(film);
+      }
+      return;
+    }
     const act = (fn: () => void, text?: string) => {
       e.preventDefault();
       fn();
@@ -591,7 +612,11 @@ function Player({ film }: { film: Film }) {
         full
           ? "fixed inset-0 z-[100] bg-black"
           : docked
-            ? cn("overflow-hidden bg-black max-sm:touch-none", inSheet ? "z-[71]" : "z-20")
+            ? cn(
+                "overflow-hidden max-sm:touch-none",
+                !waiting && "bg-black",
+                inSheet ? "z-[71]" : "z-20",
+              )
             : cn(
                 GLASS_PANEL,
                 "fixed inset-x-2 bottom-[calc(var(--dock,env(safe-area-inset-bottom))+0.5rem)] z-[80] flex touch-none items-center gap-2.5 rounded-2xl p-1.5 sm:touch-auto",
@@ -603,7 +628,9 @@ function Player({ film }: { film: Film }) {
       <div
         ref={screen}
         className={cn(
-          "overflow-hidden bg-black",
+          "overflow-hidden",
+          // (waiting: the cover's play button lights up under the pointer, over YouTube's frame)
+          waiting ? "group" : "bg-black",
           turned
             ? "absolute left-1/2 top-1/2"
             : docked
@@ -632,9 +659,61 @@ function Player({ film }: { film: Film }) {
         >
           {media.element}
         </div>
-        {/* until it plays (and on iPhone a moment more): the film's cover over YouTube's own
-            screen, and a ring turning */}
-        {docked && (!media.started || media.fresh) && !media.blocked && (
+        {/* waiting: the page's cover, play button and all, drawn over YouTube's frame but
+            letting a touch through, so the tap on play lands in YouTube's frame and starts it
+            there, with sound (a frame a phone doesn't draw takes no touch, so it's drawn,
+            under this). Its top and bottom, where YouTube has its title and links, and all of
+            it till YouTube is ready, play it from here instead. */}
+        {waiting && !media.started && (
+          <>
+            <div aria-hidden className="pointer-events-none absolute inset-0 z-[4]">
+              {film.cover && (
+                <img
+                  src={film.cover}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              )}
+              <span
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "linear-gradient(0deg, rgba(8,8,18,0.62), rgba(8,8,18,0.08) 45%, transparent 70%)",
+                }}
+              />
+              <PlayButton className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-1/2 -translate-y-1/2 sm:h-[72px] sm:w-[72px]" />
+            </div>
+            {media.ready ? (
+              <>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-hidden
+                  onClick={() => play(film)}
+                  className="absolute inset-x-0 top-0 z-[5] h-[26%] cursor-pointer"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-hidden
+                  onClick={() => play(film)}
+                  className="absolute inset-x-0 bottom-0 z-[5] h-[26%] cursor-pointer"
+                />
+              </>
+            ) : (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-hidden
+                onClick={() => play(film)}
+                className="absolute inset-0 z-[5] cursor-pointer"
+              />
+            )}
+          </>
+        )}
+        {/* asked to play, until it does: the film's cover over YouTube's own screen, a ring
+            turning */}
+        {docked && !waiting && !media.started && !media.blocked && (
           <div className="pointer-events-none absolute inset-0 z-[4] grid place-items-center bg-black">
             {film.cover && (
               <img
@@ -644,6 +723,34 @@ function Player({ film }: { film: Film }) {
               />
             )}
             <span className="relative h-11 w-11 animate-spin rounded-full border-2 border-white/25 border-t-white motion-reduce:animate-none" />
+          </div>
+        )}
+        {/* iPhone and iPad: for a film's first seconds from a start or resume, YouTube shows its
+            title and logo over it, which Safari won't let a page cut off (and anywhere, after a
+            tap in its frame starts it): bars over the top and bottom, as a film opens in a
+            cinema, drawing back once they've gone (FRESH); the film itself shows from the first
+            moment */}
+        {docked && !waiting && (media.apple || media.tapped) && media.started && (
+          <div aria-hidden className="pointer-events-none absolute inset-0 z-[4] overflow-hidden">
+            <div
+              className={cn(
+                "absolute inset-x-0 top-0 grid h-[25%] place-items-center bg-black px-14 transition-transform duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none",
+                !media.fresh && "-translate-y-full",
+              )}
+            >
+              <span
+                className="truncate text-[10px] uppercase tracking-[0.32em] text-white/75 sm:text-[12px]"
+                style={{ fontFamily: '"Jost", ui-sans-serif, system-ui, sans-serif' }}
+              >
+                {film.title}
+              </span>
+            </div>
+            <div
+              className={cn(
+                "absolute inset-x-0 bottom-0 h-[25%] bg-black transition-transform duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none",
+                !media.fresh && "translate-y-full",
+              )}
+            />
           </div>
         )}
         {/* what a key just did */}
@@ -680,7 +787,7 @@ function Player({ film }: { film: Film }) {
           </button>
         )}
         {/* our controls over the film (YouTube's own are off) */}
-        {docked && (
+        {docked && !waiting && (
           <Controls
             media={media}
             cover={film.cover}
@@ -694,7 +801,7 @@ function Player({ film }: { film: Film }) {
           />
         )}
         {/* phones: ⌄ minimises (tap, or swipe down on it), like YouTube's */}
-        {docked && !full && (
+        {docked && !full && !waiting && (
           <button
             type="button"
             aria-label="Minimise to the mini player"
@@ -931,7 +1038,7 @@ function Controls({
           alt=""
           className={cn(
             "pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-300",
-            media.playing && !media.fresh ? "opacity-0" : "opacity-100",
+            media.playing ? "opacity-0" : "opacity-100",
           )}
         />
       )}
@@ -1153,7 +1260,12 @@ function Controls({
 }
 
 /* The film itself, a YouTube player or a video file, and what the mini controls need. */
-function useMedia(film: Film) {
+/*
+  The film itself, a YouTube player or a video file, and what the controls need. `armed`: asked
+  to play (else it waits, made and still, for a tap in YouTube's own frame: Player `waiting`);
+  `onStart`: it started from such a tap.
+*/
+function useMedia(film: Film, armed = true, onStart?: () => void) {
   const [playing, setPlaying] = useState(false);
   /* it has played */
   const [started, setStarted] = useState(false);
@@ -1178,9 +1290,36 @@ function useMedia(film: Film) {
     setApple(appleRef.current);
   }, []);
   /* just started or resumed, on iPhone: YouTube shows its title, channel and logo over the
-     film for its first seconds there, so the cover stays over it till they've gone */
+     film for its first seconds there, so bars cover them till they've gone (Player) */
   const [fresh, setFresh] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
+  /* YouTube's player is ready (it can take a tap, or be started) */
+  const [ready, setReady] = useState(false);
+  /* started from a tap in YouTube's own frame: YouTube answers a tap by showing its title for
+     a few seconds, anywhere, so its start gets the bars too (Player), as on iPhone */
+  const [tapped, setTapped] = useState(false);
+  const tappedRef = useRef(false);
+  const readyRef = useRef(false);
+  const armedRef = useRef(armed);
+  armedRef.current = armed;
+  const onStartRef = useRef(onStart);
+  onStartRef.current = onStart;
+  /*
+    Starting it ourselves (armed): with sound first. A phone that won't give it sound (iPhone)
+    leaves it unstarted or paused, or loading on and on: then it starts silently. Refused even
+    that (Low Power Mode): YouTube's own frame, for its play button. Watched every tick (the poll
+    below), not checked once, as YouTube may still be loading at any one moment. `idle`: not
+    asked yet (or started from YouTube's own frame); `since`: when this stage began.
+  */
+  const stage = useRef<"idle" | "sound" | "silent" | "done">("idle");
+  const since = useRef(0);
+  const begin = useCallback(() => {
+    const p = yt.current;
+    if (!p || stage.current !== "idle") return;
+    stage.current = "sound";
+    since.current = Date.now();
+    p.playVideo();
+  }, []);
 
   // YouTube, through its IFrame API, with sound and none of its own controls
   // or branding: ours are drawn over it (Controls), and the frame is cut so
@@ -1192,7 +1331,6 @@ function useMedia(film: Film) {
     if (!film.youtube || !el) return;
     let cancelled = false;
     let poll = 0;
-    let wait = 0;
     let reveal = 0;
     /* it has played */
     let begun = false;
@@ -1202,15 +1340,13 @@ function useMedia(film: Film) {
     loadYouTubeApi()
       .then((YT) => {
         if (cancelled) return;
-        // YouTube never got ready (a slow or broken connection): its own frame, as it is
-        wait = window.setTimeout(() => !cancelled && setBlocked(true), START.ready);
         yt.current = new YT.Player(mount, {
           videoId: film.youtube!,
           host: YT_HOST,
           width: "100%",
           height: "100%",
           playerVars: {
-            autoplay: 1,
+            autoplay: armedRef.current ? 1 : 0,
             controls: 0,
             disablekb: 1, // our keys instead (they work wherever you are on the page)
             fs: 0,
@@ -1224,14 +1360,9 @@ function useMedia(film: Film) {
             onError: () => !cancelled && !begun && setBlocked(true),
             onReady: () => {
               if (cancelled) return;
-              window.clearTimeout(wait);
-              yt.current?.playVideo();
-              // Starting it: with sound first. A phone that won't give it sound (iPhone) leaves
-              // it unstarted or paused, or loading on and on: then it starts silently. Refused
-              // even that (Low Power Mode): YouTube's own frame, for its play button. Watched
-              // every tick, not checked once, as YouTube may still be loading at any one moment.
-              let stage: "sound" | "silent" | "done" = "sound";
-              let since = Date.now();
+              readyRef.current = true;
+              setReady(true);
+              if (armedRef.current) begin();
               let first = true;
               // the last state that wasn't loading (3): a film catching up isn't a fresh start
               let settled = -1;
@@ -1239,20 +1370,27 @@ function useMedia(film: Film) {
                 const p = yt.current;
                 if (!p) return;
                 const state = p.getPlayerState();
-                if (stage !== "done") {
-                  const waited = Date.now() - since;
+                // started from a tap in YouTube's own frame (with sound: the tap was there)
+                if (stage.current === "idle" && (state === 1 || state === 3)) {
+                  stage.current = "done";
+                  tappedRef.current = true;
+                  setTapped(true);
+                  onStartRef.current?.();
+                }
+                if (stage.current === "sound" || stage.current === "silent") {
+                  const waited = Date.now() - since.current;
                   const stuck = (patience: number) =>
                     (state !== 3 && waited > patience) || waited > START.stuck;
-                  if (state === 1) stage = "done";
-                  else if (stage === "sound" && stuck(START.sound)) {
+                  if (state === 1) stage.current = "done";
+                  else if (stage.current === "sound" && stuck(START.sound)) {
                     p.mute();
                     p.playVideo();
                     setQuiet(true);
-                    stage = "silent";
-                    since = Date.now();
-                  } else if (stage === "silent" && stuck(START.silent)) {
+                    stage.current = "silent";
+                    since.current = Date.now();
+                  } else if (stage.current === "silent" && stuck(START.silent)) {
                     setBlocked(true);
-                    stage = "done";
+                    stage.current = "done";
                   }
                 }
                 setPlaying(state === 1);
@@ -1270,9 +1408,11 @@ function useMedia(film: Film) {
                   q.unloadModule?.("captions");
                   q.unloadModule?.("cc");
                 }
-                // (re)started on iPhone: covered while YouTube's own title and logo show (not
-                // when it only caught up after loading mid-film: YouTube shows nothing then)
-                if (state === 1 && settled !== 1 && appleRef.current) {
+                // (re)started on iPhone, or started from a tap in YouTube's frame: covered while
+                // YouTube's own title and logo show (not when it only caught up after loading
+                // mid-film: YouTube shows nothing then)
+                if (state === 1 && settled !== 1 && (appleRef.current || tappedRef.current)) {
+                  tappedRef.current = false;
                   setFresh(true);
                   window.clearTimeout(reveal);
                   reveal = window.setTimeout(() => !cancelled && setFresh(false), FRESH);
@@ -1293,13 +1433,27 @@ function useMedia(film: Film) {
     return () => {
       cancelled = true;
       window.clearInterval(poll);
-      window.clearTimeout(wait);
       window.clearTimeout(reveal);
       yt.current?.destroy();
       yt.current = null;
       mount.remove();
     };
-  }, [film.youtube]);
+  }, [film.youtube, begin]);
+
+  // Asked to play: start it now if YouTube is ready (else onReady will). YouTube never getting
+  // ready (a slow or broken connection): its own frame, as it is.
+  useEffect(() => {
+    if (!armed || !film.youtube) return;
+    if (readyRef.current) begin();
+    const t = window.setTimeout(() => !readyRef.current && setBlocked(true), START.ready);
+    return () => window.clearTimeout(t);
+  }, [armed, film.youtube, begin]);
+
+  // Waiting, YouTube's frame is out of the keyboard's way (the page's own play button has it)
+  useEffect(() => {
+    const f = ready ? yt.current?.getIframe?.() : null;
+    if (f) f.tabIndex = armed ? 0 : -1;
+  }, [ready, armed]);
 
   const toggle = () => {
     const p = yt.current;
@@ -1332,7 +1486,8 @@ function useMedia(film: Film) {
       className={cn(
         "absolute [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0",
         apple ? "inset-0" : "inset-x-0 -inset-y-[20%]",
-        (started || !blocked) && "pointer-events-none",
+        // (waiting: under the page's cover, Player, but there for the tap once ready)
+        !(!started && ((!armed && ready) || blocked)) && "pointer-events-none",
       )}
     />
   ) : (
@@ -1390,6 +1545,9 @@ function useMedia(film: Film) {
     fresh,
     quiet,
     blocked,
+    ready,
+    apple,
+    tapped,
     /* the sound, for a film that started silently */
     sound: () => {
       const p = yt.current;

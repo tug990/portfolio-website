@@ -18,6 +18,11 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
   it's played there again. Scrolling past its box floats it to the corner
   too, and back into the box when you scroll back (`setOffscreen`, FilmBox).
 
+  `primed`: the film whose page is open, waiting to be played (`prime`, from its FilmBox). Its
+  YouTube player is made at once, unseen over the box, so a tap on the play button lands in
+  YouTube's own frame and starts it there and then, with sound (a phone gives a film sound only
+  for a tap in its own frame, not for one on the page that starts it a moment later).
+
   `ambient`: the light of the film playing over its page, for the page around
   it to take on (WorkUI.tsx `Ambient`): a frame of it (YouTube's pictures of
   the film at a quarter, half and three quarters, picked by where it's at),
@@ -55,6 +60,10 @@ type PlayerState = {
   docked: boolean;
   play: (film: Film) => void;
   close: () => void;
+  /* the film whose page is open, its player made and waiting for the tap (see the top) */
+  primed: Film | null;
+  prime: (film: Film) => void;
+  unprime: (slug: string) => void;
   /* to the corner (from a film's page: to the Work page), still playing */
   minimise: () => void;
   /* its box has scrolled out of sight (the film floats to the corner meanwhile) */
@@ -75,11 +84,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [held, setHeld] = useState(false);
   const [offscreen, setOffscreen] = useState(false);
   const [ambient, setAmbient] = useState<Ambient>(null);
+  const [primed, setPrimed] = useState<Film | null>(null);
 
   const play = useCallback((f: Film) => {
     setFilm((cur) => (cur?.slug === f.slug ? cur : f));
     setHeld(false);
   }, []);
+  const prime = useCallback((f: Film) => setPrimed(f), []);
+  const unprime = useCallback(
+    (slug: string) => setPrimed((cur) => (cur?.slug === slug ? null : cur)),
+    [],
+  );
   const close = useCallback(() => {
     setFilm(null);
     setHeld(false);
@@ -108,13 +123,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       docked,
       play,
       close,
+      primed,
+      prime,
+      unprime,
       minimise,
       setOffscreen,
       setSlot,
       ambient,
       setAmbient,
     }),
-    [film, slot, docked, play, close, minimise, setSlot, ambient],
+    [film, slot, docked, play, close, primed, prime, unprime, minimise, setSlot, ambient],
   );
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
