@@ -64,7 +64,7 @@ export const ABOUT_INTRO =
   `ask` is the subject line of the email it offers.
 */
 export const ABOUT_PERSPECTIVE_TITLE = "Know us from the perspective of you";
-export type PerspectiveId = "ngo" | "corporate" | "government" | "real-estate" | "university";
+export type PerspectiveId = "ngo" | "corporate" | "government" | "real-estate" | "education";
 export const ABOUT_PERSPECTIVES: {
   id: PerspectiveId;
   label: string;
@@ -250,26 +250,28 @@ export const ABOUT_PERSPECTIVES: {
     },
   },
   {
-    id: "university",
-    label: "University",
-    title: "Research and campus life, told truthfully",
-    text: "Documentaries about your research, your people and what they change in the world, for students, funders and everyone who should know.",
+    // (schools, colleges, universities and every place of learning; its page, /about/education,
+    // was /about/university, which still leads there: routes/about.$perspective.tsx)
+    id: "education",
+    label: "Educational Institution",
+    title: "Learning and campus life, told truthfully",
+    text: "Documentaries about your students, your teachers and what they go on to achieve, from a school's first morning to a university's convocation, for students, parents, partners and everyone who should know.",
     offers: [
       {
-        title: "Research films",
-        text: "The question, the work and why it matters, made clear without dumbing it down.",
+        title: "Campus films",
+        text: "What a day at your school, college or university really feels like.",
       },
       {
-        title: "Campus and alumni stories",
-        text: "Real students and graduates, in their own words.",
+        title: "Student and alumni stories",
+        text: "Real students and former students, in their own words.",
       },
       {
-        title: "Outreach series",
-        text: "Your institution's work, episode by episode, for the public and partners.",
+        title: "Programme and research films",
+        text: "What you teach and discover, made clear without dumbing it down.",
       },
     ],
     clients: [],
-    ask: "A film for our university",
+    ask: "A film for our institution",
     hero: {
       alt: "A student with a backpack running towards an open yellow door standing in the open air, a grand university and a plane in the sky beyond it, books and pages flying behind him",
       tone: "dark",

@@ -21,7 +21,7 @@ const PERSPECTIVE_ICONS: Record<PerspectiveId, string> = {
     "M3.5 9.5L12 5l8.5 4.5 M4.5 9.5h15 M6.5 11v5.5 M10.2 11v5.5 M13.8 11v5.5 M17.5 11v5.5 M4.5 17.5h15 M3 20h18",
   "real-estate":
     "M4.5 20V9.5l4.5-1.8V20 M9 20V5.2l6 2V20 M15 20v-8.5l4.5 1.3V20 M3 20h18 M11.4 9.5h1.2 M11.4 12.5h1.2 M11.4 15.5h1.2 M6.2 12h1.1 M6.2 15h1.1 M16.8 15h1.1",
-  university:
+  education:
     "M2.5 9.5L12 5l9.5 4.5L12 14z M6.5 11.6v3.9c1.6 1.5 3.6 2.2 5.5 2.2s3.9-.7 5.5-2.2v-3.9 M21.5 9.5v5",
 };
 const DOOR_ICON = "M7 20V5.5l4.2 2.1V20 M12.8 20V7.2l4.2-1.4V20 M4 20h16";

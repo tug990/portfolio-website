@@ -1,20 +1,24 @@
 import type { ServiceBook } from "@/content/service-books";
 
-/* "Insight Lab - University Service Book.pdf", as the university's world shows it */
-export const UNIVERSITY: ServiceBook = {
+/*
+  The educational institution's Service Book: schools, colleges, universities and every place of
+  learning. Adapted from "Insight Lab - University Service Book.pdf" to take in schools too (its
+  research findings are the book's, as sourced); as the world shows it.
+*/
+export const EDUCATION: ServiceBook = {
   itemWord: "Service",
   cover: {
-    kicker: "For universities and colleges",
+    kicker: "For educational institutions",
     title: "Students choose what feels real.",
-    text: "Eight services that help the right students find you, and help your university earn the trust of students, parents, faculty and partners.",
+    text: "Eight services that help the right students find you, from school to university, and help your institution earn the trust of students, parents, teachers and partners.",
   },
   intro: {
-    title: "Choosing a university is one of life’s biggest decisions.",
-    lead: "Today’s students research that decision on YouTube and Instagram, long before they visit a campus or open a prospectus.",
+    title: "Choosing where to learn is one of life’s biggest decisions.",
+    lead: "Today’s parents and students research that decision on YouTube and Instagram, long before they visit a campus or open a prospectus.",
     text: [
       "They compare, they question, and they can tell very quickly when something is just marketing.",
-      "Insight Lab, a non-fiction studio by Famecast, films universities as they really are: real students, real classrooms, real research and real careers.",
-      "In India the stakes are rising too. Accreditation and rankings increasingly look at outcomes such as teaching, research, student support and placements, and parents compare institutions more closely than ever. A university that can show its real work, clearly and honestly, stands apart.",
+      "Insight Lab, a non-fiction studio by Famecast, films schools, colleges and universities as they really are, from a school’s morning assembly to a university’s convocation: real students, real classrooms, real teachers and real results.",
+      "In India the stakes are rising too. Parents compare schools more closely than ever, and accreditation and rankings for colleges and universities increasingly look at outcomes such as teaching, research, student support and placements. An institution that can show its real work, clearly and honestly, stands apart.",
     ],
     outcomesTitle: "What the eight services do for you",
     outcomes: [
@@ -24,13 +28,13 @@ export const UNIVERSITY: ServiceBook = {
         icon: "people",
       },
       {
-        title: "Explain your programmes",
+        title: "Explain what you teach",
         text: "What students learn, and where it leads",
         icon: "book",
       },
       {
-        title: "Build academic reputation",
-        text: "Research and faculty made visible",
+        title: "Build your reputation",
+        text: "Teachers, research and results made visible",
         icon: "building",
       },
       {
@@ -41,8 +45,8 @@ export const UNIVERSITY: ServiceBook = {
     ],
   },
   research: {
-    title: "Students find universities on their phones, and trust other students.",
-    text: "Four findings from higher education marketing in the US, UK and beyond.",
+    title: "Students find institutions on their phones, and trust other students.",
+    text: "Four findings from education marketing in the US, UK and beyond.",
     stats: [
       {
         figure: "62%",
@@ -94,9 +98,9 @@ export const UNIVERSITY: ServiceBook = {
     picks: [
       { line: "“Our video looks like everyone else’s.”", service: "campus-film" },
       { line: "“Our social media is mostly notices and posters.”", service: "student-life" },
-      { line: "“Students ask what’s different here.”", service: "programme-spotlight" },
-      { line: "“Our research is unknown outside journals.”", service: "research-film" },
-      { line: "“Parents ask about outcomes.”", service: "alumni-story" },
+      { line: "“Parents ask what’s different here.”", service: "programme-spotlight" },
+      { line: "“Our students’ projects and research go unseen.”", service: "research-film" },
+      { line: "“Parents ask where our students go.”", service: "alumni-story" },
       { line: "“Our highlights arrive too late to matter.”", service: "event-coverage" },
       { line: "“Our photos and videos are scattered.”", service: "campus-archive" },
       { line: "“Our pages post irregularly.”", service: "digital-presence" },
@@ -105,12 +109,12 @@ export const UNIVERSITY: ServiceBook = {
   year: {
     kicker: "Across the year",
     title: "Films across the academic year",
-    text: "For many programmes in India, admissions run from around January to July, and the academic year starts in July or August.",
+    text: "In India, many schools admit from around December to March and begin their year in April or June; many colleges and universities admit from around January to July and begin in July or August.",
     stages: [
       {
         name: "Before admissions",
         services: ["campus-film", "programme-spotlight"],
-        text: "Introduce the university and its programmes",
+        text: "Introduce your institution and what you teach",
       },
       {
         name: "Admissions season",
@@ -128,7 +132,7 @@ export const UNIVERSITY: ServiceBook = {
         text: "Build reputation, keep the record, stay visible",
       },
       {
-        name: "Events and convocation",
+        name: "Annual days, fests and convocation",
         services: ["event-coverage"],
         text: "Celebrate milestones, create next year’s content",
       },
@@ -139,33 +143,33 @@ export const UNIVERSITY: ServiceBook = {
     {
       id: "campus-film",
       name: "Campus Film",
-      short: "The true character of your university",
-      line: "The true character of your university, in one film.",
+      short: "The true character of your institution",
+      line: "The true character of your school, college or university, in one film.",
       tags: ["Plus: 60-sec and short cuts"],
       familiar: [
-        "Your university’s video shows drone shots of buildings, a few smiling students, and a voice-over listing “world-class infrastructure” and “holistic development.”",
-        "Every university’s video looks the same. Students and parents watch ten of them and remember none.",
+        "Your institution’s video shows drone shots of buildings, a few smiling students, and a voice-over listing “world-class infrastructure” and “holistic development.”",
+        "Every institution’s video looks the same. Students and parents watch ten of them and remember none.",
       ],
       does: [
-        "A Campus Film captures what makes your university different: its people, its spirit, its academic strengths, and daily life on campus.",
-        "Real students and faculty speak in their own words. Instead of listing facilities, the film shows what it actually feels like to study and live there.",
+        "A Campus Film captures what makes your institution different: its people, its spirit, its teaching, and daily life on campus.",
+        "Real students, teachers and staff speak in their own words. Instead of listing facilities, the film shows what it actually feels like to learn there.",
       ],
       receive: [
-        "A Campus Film for website, admissions and events",
+        "A Campus Film for your website, admissions and events",
         "A 60-second version and short cuts for social media",
-        "Footage of campus, classrooms, labs, hostels and sports",
-        "Interviews with the Vice-Chancellor, faculty and students",
+        "Footage of classrooms, labs, libraries, playgrounds, hostels and sports",
+        "Interviews with your principal or Vice-Chancellor, teachers and students",
         "Hindi and English subtitles, and international versions",
       ],
       example: [
-        "A private university known mainly for engineering wants students for its newer design and management schools. Its Campus Film follows a day through three students: a morning design studio, a lab experiment, a startup pitch, and an evening cultural rehearsal.",
-        "Parents say it was the first university film that showed them what their child’s life there would really be like.",
+        "A day school in a growing city wants parents to see more than its board results. Its Campus Film follows one school day through three children: a morning assembly they lead, a science experiment that goes wrong and then right, and an afternoon of music and football.",
+        "Parents say it was the first school film that showed them what their child’s day there would really be like.",
       ],
       fits: [
         "Your current video looks like everyone else’s",
-        "You want to attract students to newer schools",
+        "You want students and parents to see your everyday life",
         "You need one film for admissions and events",
-        "You recruit international students",
+        "You recruit students from other cities or abroad",
       ],
     },
     {
@@ -175,17 +179,17 @@ export const UNIVERSITY: ServiceBook = {
       line: "Real students, real stories, every month on your social media.",
       tags: ["Format: Episodes", "Release: Monthly or fortnightly"],
       familiar: [
-        "Your Instagram and YouTube are full of event posters, notices and photos of chief guests. Prospective students follow your page to understand life there, but find nothing that speaks to them.",
+        "Your Instagram and YouTube are full of event posters, notices and photos of chief guests. Prospective students and parents follow your page to understand life there, but find nothing that speaks to them.",
         "Meanwhile, they watch other students’ videos on their phones every day.",
       ],
       does: [
-        "A regular documentary series following real students: first days in the hostel, exam pressure, a club competition, an internship, a festival, told from the student’s point of view.",
+        "A regular documentary series following real students: a first day, exam pressure, a club competition, a science fair, an internship, a festival, told from the student’s point of view.",
         "Over time it builds a following of prospective students who feel they already know your campus.",
       ],
       receive: [
         "A documentary episode, monthly or fortnightly",
         "4 to 6 reels from every episode",
-        "Student-led storytelling, with guidance rather than scripts",
+        "Student-led storytelling, with guidance rather than scripts (and parents’ consent for younger students)",
         "A content plan built around the admissions calendar",
         "All footage saved to your campus archive",
       ],
@@ -214,20 +218,20 @@ export const UNIVERSITY: ServiceBook = {
     {
       id: "programme-spotlight",
       name: "Programme Spotlight Film",
-      short: "What a programme teaches and where it leads",
+      short: "What a course or stream teaches, and where it leads",
       line: "What students will actually learn, who will teach them, and where it can lead.",
       tags: ["Format: Consistent series"],
       familiar: [
-        "A student is choosing between B.Tech in Computer Science at three universities. The course pages look almost identical: the same subjects, the same promises of “industry exposure.”",
-        "The student cannot tell which programme is better, so the decision comes down to brand name or fees.",
+        "A student is choosing between a B.Tech in Computer Science at three colleges, or a parent between three schools’ science streams. The pages look almost identical: the same subjects, the same promises of “industry exposure” and “all-round development.”",
+        "Nobody can tell which is better, so the decision comes down to brand name or fees.",
       ],
       does: [
-        "A Programme Spotlight shows a course or department from the inside: the faculty, labs and projects, teaching style, industry links, and where graduates go.",
+        "A Programme Spotlight shows a course, stream or department from the inside: the teachers, labs and projects, the way they teach, industry links, and where students go next.",
         "Current students and recent graduates explain what it’s really like, so students choose your programme for the right reasons.",
       ],
       receive: [
-        "A spotlight film for each programme",
-        "Interviews with the HOD, faculty, students and recent graduates",
+        "A spotlight film for each course, stream or department",
+        "Interviews with the head of department, teachers, students and recent graduates",
         "Footage of classes, labs, projects and field visits",
         "Short cuts for social media, counselling and education fairs",
         "A consistent series format across all programmes",
@@ -238,29 +242,29 @@ export const UNIVERSITY: ServiceBook = {
       ],
       fits: [
         "Your programmes look identical online",
-        "Some programmes need more applicants",
-        "Students ask “what’s different here?”",
+        "Some courses or streams need more applicants",
+        "Students and parents ask “what’s different here?”",
         "You attend education fairs",
       ],
     },
     {
       id: "research-film",
-      name: "Research Film",
-      short: "Research made clear for everyone",
-      line: "The discoveries and innovations happening in your labs, explained for everyone.",
-      tags: ["For: Industry, funders, PhD applicants"],
+      name: "Research and Innovation Film",
+      short: "Research and student projects made clear",
+      line: "The discoveries, inventions and projects happening in your labs and classrooms, explained for everyone.",
+      tags: ["For: Industry, funders, students, research applicants"],
       familiar: [
-        "Your faculty and scholars are doing important work: new materials, healthcare solutions, patents, funded projects. But it lives in journal papers only specialists read.",
-        "Industry partners, funding bodies, prospective PhD students and the public never hear about it.",
+        "Your teachers, scholars and students are doing remarkable work: new materials, healthcare solutions, patents, a school team’s prize-winning science project. But it lives in journal papers, notice boards and trophy cabinets.",
+        "Industry partners, funding bodies, prospective students and the public never hear about it.",
       ],
       does: [
-        "A Research Film tells the story of a project in simple, engaging language: the problem it solves, the people behind it, the work in the lab or field, and its impact on society.",
-        "It builds your reputation as a place of real knowledge creation, not just teaching.",
+        "A Research and Innovation Film tells the story of a project in simple, engaging language: the problem it solves, the people behind it, the work in the lab or field, and its impact on society.",
+        "It builds your reputation as a place where real knowledge and ideas are made, not just taught.",
       ],
       receive: [
-        "Research films",
-        "Interviews with lead researchers, scholars and partners",
-        "Footage in labs, field sites and where research is applied",
+        "Research and innovation films",
+        "Interviews with researchers, teachers, students and partners",
+        "Footage in labs, workshops, field sites and where the work is applied",
         "Simple graphics to explain complex ideas",
         "Versions for conferences, proposals, industry meetings and social media",
       ],
@@ -269,40 +273,40 @@ export const UNIVERSITY: ServiceBook = {
         "It helps win new industry and hospital partnerships, and draws strong students to the M.Tech and PhD programmes.",
       ],
       fits: [
-        "Your research is unknown outside journals",
+        "Your research and student projects go unseen",
         "You seek industry partners or funding",
-        "You want stronger PhD applicants",
-        "You are building your research ranking",
+        "You want stronger applicants",
+        "You are building your ranking or reputation",
       ],
     },
     {
       id: "alumni-story",
       name: "Alumni Success Story",
-      short: "Where graduates go, and how you helped",
-      line: "Where your students go, and how your university helped them get there.",
+      short: "Where your students go, and how you helped",
+      line: "Where your students go, and how your institution helped them get there.",
       tags: ["Plus: Growing story library"],
       familiar: [
-        "Parents ask one question above all: “What happens after graduation?”",
-        "Your placement brochure shows the highest package and company logos, but parents have seen the same numbers from every university. They want real graduates and real careers.",
+        "Parents ask one question above all: “Where will this take my child?”",
+        "Your brochure shows toppers, the highest package and company logos, but parents have seen the same claims from every institution. They want real former students and real lives.",
       ],
       does: [
-        "A short documentary about a real graduate: where they came from, what they learned with you, the turning points, and where they are today.",
-        "Real outcomes from real people are the strongest proof of a university’s value.",
+        "A short documentary about a real former student: where they came from, what they learned with you, the turning points, and where they are today.",
+        "Real outcomes from real people are the strongest proof of an institution’s value.",
       ],
       receive: [
         "Alumni story films",
-        "Filming at the graduate’s workplace, hometown or business",
+        "Filming at the former student’s workplace, hometown or business",
         "Short cuts for social media, counselling and parent meetings",
-        "A growing library across programmes and careers",
+        "A growing library across courses and careers",
         "Content for alumni meets and fundraising",
       ],
       example: [
-        "A university films a series of alumni stories: a first-generation graduate from a small town now leading a team at a technology company, an MBA graduate who started her own company in her hometown, and a graduate who cleared the civil services.",
-        "Played at counselling sessions and alumni meets, they answer parents’ real question: “Can my child also get there from here?”",
+        "A school films a series of its former students: a first-generation graduate from a small town now leading a team at a technology company, a woman who started her own company in her hometown, and an officer who cleared the civil services.",
+        "Played at parent meetings, counselling sessions and alumni meets, they answer parents’ real question: “Can my child also get there from here?”",
       ],
       fits: [
         "Parents ask about outcomes",
-        "Your placement numbers look like everyone’s",
+        "Your results and placements look like everyone’s",
         "You have proud alumni stories",
         "You run alumni meets or fundraising",
       ],
@@ -310,16 +314,16 @@ export const UNIVERSITY: ServiceBook = {
     {
       id: "event-coverage",
       name: "Event Coverage",
-      short: "Every campus event, shared while it matters",
-      line: "Every important event on campus, filmed, edited and shared while it still matters.",
+      short: "Every event, shared while it matters",
+      line: "Every important event at your institution, filmed, edited and shared while it still matters.",
       tags: ["Delivery: Same-day or next-day reels", "Plus: Live streaming"],
       familiar: [
-        "Universities host events almost every week: convocation, fests, sports meets, conferences, guest lectures, hackathons, placement drives.",
+        "Institutions host events almost every week: annual days, sports days, fests, convocation, conferences, guest lectures, science fairs, placement drives.",
         "Most are recorded as long, unedited footage or a few phone photos. By the time anything is posted, the moment has passed.",
       ],
       doesTitle: "What this service does",
       does: [
-        "We cover your events in documentary style, focusing on the people and emotions as much as the stage: a graduate’s family in the audience, a team winning a hackathon, a packed hall for a guest lecture.",
+        "We cover your events in documentary style, focusing on the people and emotions as much as the stage: a graduate’s family in the audience, a child’s first time on stage at the annual day, a team winning a hackathon.",
         "Highlights arrive fast, often the same day, while people are still talking about the event.",
       ],
       receive: [
@@ -346,16 +350,19 @@ export const UNIVERSITY: ServiceBook = {
           items: [
             {
               name: "Academic",
-              text: "Convocation, foundation day, conferences, seminars, guest lectures",
+              text: "Convocation, graduation, foundation day, conferences, seminars, guest lectures",
             },
             {
               name: "Student life",
-              text: "Fests, cultural nights, sports meets, clubs, hackathons",
+              text: "Annual days, fests, cultural nights, sports days, clubs, science fairs, hackathons",
             },
-            { name: "Careers", text: "Placement drives, industry summits, MoUs, alumni meets" },
+            {
+              name: "Careers",
+              text: "Placement drives, career fairs, industry summits, MoUs, alumni meets",
+            },
             {
               name: "Institutional",
-              text: "Visits, delegations, accreditation teams, inaugurations",
+              text: "Visits, delegations, inspections, accreditation teams, inaugurations",
             },
           ],
         },
@@ -366,31 +373,31 @@ export const UNIVERSITY: ServiceBook = {
       id: "campus-archive",
       name: "Campus Archive",
       short: "An organised record, year after year",
-      line: "A complete, organised visual record of your university’s activities, year after year.",
+      line: "A complete, organised visual record of your institution’s activities, year after year.",
       tags: ["Format: Ongoing", "Plus: Year-end summary film"],
       familiar: [
-        "When an accreditation visit, ranking submission or anniversary comes up, departments scramble for photos and videos of past events, workshops and outreach.",
+        "When an accreditation visit, a board or affiliation inspection, a ranking submission or an anniversary comes up, everyone scrambles for photos and videos of past events, workshops and outreach.",
         "Files sit on staff laptops, half are lost, and nobody can find footage from three years ago.",
       ],
       doesTitle: "What this service does",
       does: [
-        "A running visual record of everything across the university: academic events, workshops, outreach, new facilities, research and student achievements.",
-        "Every file is labelled by department, date and activity, found in minutes, and stays with the university through staff changes.",
+        "A running visual record of everything across your institution: academic events, workshops, outreach, new facilities, research and student achievements.",
+        "Every file is labelled by department, date and activity, found in minutes, and stays with the institution through staff changes.",
       ],
       receive: [
         "Regular photo and video documentation of key activities",
         "A searchable archive by department, date and activity",
-        "Year-end summary films for each school or the university",
-        "Visual material ready for accreditation visits, rankings and annual reports",
+        "Year-end summary films for each department, school or the whole institution",
+        "Visual material ready for accreditation and inspections, rankings and annual reports",
         "Recovery and organisation of past years’ material",
       ],
       example: [
-        "As its accreditation cycle approaches, a university finds its record of outreach, workshops and student activities scattered across dozens of devices. We recover and organise five years of material and set up a running archive.",
+        "As its accreditation cycle approaches, a college finds its record of outreach, workshops and student activities scattered across dozens of devices. We recover and organise five years of material and set up a running archive.",
         "The next time it prepares for a visit or an anniversary, the visual record is ready in minutes.",
       ],
       fits: [
         "Your photos and videos are scattered",
-        "An accreditation cycle is approaching",
+        "An accreditation or inspection is approaching",
         "Staff changes have cost you material",
         "You need material for rankings and reports",
       ],
@@ -399,11 +406,11 @@ export const UNIVERSITY: ServiceBook = {
       id: "digital-presence",
       name: "Digital Presence (Organic Growth)",
       short: "Organic growth on every platform",
-      line: "A strong, active and consistent presence on every platform students use.",
+      line: "A strong, active and consistent presence on every platform students and parents use.",
       tags: ["Format: Monthly", "Growth: Organic, not paid ads"],
       familiar: [
         "Your official pages exist, but posting is irregular: five notices one week, nothing for a month. Departments run pages in different styles.",
-        "Prospective students find an inactive, confusing presence, while competing universities post daily and reply to every comment.",
+        "Prospective students and parents find an inactive, confusing presence, while competing institutions post daily and reply to every comment.",
       ],
       doesTitle: "What this service does",
       does: [
@@ -419,8 +426,8 @@ export const UNIVERSITY: ServiceBook = {
         "Choose: we produce and you publish, or we produce and publish",
       ],
       example: [
-        "A university’s Instagram had irregular posts and little engagement. After six months, it posts consistently, runs a weekly student story, shares event highlights within hours, and answers admission queries in comments and messages.",
-        "During admissions, social enquiries rise, and students tell counsellors they followed the page for months before applying.",
+        "A school’s Instagram had irregular posts and little engagement. After six months, it posts consistently, runs a weekly student story, shares event highlights within hours, and answers admission queries in comments and messages.",
+        "During admissions, enquiries rise, and parents tell the admissions office they followed the page for months before applying.",
       ],
       fits: [
         "Your pages post irregularly",
@@ -434,7 +441,10 @@ export const UNIVERSITY: ServiceBook = {
           items: [
             { name: "Instagram", text: "Community: student life, events, campus moments" },
             { name: "YouTube", text: "Audience: full films and series found through search" },
-            { name: "LinkedIn", text: "Reputation: research, placements, VC’s voice" },
+            {
+              name: "LinkedIn",
+              text: "Reputation: research, results, placements, your leaders’ voice",
+            },
             { name: "Website", text: "Fresh videos for homepage, programme and news pages" },
           ],
         },
@@ -490,8 +500,8 @@ export const UNIVERSITY: ServiceBook = {
           "Spotlights: every major programme",
           "Alumni Stories: 8",
           "Student Life: 12 episodes",
-          "Research Films: up to 4",
-          "Events: convocation, fest + 6",
+          "Research and Innovation Films: up to 4",
+          "Events: annual day or convocation, fest + 6",
           "Campus Archive: full year",
           "Digital Presence: 12 months, we publish",
         ],
@@ -520,10 +530,10 @@ export const UNIVERSITY: ServiceBook = {
         service: "Alumni Success Story",
         cells: ["1 story", "2 stories", "4 stories", "8 stories"],
       },
-      { service: "Research Film", cells: ["1 film", "", "", "Up to 4 films"] },
+      { service: "Research and Innovation Film", cells: ["1 film", "", "", "Up to 4 films"] },
       {
         service: "Event Coverage",
-        cells: ["1 event", "", "Up to 3 events", "Convocation, fest + 6 events"],
+        cells: ["1 event", "", "Up to 3 events", "Annual day or convocation, fest + 6 events"],
       },
       { service: "Campus Archive", cells: ["Setup and recovery", "", "", "Full year"] },
       {
@@ -538,14 +548,14 @@ export const UNIVERSITY: ServiceBook = {
     ],
     note: "“Not included (extra cost)” means the service is not part of that option, but you can still get it by paying separately.",
     advice:
-      "Most universities start with the 3-Month Admissions Sprint and move to the 12-Month Academic Year Partnership once they see the results in their admissions season.",
+      "Most institutions start with the 3-Month Admissions Sprint and move to the 12-Month Academic Year Partnership once they see the results in their admissions season.",
   },
   talk: {
     kicker: "Let’s talk",
-    title: "Let’s show students the university you really are.",
-    text: "Tell us about your programmes, your students and your admissions calendar. We will suggest the services and contract that fit your year.",
+    title: "Let’s show students the institution you really are.",
+    text: "Tell us about your institution, your students and your admissions calendar. We will suggest the services and contract that fit your year.",
     steps: [
-      { title: "Talk", text: "Your goals, programmes and admissions calendar" },
+      { title: "Talk", text: "Your goals, courses and admissions calendar" },
       { title: "Plan", text: "A content plan mapped to the academic year" },
       { title: "Film", text: "Real students, real stories, all year" },
     ],

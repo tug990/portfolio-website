@@ -3,7 +3,7 @@ import { CORPORATE } from "@/content/books/corporate";
 import { GOVERNMENT } from "@/content/books/government";
 import { NGO } from "@/content/books/ngo";
 import { REAL_ESTATE } from "@/content/books/real-estate";
-import { UNIVERSITY } from "@/content/books/university";
+import { EDUCATION } from "@/content/books/education";
 
 /*
   The Service Books: one for each of the About page's perspectives, the
@@ -146,5 +146,5 @@ export const SERVICE_BOOKS: Partial<Record<PerspectiveId, ServiceBook>> = {
   corporate: CORPORATE,
   government: GOVERNMENT,
   "real-estate": REAL_ESTATE,
-  university: UNIVERSITY,
+  education: EDUCATION,
 };
