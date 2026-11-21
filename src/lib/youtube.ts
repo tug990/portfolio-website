@@ -89,6 +89,7 @@ type YTNamespace = {
       events?: {
         onReady?: () => void;
         onStateChange?: (e: { data: number }) => void;
+        onError?: (e: { data: number }) => void;
       };
     },
   ) => YTPlayer;
