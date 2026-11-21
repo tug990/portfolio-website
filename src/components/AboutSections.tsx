@@ -905,14 +905,14 @@ function PerspectivePicker({
   The light of each world, either side of the white you came through: the
   door's blue and amber, turned to suit (warm for NGOs, cool for companies,
   saffron and green for government, sand for building, deep blue for
-  universities).
+  education).
 */
 const WORLD_LIGHT: Record<PerspectiveId, [string, string]> = {
   ngo: ["rgba(255,110,110,0.16)", "rgba(255,170,90,0.2)"],
   corporate: ["rgba(60,80,255,0.16)", "rgba(110,200,255,0.16)"],
   government: ["rgba(255,153,51,0.18)", "rgba(19,136,8,0.14)"],
   "real-estate": ["rgba(185,140,90,0.2)", "rgba(255,196,130,0.18)"],
-  university: ["rgba(40,60,200,0.18)", "rgba(140,100,255,0.16)"],
+  education: ["rgba(40,60,200,0.18)", "rgba(140,100,255,0.16)"],
 };
 
 /*
@@ -926,7 +926,7 @@ const WORLD_LIGHT: Record<PerspectiveId, [string, string]> = {
   picture at the foot, at its own shape, its top fading into its own top
   colour (`top`, `fade`), the words above it; room is kept under the words
   for the part with the subject in it (`subject`), so the words never run into
-  it, whatever the screen's shape (`words`: top-left, the university's, or
+  it, whatever the screen's shape (`words`: top-left, education's, or
   top-right, the government's: the same, but on a landscape screen the words
   above to one side, beside what rises on the other; `subject` then counts
   that side's). Each picture
@@ -1097,7 +1097,7 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
         <h1
           className={cn(
             "mt-4 text-[32px] leading-[1.1] sm:text-5xl xl:text-6xl",
-            "font-light tracking-tight",
+            "font-light tracking-tight text-balance", // (no word left alone on its last line)
             top && !topSide ? "mx-auto max-w-3xl" : "portrait:mx-auto portrait:max-w-3xl",
             ink.halo,
           )}
@@ -1107,7 +1107,7 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
         <div className={cn("prism-rule mt-6 w-20 sm:mt-7", centre)} />
         <p
           className={cn(
-            "mt-6 max-w-xl text-[15px] leading-relaxed sm:mt-7 sm:text-lg",
+            "mt-6 max-w-xl text-[15px] leading-relaxed text-pretty sm:mt-7 sm:text-lg",
             centre,
             ink.body,
             ink.halo,
