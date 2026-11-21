@@ -8,7 +8,8 @@ import { SITE } from "@/content/site";
 */
 /* the site's card, in the films' thumbnail style: 16:9, what we make, for whom, who we've made
    films for, and how to reach us */
-export const SHARE_PICTURE = { src: "/brand/share.jpg", width: 1200, height: 675 };
+// (a new name when the card changes: WhatsApp keeps a picture it has seen at the same address)
+export const SHARE_PICTURE = { src: "/brand/share-card.jpg", width: 1200, height: 675 };
 
 export function seo(
   title?: string,
