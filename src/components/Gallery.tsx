@@ -237,6 +237,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
       t0: number;
       dur: number;
       endYaw: number; // facing the stop, at the end
+      endPitch: number; // and looking up as much as it asks
       to: number; // the stop
     },
     leg: 0, // where you are on the journey: the last of its stops you reached
@@ -390,7 +391,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
           c.at = Math.min(saved, stops.length - 1);
           c.leg = c.at <= s.layout.end ? c.at : 0;
           const st = stops[c.at];
-          c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: 0, y: EYE };
+          c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: st.pitch ?? 0, y: EYE };
           c.insideFlag = true;
           drawIntro(1);
           setInside(true);
@@ -609,8 +610,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     // (on a tall phone the logo is kept just small enough that the words under it clear the hint
     // at the foot, above the phone's bottom bar; on a short one, once it's as small as it goes,
     // it rises instead, its top never nearer than 24 px to the screen's top)
-    const room =
-      s.text && s.hint ? s.hint.offsetTop - 20 - s.text.offsetHeight - 34 : Infinity; // the lowest the logo's foot may be
+    const room = s.text && s.hint ? s.hint.offsetTop - 20 - s.text.offsetHeight - 34 : Infinity; // the lowest the logo's foot may be
     const fit = (room - H * 0.4) / (686 - LOGO.center.y);
     const base = Math.min((H * 0.4) / LOGO.height, (W * 0.62) / 215);
     const s0 = Math.max(base * 0.55, Math.min(base, fit));
@@ -699,7 +699,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
       const settle = r.len < 2.5 ? t : clamp(1 - (r.len - d - 0.3) / 2.6, 0, 1);
       const goal = goingYaw + wrapAngle(r.endYaw - goingYaw) * smooth(settle);
       me.yaw += wrapAngle(goal - me.yaw) * damp(5.5, dt);
-      me.pitch += (0 - me.pitch) * damp(4, dt);
+      me.pitch += (r.endPitch * smooth(settle) - me.pitch) * damp(4, dt);
       const v = Math.hypot(me.x - px, me.z - pz) / Math.max(dt, 1e-3);
       if (v > 0.15) c.bob += dt * v * 5.2;
       const bob = v > 0.15 ? Math.sin(c.bob) * 0.018 * Math.min(1, v / WALK) : 0;
@@ -709,8 +709,12 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
         c.route = null;
         if (r.to <= L.end) c.leg = r.to;
         // finish facing the stop squarely
-        if (Math.abs(wrapAngle(r.endYaw - me.yaw)) > 0.01)
-          tweenTo({ x: me.x, z: me.z, yaw: r.endYaw, y: c.floor + EYE }, updateHud, 260);
+        if (Math.abs(wrapAngle(r.endYaw - me.yaw)) > 0.01 || Math.abs(r.endPitch - me.pitch) > 0.01)
+          tweenTo(
+            { x: me.x, z: me.z, yaw: r.endYaw, pitch: r.endPitch, y: c.floor + EYE },
+            updateHud,
+            260,
+          );
         else updateHud();
       }
     } else if (c.tween) {
@@ -935,7 +939,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     if (path && len < 0.4) {
       c.route = null;
       if (i <= L.end) c.leg = i;
-      tweenTo({ x: st.x, z: st.z, yaw: st.yaw, y: f + EYE }, updateHud, 350);
+      tweenTo({ x: st.x, z: st.z, yaw: st.yaw, pitch: st.pitch, y: f + EYE }, updateHud, 350);
       return;
     }
     if (path && len < 75 && !reduced) {
@@ -951,6 +955,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
         t0: performance.now(),
         dur: (len / speed) * 1000 + 700,
         endYaw: st.yaw,
+        endPitch: st.pitch ?? 0,
         to: i,
       };
       s.setGuide(null);
@@ -965,7 +970,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
     requestAnimationFrame(() => (veil.style.opacity = "1"));
     window.setTimeout(() => {
       c.tween = null;
-      c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: 0, y: f + EYE };
+      c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: st.pitch ?? 0, y: f + EYE };
       c.floor = f;
       c.vel.x = c.vel.z = 0;
       if (i <= L.end) c.leg = i;
@@ -1210,7 +1215,13 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
             c.glide = null;
             c.lean = 1;
             c.floor = s.floorAt(stop.x, stop.z, c.floor) ?? 0;
-            c.me = { x: stop.x, z: stop.z, yaw: stop.yaw, pitch: 0, y: c.floor + EYE };
+            c.me = {
+              x: stop.x,
+              z: stop.z,
+              yaw: stop.yaw,
+              pitch: stop.pitch ?? 0,
+              y: c.floor + EYE,
+            };
           },
           gone: false,
         };
@@ -1388,7 +1399,7 @@ export function Gallery({ start }: { start: "landing" | "room" }) {
             c.glide = null;
             const st = s.layout.stops[stop];
             c.floor = s.floorAt(st.x, st.z, c.floor) ?? 0;
-            c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: 0, y: c.floor + EYE };
+            c.me = { x: st.x, z: st.z, yaw: st.yaw, pitch: st.pitch ?? 0, y: c.floor + EYE };
             const d =
               pick?.kind === "door" && pick.index >= 2 ? s.worldDoors[pick.index - 2] : null;
             if (d && there) {

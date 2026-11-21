@@ -191,7 +191,7 @@ const VISOR = {
 const GLOW = "[text-shadow:0_0_14px_rgba(150,180,255,0.55),0_0_32px_rgba(110,140,255,0.3)]";
 
 const SENTENCE =
-  "Six films in a room of light. Walk through it on your screen, or step inside in VR: with a Meta Quest, Apple Vision Pro, or your phone in a VR holder.";
+  "All our films, in a building of light. Walk through it on your screen, or step inside in VR: with a Meta Quest, Apple Vision Pro, or your phone in a VR holder.";
 
 function GalleryCard() {
   const box = useRef<HTMLDivElement>(null);

@@ -81,7 +81,15 @@ export type RoomSpot = {
 };
 
 /* The world's key places along the way (for the tour and the map) */
-export type Place = { name: string; x: number; y: number; z: number; yaw: number }; // y: its floor
+// y: its floor; pitch: how far you look up there (at a tall piece, so all of it is in view)
+export type Place = { name: string; x: number; y: number; z: number; yaw: number; pitch?: number };
+/*
+  Something standing in front of a film frame (the Threshold, the Lens, the Ribbon): its outline,
+  as points round it, is cut out of the layer the films play in (that layer is drawn over the room,
+  GalleryScene `clipCutouts`), so it stays in front. `band`: the points run along a band that
+  winds about (the Ribbon), its outline that line drawn this many metres either side.
+*/
+export type Cutout = { pts: THREE.Vector3[]; band?: number };
 /* The doors out, at the end: to the About and Contact pages */
 export type WorldDoor = { x: number; z: number; label: string; to: "/about" | "/contact" };
 
@@ -170,9 +178,6 @@ export function roomPlan(zA: number, perRoom: number[]) {
   });
   return { rooms, end: zStart - Math.max(gone[-1], gone[1]), gone, zStart };
 }
-/* Where the films of the rooms hang, room by room */
-export const roomSpots = (zA: number, perRoom: number[]) =>
-  roomPlan(zA, perRoom).rooms.flatMap((r) => r.spots);
 
 /* ---------- helpers ---------- */
 
@@ -261,6 +266,9 @@ export function buildWorld(
   const yU = UPPER.y;
   const zones: Zone[] = [];
   const colliders: Collider[] = [];
+  const cutouts: Cutout[] = [];
+  // the atrium's two great frames, where films play (GalleryScene gives them their films)
+  const frames: { pic: THREE.Mesh; w: number; h: number }[] = [];
   const floors: THREE.Mesh[] = [];
   const places: Place[] = [];
   const doors: WorldDoor[] = [];
@@ -590,6 +598,12 @@ export function buildWorld(
       });
       geo.translate(0, 0.2, -0.45);
       keep(geo);
+      // (its outline, in front of a film frame)
+      cutouts.push({
+        pts: pts.flatMap(([x, y]) =>
+          [-0.46, 0.46].map((dz) => new THREE.Vector3(x, y + 0.2, zT + dz)),
+        ),
+      });
       const m = new THREE.Mesh(geo, steelBlack);
       m.castShadow = hq;
       m.receiveShadow = hq;
@@ -670,7 +684,7 @@ export function buildWorld(
     pm.position.set(0, 0.012, 3.4);
     g.add(pm);
     blockAt(-3.85, 3.85, zT - 1.85, zT + 1.85, 0);
-    places.push({ name: "The Threshold", x: 0, y: 0, z: zT + 11.2, yaw: 0 });
+    places.push({ name: "The Threshold", x: 0, y: 0, z: zT + 11.2, yaw: 0, pitch: 0.16 });
   }
 
   /* ---------- the Halo: polished steel, a line of prism light within, hung on cables ---------- */
@@ -739,6 +753,17 @@ export function buildWorld(
     sph.position.set(x, 1.0 + 1.2, z);
     sph.castShadow = hq;
     scene.add(sph);
+    // (its outline: points all over it)
+    cutouts.push({
+      pts: Array.from({ length: 72 }, (_, k) => {
+        const yy = 1 - (2 * (k + 0.5)) / 72;
+        const rr = Math.sqrt(1 - yy * yy);
+        const a = k * 2.39996;
+        return new THREE.Vector3(Math.cos(a) * rr, yy, Math.sin(a) * rr)
+          .multiplyScalar(1.22)
+          .add(sph.position);
+      }),
+    });
     colliders.push({ kind: "circle", x, z, r: 1.4, level: 0 });
     places.push({ name: "The Lens", x: x + 4.4, y: 0, z: z + 4.2, yaw: Math.atan2(4.4, 4.2) });
   }
@@ -754,6 +779,8 @@ export function buildWorld(
       const r = 1.1 + Math.sin(t * Math.PI) * 0.9;
       pts.push(new THREE.Vector3(x + Math.cos(a) * r, 0.35 + t * 7.8, z + Math.sin(a) * r));
     }
+    // (its outline: the band along its curve, a little wider than its half-width)
+    cutouts.push({ pts, band: 0.36 });
     const geo = ribbonGeometry(new THREE.CatmullRomCurve3(pts), 360, 0.62, 1.5);
     keep(geo);
     const rib = new THREE.Mesh(geo, mirror);
@@ -765,7 +792,15 @@ export function buildWorld(
     base.receiveShadow = hq;
     scene.add(base);
     colliders.push({ kind: "circle", x, z, r: 2.3, level: 0 });
-    places.push({ name: "The Ribbon", x: x - 4.6, y: 0, z: z + 5.2, yaw: -Math.atan2(4.6, 5.2) });
+    // (9 m back, looking up a little: all 8 m of it in view, from its foot)
+    places.push({
+      name: "The Ribbon",
+      x: x - 5.97,
+      y: 0,
+      z: z + 6.74,
+      yaw: -Math.atan2(4.6, 5.2),
+      pitch: 0.22,
+    });
   }
 
   /* ---------- a rain of glass: iridescent panes on cables, turning slowly ---------- */
@@ -788,17 +823,19 @@ export function buildWorld(
     animate.push((t) => panes.forEach(({ m, s }, i) => (m.rotation.y = t * s + i * 0.7)));
   }
 
-  /* ---------- two great landscapes on the side walls, each under its picture light ---------- */
+  /* ---------- two great frames on the side walls, each under its picture light, a film playing in each ---------- */
   for (const sx of [-1, 1]) {
     const at = new THREE.Vector3(sx * (W / 2 - 0.02), 4.4, zA - 15);
-    addFramedPicture(
+    const size = { w: 7.2, h: 4.05 }; // a film's shape (16:9)
+    const { pic } = addFramedPicture(
       ctx,
       at,
       new THREE.Vector3(-sx, 0, 0),
-      { w: 7.2, h: 4.4 },
+      size,
       sx > 0 ? 11 : 12,
       new THREE.Vector3(0, 0, sx > 0 ? 1 : -1),
     );
+    frames.push({ pic, ...size });
     // its picture light: a brass bar on an arm above the frame, and its light on the canvas
     const bar = box(0.07, 0.07, 3.4, brass, sx * (W / 2 - 0.42), 4.4 + 2.55, zA - 15);
     bar.castShadow = hq;
@@ -893,7 +930,7 @@ export function buildWorld(
       level: 0,
       over: true,
     });
-    places.push({ name: "The staircase", x: 0, y: 0, z: z0 + 2.5, yaw: 0 });
+    places.push({ name: "The staircase", x: 0, y: 0, z: z0 + 2.5, yaw: 0, pitch: 0.24 });
   }
 
   /* ---------- the upper floor: oak, the balcony, the corridor ---------- */
@@ -949,7 +986,8 @@ export function buildWorld(
   const warmUp = new THREE.PointLight(0xffd6a6, 16, 22, 1.6);
   warmUp.position.set(0, yU + UPPER.H - 0.8, zB - UPPER.balcony - 4);
   scene.add(warmUp);
-  places.push({ name: "The balcony", x: 0, y: yU, z: zB - 1.6, yaw: 0 });
+  // (turned back, looking down over the atrium you've come through; the rooms are the next stop)
+  places.push({ name: "The balcony", x: 0, y: yU, z: zB - 1.6, yaw: Math.PI, pitch: -0.2 });
 
   /* ---------- the rooms, one per client ---------- */
   const doorW = ROOM.door;
@@ -1541,6 +1579,10 @@ export function buildWorld(
   return {
     zones,
     colliders,
+    cutouts,
+    frames,
+    /* the atrium, with the balcony over it: where its frames are in view */
+    atrium: { minX: -W / 2, maxX: W / 2, minZ: zB - 3, maxZ: zA },
     floors,
     places,
     benches,
