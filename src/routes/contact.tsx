@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { ContactHero } from "@/components/ContactHero";
-import { TestimonialDrawer } from "@/components/TestimonialDrawer";
 import { ABOUT_PERSPECTIVES, CONTACT_PAGE, SITE } from "@/content/site";
 import { seo } from "@/lib/seo";
 
@@ -13,15 +12,13 @@ export const Route = createFileRoute("/contact")({
 /*
   The Contact page: the hero (the door of light in the sea, "Get in touch /
   Let us talk", the email and phone: components/ContactHero.tsx), then the
-  form, then what people say (the drawer of folders:
-  components/TestimonialDrawer.tsx), then the footer.
+  form, then the footer.
 */
 function Contact() {
   return (
     <>
       <ContactHero />
       <ContactForm />
-      <TestimonialDrawer />
     </>
   );
 }
