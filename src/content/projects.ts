@@ -46,20 +46,23 @@ const THEME_ICONS: Record<string, ThemeIcon> = {
   Education: "sprout",
   "Export Markets": "chart",
   "Fashion and Markets": "chart",
+  "Financial Inclusion": "chart",
   "Folk Art": "leaf",
   "Heritage Crafts": "handshake",
   Hospitality: "home",
-  "Income and Inclusivity": "chart",
   "Inclusive Growth": "people",
+  "Income and Inclusivity": "chart",
   Infrastructure: "chart",
   "Khelo India": "chart",
   "Kitchen Gardens": "sprout",
   Livelihoods: "handshake",
   "Mother and Child Health": "heart",
   "Museum and Archive": "home",
+  "Music Heritage": "heart",
   "Next Generation": "sprout",
   "Nutrition Security": "leaf",
   "One District One Product": "chart",
+  "Public Participation": "people",
   "Public Safety": "home",
   Rehabilitation: "heart",
   "Rural Electrification": "home",
@@ -67,6 +70,8 @@ const THEME_ICONS: Record<string, ThemeIcon> = {
   Sports: "people",
   "Sustainable Rural Growth": "sprout",
   "Tribal Development": "people",
+  "Urban Sanitation": "home",
+  "Waste Management": "leaf",
   "Weaver Livelihoods": "people",
   "Women Empowerment": "heart",
   Youth: "sprout",
@@ -86,13 +91,15 @@ const chapters = (question: string, gettingIn: string | null, makingIt: string) 
   The films. First Nutrition Garden (written from the film itself, as it has
   no write-up yet: Better World Foundation's, with the Khunti district
   administration, as its closing card says). Then the twelve from "All Project
-  Page Details (12 Films)". Each plays from its YouTube link (`youtube`), all
-  but Om Prakash Sahu, Pandum Cafe, Mirzapur Carpet and Banarasi Saree, whose
-  links are still to come (until then their pages show a stand-in). Still to
-  come for all of them, so not shown yet: the real release year (2026 is a
-  placeholder), stills (the frames to take are noted by each), credits, and
-  for most, how we got in. Their clients: Rising of Bastar, the Chhattisgarh
-  government; Karanj Oil, MLINDA; the other ten, the central government.
+  Page Details (12 Films)". Then four more, written from the films themselves
+  (their subtitles and on-screen names): Lucknow: Swachh Bharat Mission,
+  Banarasi Shehnai, Banarasi Wooden Toys and Maa Subhadra. Each plays from its
+  YouTube link (`youtube`), with its thumbnail (`image`). Still to come for all
+  of them, so not shown yet: the real release year (2026 is a placeholder),
+  stills (the frames to take are noted by each), credits, and for most, how we
+  got in. Their clients: Rising of Bastar, the Chhattisgarh government; Karanj
+  Oil, MLINDA; Maa Subhadra, the Odisha government; the rest, the central
+  government.
 */
 export const PROJECTS: Project[] = [
   {
@@ -386,6 +393,8 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "5:00",
     place: "Gumla, Jharkhand",
+    youtube: "https://youtu.be/aW0vNmOQRzQ",
+    image: "/work/om-prakash-sahu.webp",
     themes: themes(
       "Rehabilitation",
       "Livelihoods",
@@ -415,6 +424,8 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "4:46",
     place: "Bastar, Chhattisgarh",
+    youtube: "https://youtu.be/L7yCpe_eYXM",
+    image: "/work/pandum-cafe.webp",
     themes: themes(
       "Rehabilitation",
       "Women Empowerment",
@@ -446,6 +457,8 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "6:11",
     place: "Mirzapur, Uttar Pradesh",
+    youtube: "https://youtu.be/5OEbdC1OcSA",
+    image: "/work/mirzapur-carpet.webp",
     themes: themes(
       "Heritage Crafts",
       "One District One Product",
@@ -474,6 +487,8 @@ export const PROJECTS: Project[] = [
     client: "Central Govt. of India",
     duration: "6:14",
     place: "Varanasi, Uttar Pradesh",
+    youtube: "https://youtu.be/UMAlKaI9NPQ",
+    image: "/work/banarasi-saree.webp",
     themes: themes(
       "Heritage Crafts",
       "One District One Product",
@@ -491,6 +506,137 @@ export const PROJECTS: Project[] = [
     ),
     quote: { text: "It becomes a collectible piece for them.", name: "A speaker at a showroom" },
     // stills to take: the ghats at the start (0:01), the weaver in the loom shed (3:33), the aarti (6:03)
+  },
+  {
+    slug: "lucknow-swachh-bharat",
+    title: "Lucknow: Swachh Bharat Mission",
+    summary:
+      "How Lucknow cleared its mountains of garbage and climbed from 44th in the Swachh Survekshan to among the three cleanest cities in India.",
+    year: 2026,
+    tags: ["Impact film"],
+    client: "Central Govt. of India",
+    duration: "9:39",
+    place: "Lucknow, Uttar Pradesh",
+    youtube: "https://youtu.be/WYbMtnKktUU",
+    image: "/work/lucknow-swachh-bharat.webp",
+    themes: themes(
+      "Urban Sanitation",
+      "Waste Management",
+      "Public Participation",
+      "Infrastructure",
+      "Cultural Heritage",
+    ),
+    body: [
+      "From the Swachh Bharat Mission's series The Stories of Transformation. Lucknow has always been known as a city of etiquette and culture, but the film admits that this identity had started to blur, with a dumping yard grown into a mountain. Then, in 2014, the Swachh Bharat Mission began. We follow Durgawati, a sanitation worker with Lucknow Nagar Nigam for ten years, and Swati Dwivedi, a ward in-charge in Zone 3, as waste is collected from every household, sorted into bottles, plastics, metal, glass and board, compacted at transfer stations and taken to the Shivri plant. Around 18.5 lakh metric tonnes of old waste are processed, a command centre and the 1533 helpline take complaints, and where garbage once stood 25 to 30 metres high there is now a park. The film ends on the city's climb from 44th in the Swachh Survekshan to among the three cleanest cities in the country.",
+    ],
+    story: chapters(
+      "What does it take to turn a city's mountains of garbage back into parks, and who does the work every morning?",
+      "The film follows the people who keep the city clean, from a sanitation worker and a ward in-charge to the engineers at the plants and the officials who run the mission.",
+      "Lucknow's monuments and streets open the film, the years of garbage turn to black and white, and colour returns with the sorting lines, the command centre and aerial views of the new park, with English subtitles over Hindi.",
+    ),
+    quote: {
+      text: "My work looks easy to people, but it is not.",
+      name: "Durgawati",
+      role: "sanitation worker, Lucknow Nagar Nigam",
+    },
+    // (confirm the client: the Swachh Bharat Mission's film, with Lucknow's Nagar Nigam)
+    // stills to take: the sweeper against the sky (2:00), the sorting line (3:50), the park from the air (8:30)
+  },
+  {
+    slug: "banarasi-shehnai",
+    title: "Banarasi Shehnai",
+    summary:
+      "The shehnai of Banaras, the sound of Ustad Bismillah Khan, from the hands that make it to the young players taking it up again.",
+    year: 2026,
+    tags: ["Heritage film"],
+    client: "Central Govt. of India",
+    duration: "7:56",
+    place: "Varanasi, Uttar Pradesh",
+    youtube: "https://youtu.be/L1NT1F1L4s4",
+    image: "/work/banarasi-shehnai.webp",
+    themes: themes(
+      "Music Heritage",
+      "Heritage Crafts",
+      "Artisan Livelihoods",
+      "Next Generation",
+      "Cultural Heritage",
+    ),
+    body: [
+      "The Ganga at dawn opens the film, a boatman singing to the river, and a reminder that UNESCO named Varanasi a Creative City of Music in 2015. Then the shehnai, the sound of Ustad Bismillah Khan, remembered by his daughter Zarina Begum in his old home. Ramesh Kumar, whose father was known as Baba Shehnai Master, shows how each one is made: teak for its natural sweetness, sheesham for the smaller ones, every hole measured to be exactly the same. Players such as Kuvar Prasanna recall a time when hardly any artists were left to play it. With a GI tag from the Central Government, the shehnai of Banaras has a new identity, and young players like Krish Bangde are learning it again.",
+    ],
+    story: chapters(
+      "What happens to a sacred sound when the hands that make it, and the people who play it, begin to disappear?",
+      "The film sits with a shehnai maker in his workshop and with the players who carry the tradition on, in Banaras.",
+      "Dawn on the Ganga, close shots of hands boring and measuring the wood, and night performances on the ghats, with English subtitles over Hindi.",
+    ),
+    quote: {
+      text: "Son, learn how to make it. Playing it is important too.",
+      name: "Ramesh Kumar",
+      role: "recalling his father",
+    },
+    // (confirm the client)
+    // stills to take: the boat at dawn (0:40), the shehnai played close (3:35), the young player on the boat (7:55)
+  },
+  {
+    slug: "banarasi-wooden-toys",
+    title: "Banarasi Wooden Toys",
+    summary:
+      "The lacquered wooden toys of Banaras, nearly lost to cheap machine-made ones, and how a GI tag and training brought their makers back.",
+    year: 2026,
+    tags: ["Heritage film"],
+    client: "Central Govt. of India",
+    duration: "8:07",
+    place: "Varanasi, Uttar Pradesh",
+    youtube: "https://youtu.be/c_uwB2nrO34",
+    image: "/work/banarasi-wooden-toys.webp",
+    themes: themes(
+      "Heritage Crafts",
+      "Artisan Livelihoods",
+      "Export Markets",
+      "Next Generation",
+      "Cultural Heritage",
+    ),
+    body: [
+      "In a world full of screens, the film asks how a simple wooden toy can still keep a child's curiosity alive. In the workshops of Varanasi, Rameshwar Singh, whose ancestors made toys for kings and for the crowds at the Ram Leela, shows how wood that arrives in lengths of eight or ten feet becomes a toy: cut, turned, sanded, coloured with non-toxic lacquer and polished with a bamboo or kewra leaf. There was a time when the toys stopped selling, and makers sat by the roadside or left to drive rickshaws and autos. Artisan cards, fairs in Delhi, Mumbai and Kolkata, a GI tag and a training scheme have brought them back, and one shop's toys now go as far as Dubai.",
+    ],
+    story: chapters(
+      "Can a wooden toy hold its own against a phone, and keep a centuries-old craft alive?",
+      "The film spends its time in family workshops and toy shops in Varanasi, with makers from three generations.",
+      "Close shots of the lathe and the lacquer, warm workshop interiors, the crowded lanes of Varanasi and children at play, with English subtitles over Hindi.",
+    ),
+    quote: { text: "Our ancestors even worked for the kings.", name: "Rameshwar Singh" },
+    // (confirm the client)
+    // stills to take: the spinning top (3:25), the painted dolls (5:10), the boy at the toy shop (8:05)
+  },
+  {
+    slug: "maa-subhadra",
+    title: "Maa Subhadra",
+    summary:
+      "Women across Odisha on what the Subhadra Yojana has let them build, in the name of the goddess Maa Subhadra.",
+    year: 2026,
+    tags: ["Impact film"],
+    client: "Odisha Govt.",
+    duration: "5:45",
+    place: "Odisha",
+    youtube: "https://youtu.be/VOQh5L8DDK0",
+    image: "/work/maa-subhadra.webp",
+    themes: themes(
+      "Women Empowerment",
+      "Financial Inclusion",
+      "Rural Enterprises",
+      "Livelihoods",
+      "Cultural Heritage",
+    ),
+    body: [
+      "Odisha has worshipped Maa Subhadra for generations, and the film opens at the Rath Yatra, with thousands pulling the chariots' ropes. Then it asks where her strength is seen today, and finds it in women: Kukumina Das, mocked when she started a masala business; Tapaswini Behra, who can now earn her own money at her sewing machine; Prabhati Behra, who bought clay and colours for her idols; and a shopkeeper who now stocks more of what her customers ask for. Each was supported by the Subhadra Yojana, which the film says gives every eligible woman ₹10,000 a year for five years and has reached more than one crore women across Odisha. This is the film's Hindi version.",
+    ],
+    story: chapters(
+      "Where is the strength of a goddess seen today, in a state that has worshipped her for centuries?",
+      "The women in the film speak about their own work, and what the support changed for them.",
+      "The Rath Yatra from the air and from within the crowd, then warm interiors of kitchens, workshops and shops, with English subtitles over the Hindi.",
+    ),
+    quote: { text: "The money I received has helped me a lot.", name: "Prabhati Behra" },
+    // stills to take: the chariots at the Rath Yatra (0:30), Kukumina Das with turmeric (1:25), painting an idol (5:30)
   },
 ];
 
