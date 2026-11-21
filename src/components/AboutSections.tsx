@@ -13,7 +13,17 @@ import {
 } from "@/content/site";
 import { PROJECTS } from "@/content/projects";
 import { SERVICE_BOOKS } from "@/content/service-books";
-import { Kicker, Part, PrismEdge, Rise, ServiceBook, Title, HEAD } from "@/components/ServiceBook";
+import {
+  Kicker,
+  LOUD,
+  Part,
+  PrismEdge,
+  Rise,
+  ServiceBook,
+  Title,
+  HEAD,
+} from "@/components/ServiceBook";
+import { ShotTrail } from "@/components/StoryFilm";
 import { ClientBadge, VideoCard } from "@/components/work/WorkUI";
 import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
 import { PerspectiveIcon, PerspectiveSwitch } from "@/components/PerspectiveMenu";
@@ -158,8 +168,7 @@ function Testimonials() {
   const [before, after] = t.highlight ? t.quote.split(t.highlight) : [t.quote, undefined];
   return (
     <Part className="bg-muted/60">
-      <Kicker>From our films</Kicker>
-      <Title className="mt-4">In their words</Title>
+      <Title>In their words</Title>
       <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_17rem] lg:gap-8">
         <figure
           key={i}
@@ -220,7 +229,7 @@ function Testimonials() {
         {TESTIMONIALS.length > 1 && (
           <div
             role="tablist"
-            aria-label="From our films"
+            aria-label="In their words"
             className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0"
           >
             {TESTIMONIALS.map((x, j) => (
@@ -1043,6 +1052,8 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
           }}
         />
       </picture>
+      {/* stills from our films following the cursor, over the picture and under the words */}
+      {book?.reel && <ShotTrail shots={book.reel.trail} className="-z-[5]" />}
       {/* a gentle shade where the words are */}
       {!top && (
         <div
@@ -1088,37 +1099,29 @@ function WorldPhoto({ p }: { p: (typeof ABOUT_PERSPECTIVES)[number] }) {
             style={{ background: ink.behind }}
           />
         )}
-        <span
-          className={cn(
-            "grid h-14 w-14 place-items-center rounded-full border backdrop-blur-xl sm:h-16 sm:w-16",
-            centre,
-            ink.icon,
-          )}
-        >
-          <PerspectiveIcon id={p.id} className={cn("h-6 w-6 sm:h-7 sm:w-7", ink.iconInk)} />
-        </span>
-        {book ? (
-          <p className="mt-5 sm:mt-6">
-            {/* a pill of glass, as the sign above it */}
+        {/* with a Service Book, the headline alone (no sign, no pill above it) */}
+        {!book && (
+          <>
             <span
               className={cn(
-                "inline-block rounded-full border px-3.5 py-1.5 text-[12px] font-medium backdrop-blur-xl",
+                "grid h-14 w-14 place-items-center rounded-full border backdrop-blur-xl sm:h-16 sm:w-16",
+                centre,
                 ink.icon,
-                ink.text,
               )}
             >
-              {book.cover.kicker}
+              <PerspectiveIcon id={p.id} className={cn("h-6 w-6 sm:h-7 sm:w-7", ink.iconInk)} />
             </span>
-          </p>
-        ) : (
-          <p className={cn("tracked mt-5 text-[10px] sm:mt-6", ink.label)}>
-            Your world · {p.label}
-          </p>
+            <p className={cn("tracked mt-5 text-[10px] sm:mt-6", ink.label)}>
+              Your world · {p.label}
+            </p>
+          </>
         )}
         <h1
           className={cn(
-            "mt-4 text-[32px] leading-[1.1] sm:text-5xl xl:text-6xl",
-            "font-light tracking-tight text-balance", // (no word left alone on its last line)
+            book
+              ? cn(LOUD, "text-[56px] leading-[0.9] sm:text-[72px] xl:text-[84px]")
+              : "mt-4 text-[32px] leading-[1.1] font-light tracking-tight sm:text-5xl xl:text-6xl",
+            "text-balance", // (no word left alone on its last line)
             top && !topSide ? "mx-auto max-w-3xl" : "portrait:mx-auto portrait:max-w-3xl",
             ink.halo,
           )}
@@ -1214,7 +1217,7 @@ export function PerspectiveWorld({ id }: { id: PerspectiveId }) {
       {films.length > 0 && (
         <div className="mt-12 sm:mt-14">
           <p className="tracked text-[10px] text-black/50">
-            {clients.length ? "Their films" : "From our films"}
+            {clients.length ? "Their films" : "Our films"}
           </p>
           <div className="mt-5 grid gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
             {films.map((f) => (
@@ -1321,7 +1324,10 @@ export function PerspectiveWorld({ id }: { id: PerspectiveId }) {
         // the perspective's Service Book, its clients and their films after its services
         <ServiceBook book={book} ask={p.ask} about={<AboutUs />}>
           {(clients.length > 0 || films.length > 0) && (
-            <section className="px-4 pb-14 sm:px-6 sm:pb-20">
+            <section
+              id="films"
+              className="scroll-mt-20 px-4 pb-14 sm:scroll-mt-24 sm:px-6 sm:pb-20"
+            >
               <div className="mx-auto max-w-6xl">{work}</div>
             </section>
           )}

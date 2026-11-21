@@ -2,41 +2,70 @@ import type { ServiceBook } from "@/content/service-books";
 
 /* "Insight Lab - NGO Service Book.pdf", as the NGO world shows it */
 export const NGO: ServiceBook = {
+  // told as a film: the shots from our films it's cut with
+  reel: {
+    loops: { intro: "ngo-mothers", research: "ngo-paddy", talk: "ngo-care" },
+    services: {
+      "impact-documentary": "ngo-fields",
+      "donor-film": "ngo-ward",
+      "community-awareness": "ngo-centre",
+      "archival-film": "ngo-sowing",
+      "digital-docu-series": "ngo-home",
+      "case-study": "ngo-mothers",
+    },
+    cut: { lines: ["Let people", "see the work"], loop: "ngo-paddy" },
+    trail: [
+      "ngo-01",
+      "ngo-02",
+      "ngo-03",
+      "ngo-04",
+      "ngo-05",
+      "ngo-06",
+      "ngo-07",
+      "ngo-08",
+      "ngo-09",
+      "ngo-10",
+      "ngo-11",
+      "ngo-12",
+      "ngo-13",
+      "ngo-14",
+      "ngo-15",
+      "ngo-16",
+      "ngo-17",
+      "ngo-18",
+    ],
+  },
   itemWord: "Service",
   cover: {
     kicker: "For NGOs and foundations",
-    title: "Your work changes lives. Let it be seen.",
-    text: "Six documentary services that help NGOs prove impact, raise funds, reach communities, and keep a permanent record of their work.",
+    title: "Let people see the work you do.",
+    text: "Documentary films for NGOs and foundations, made in the villages where your work happens, with the people it reaches.",
   },
   intro: {
-    title: "Every NGO faces the same quiet problem.",
-    lead: "The work on the ground is real and powerful, but the people who matter most rarely see it.",
+    title: "What happens in the field stays in the field",
+    lead: "We make documentary films of your NGO’s work in the field, so donors, partners and the public can see the change your team creates instead of only reading about it in a report.",
     text: [
-      "Donors read long reports. Communities hear about programmes through posters and meetings. The public scrolls past. And when staff leave, years of photos and footage leave with them.",
-      "Insight Lab is a non-fiction studio that works alongside NGOs for the full life of a project. We film real people doing real work, honestly, and turn it into films that help you raise funds, build trust, reach communities, and keep a permanent record of everything you achieve.",
-      "Choose one service or combine them. Footage shot for one service feeds the others, so the longer we work together, the more value every field visit creates.",
+      "Think of an ordinary field day. Your team leaves before sunrise and reaches the village as the women gather at the anganwadi centre. A health worker weighs the babies one by one. A mother asks the question she was too shy to ask last month. A girl who had stopped going to school says she wants to go back. By evening your team is on the road home, tired, with a notebook full of what they saw.",
+      "A month later, that whole day becomes a few lines in a report and a photo of people sitting in a row. The donor who paid for it reads the report, and almost nothing of what happened in the village reaches them.",
+      "That’s the gap we fill. We go into the field with your team and film the work as it happens, so the people who fund you, the community you serve and your own staff can see it for themselves. You don’t need all six films below. Start with the one that fits where your project is today.",
     ],
-    outcomesTitle: "What the six services do for you",
+    outcomesTitle: "What changes when people can see your work",
     outcomes: [
-      { title: "Proof", text: "Show real before-and-after change", icon: "eye" },
-      { title: "Funding", text: "Keep donors engaged and renewing", icon: "chart" },
-      {
-        title: "Participation",
-        text: "Help communities understand and act",
-        icon: "megaphone",
-      },
-      { title: "Memory", text: "Keep every stage on permanent record", icon: "archive" },
-      { title: "Visibility", text: "Build a public audience online", icon: "globe" },
-      { title: "Connection", text: "Make people feel the impact", icon: "heart" },
+      { title: "Proof", text: "Shows the before and after", icon: "eye" },
+      { title: "Funding", text: "Helps donors renew", icon: "chart" },
+      { title: "Participation", text: "Gets more people to take part", icon: "megaphone" },
+      { title: "Memory", text: "Keeps a record of every stage", icon: "archive" },
+      { title: "Visibility", text: "Builds an audience online", icon: "globe" },
+      { title: "Connection", text: "Makes people care", icon: "heart" },
     ],
   },
   research: {
-    title: "Donors want proof. Communities want their own language.",
-    text: "Four findings that shape how NGOs in India should communicate today.",
+    title: "The numbers behind the numbers",
+    text: "Before we pick up a camera, we read what donors and communities say they need. These four findings shape every NGO film we make.",
     stats: [
       {
         figure: "Rs 14 lakh cr",
-        text: "India’s social sector funding fell about Rs 14 lakh crore short of NITI Aayog’s estimates, and the gap is projected to grow. NGOs compete harder than ever for every rupee.",
+        text: "That’s how far India’s social sector funding fell short of what NITI Aayog estimates is needed, and the gap is expected to grow. Funding is getting harder to win.",
         sources: [
           {
             label: "Bain & Company and Dasra, India Philanthropy Report 2025",
@@ -46,7 +75,7 @@ export const NGO: ServiceBook = {
       },
       {
         figure: "65% vs 36%",
-        text: "65% of donors want regular updates about their impact, but only 36% of nonprofits provide them. Regular donor films close that gap.",
+        text: "65% of donors want regular updates on what their money did. Only 36% of nonprofits send them.",
         sources: [
           {
             label: "Bloomerang, via NonProfit PRO",
@@ -56,7 +85,7 @@ export const NGO: ServiceBook = {
       },
       {
         figure: "70%+",
-        text: "of donors surveyed say they are more likely to give to a nonprofit that uses storytelling to show its mission and impact.",
+        text: "of donors in one survey said they’re more likely to give to a nonprofit that tells stories about its work.",
         sources: [
           {
             label: "Storyraise donor survey, via Givebutter",
@@ -66,7 +95,7 @@ export const NGO: ServiceBook = {
       },
       {
         figure: "98%",
-        text: "of India’s internet users accessed content in Indian languages in 2024, and rural India now makes up 57% of users. Local-language films reach the communities you serve.",
+        text: "of internet users in India read or watched something in an Indian language in 2024. Rural India now makes up 57% of users.",
         sources: [
           {
             label: "IAMAI & Kantar, Internet in India 2024 and 2025",
@@ -75,10 +104,10 @@ export const NGO: ServiceBook = {
         ],
       },
     ],
-    note: "What this means: donors reward NGOs that show real, regular proof of impact, and communities respond to films in their own language. That is exactly what Donor Films, Case Study Films and Community Awareness Films are built to do.",
+    note: "Put together, it’s simple. Donors want to hear from you often and see the people behind the numbers, and communities listen when the film speaks their language. The six films below are built around that.",
   },
   glance: {
-    title: "Six services, one story.",
+    title: "Where do you start?",
     columns: [
       { label: "Made for", key: "madeFor" },
       { label: "What it does", key: "short" },
@@ -86,7 +115,7 @@ export const NGO: ServiceBook = {
   },
   start: {
     title: "Not sure where to start?",
-    text: "Find the sentence that sounds like you, and tap it.",
+    text: "Which of these have you said? Tap it.",
     picks: [
       {
         line: "“We need to show what our project really achieved.”",
@@ -99,22 +128,22 @@ export const NGO: ServiceBook = {
       { line: "“Our numbers don’t move people.”", service: "case-study" },
     ],
   },
-  servicesTitle: "Six services",
+  servicesTitle: "Six films we make for NGOs",
   services: [
     {
       id: "impact-documentary",
       name: "Impact Documentary Film",
       short: "Shows the full journey",
       madeFor: "Donors, government, festivals",
-      line: "The full journey of your project, from before to after, told as a film.",
+      line: "You have the theory of change. We film the change itself, from baseline to endline, so anyone can see it.",
       tags: ["For: Donors, government, festivals"],
       familiar: [
-        "Your project took years of effort, and life on the ground is visibly better. But all you have are scattered photos, phone videos, and reports full of numbers.",
-        "Nobody filmed day one, so the real before-and-after story is lost. When someone asks “Show us what you achieved,” you have no single film that captures it.",
+        "Most projects only get filmed near the end. By then nobody can show what the place looked like before.",
+        "So you’re left with phone videos and a report, and nothing that shows the change properly.",
       ],
       does: [
-        "We film at every stage as the work happens: the starting conditions, the effort in between, and the final change. Because it is filmed in real time, the before-and-after is genuine, not recreated later.",
-        "If your project is already running, we begin with what exists: we gather your old photos and footage, interview the people involved, and record where things stand today.",
+        "We film at the start, a few times along the way, and at the end, in the same places and with the same people. The before and after are real because we were there for both.",
+        "If your project has already started, we work with the photos and footage you have and film where things stand now.",
       ],
       receive: [
         "Baseline filming before work begins",
@@ -123,6 +152,7 @@ export const NGO: ServiceBook = {
         "One finished documentary",
         "A short trailer for social media and events",
         "Drone shots and photography where useful",
+        "Written consent from everyone we film, and nobody shown in a way they wouldn’t be proud of",
       ],
       gain: [
         "One powerful film showing the full value of your work",
@@ -131,8 +161,8 @@ export const NGO: ServiceBook = {
         "A story that makes people remember you",
       ],
       example: [
-        "An NGO starts a girls’ education programme in a remote tribal block where most girls leave school after Class 5. The film opens with empty classrooms and long, unsafe walks to school, follows learning centres, bicycles, and parents slowly changing their minds, and ends years later with the first batch of girls completing Class 10.",
-        "The NGO screens it at its partner meeting, submits it to awards, and uses it to open conversations with new funders.",
+        "An NGO starts a girls’ education programme in a tribal block where most girls leave school after Class 5. The film opens on empty classrooms and the long walk to school. It follows the learning centres, the bicycles and the parents who slowly change their minds, and it ends years later when the first batch of girls finishes Class 10.",
+        "The NGO shows it at its partner meeting, sends it to awards and plays it when it meets new funders.",
       ],
       fits: [
         "You run a multi-year project with visible change",
@@ -151,22 +181,22 @@ export const NGO: ServiceBook = {
           ],
         },
       ],
-      closing: "Your project is a journey worth telling from the first day. We film all of it.",
+      closing: "Your project is a journey from its very first day. We film all of it.",
     },
     {
       id: "donor-film",
       name: "Donor Film",
       short: "Proves results with data",
       madeFor: "Donors and CSR partners",
-      line: "Show your donors exactly what their support achieved, with facts they can trust.",
+      line: "The donor report your donors will actually finish, taking them to the families their money reached, with the numbers beside them.",
       tags: ["For: Donors and CSR partners"],
       familiar: [
-        "Your donor trusted you with funds and wants to know what happened. You send a detailed report that takes weeks to prepare, and most of it is only skimmed.",
-        "The donor never sees the village or the families. At renewal time, a written report alone does not make you stand out.",
+        "A donor report takes weeks to write and most of it gets skimmed.",
+        "Your donor never sees the village or meets the families, so at renewal time they’re deciding from a document.",
       ],
       does: [
-        "A Donor Film presents the measurable results of their support through statistics, facts, and ground-level reporting. Every number on screen is backed by real footage of the place and the people.",
-        "A short film gets watched and forwarded inside the donor’s organisation, reaching decision-makers who would never open a 40-page report.",
+        "We film the place and the people, and show the numbers that matter alongside them.",
+        "It’s short enough that people watch it to the end and forward it inside the donor’s organisation, including to people who’d never open a 40-page report.",
       ],
       receive: [
         "Quarterly Donor Films",
@@ -182,8 +212,8 @@ export const NGO: ServiceBook = {
         "A ready tool for new proposals and CSR pitches",
       ],
       example: [
-        "An NGO brings solar lighting, clean water, and livelihood support to a hard-to-reach hill village. The Donor Film shows how many households now have light, how many more hours children study after dark, how waterborne illness has fallen, and how farm incomes have grown, each figure shown alongside the families behind it.",
-        "The donor shares the film with their leadership, and the next proposal starts from proven trust.",
+        "An NGO brings solar lights, clean water and help with farming to a hill village that’s hard to reach. The donor film shows how many homes now have light, how much longer children study after dark, how much less waterborne illness there is and how farm incomes have changed, next to the families those numbers belong to.",
+        "The donor shows the film to their leadership, and the next proposal is an easier conversation.",
       ],
       fits: [
         "You report regularly to donors or CSR partners",
@@ -198,15 +228,15 @@ export const NGO: ServiceBook = {
       name: "Community Awareness Film",
       short: "Informs and mobilises",
       madeFor: "Villages and field workers",
-      line: "Films made for the community, in their own language, that inspire real action.",
+      line: "Messages that travel further than your field staff can, in the local language, with neighbours on screen, made for the panchayat screening and the WhatsApp forward.",
       tags: ["For: Villages and field workers"],
       familiar: [
-        "Your programme only succeeds if the community takes part, but participation is low. Posters go unread, pamphlets don’t connect, and field staff repeat the same message in meeting after meeting.",
-        "The problem is not that people don’t care. The message hasn’t reached them in a way they understand and trust.",
+        "A programme only works if people take part. Posters don’t do much, and field staff end up giving the same talk at every meeting.",
+        "Usually people do care. The message just hasn’t reached them in a way they trust.",
       ],
       does: [
-        "A Community Awareness Film is made for the community, not for donors. It is in the local language, features real people from similar villages, and explains simply what the problem is, why it matters, and what to do.",
-        "Films are screened at Panchayat Bhawans, Anganwadi centres and schools, and shared on WhatsApp, travelling far beyond where your staff can reach.",
+        "We make these films for the community, not for donors. They’re in the local language, feature people from nearby villages, and explain the problem and what to do about it in plain terms.",
+        "They get shown at the Panchayat Bhawan, anganwadi centres and schools, and then they travel on WhatsApp.",
       ],
       receive: [
         "Awareness films in the local language",
@@ -222,8 +252,8 @@ export const NGO: ServiceBook = {
         "Lasting behaviour change",
       ],
       example: [
-        "An NGO working on women’s health finds anaemia is widespread but rarely discussed. A short film in the local language, featuring a local Anganwadi worker and mothers from a nearby village, explains the causes, the warning signs, and simple prevention through iron-rich foods and supplements.",
-        "Screened at the Panchayat Bhawan and shared on WhatsApp, it brings more women to health check-ups within weeks.",
+        "An NGO working on women’s health finds that anaemia is common but nobody talks about it. We make a short film in the local language with an anganwadi worker and mothers from a nearby village. It explains the causes, the warning signs, and how iron-rich food and supplements help.",
+        "It’s shown at the Panchayat Bhawan and shared on WhatsApp, and within a few weeks more women are coming in for check-ups.",
       ],
       fits: [
         "Participation is lower than you need",
@@ -249,16 +279,16 @@ export const NGO: ServiceBook = {
       name: "Archival Film",
       short: "Preserves the complete record",
       madeFor: "NGO teams, future funders",
-      line: "A complete, organised record of your project that stays with you for years.",
+      line: "Your project’s memory, filmed, labelled and kept, so it doesn’t leave when your staff do.",
       tags: ["Duration: Full project life, 1–5 years", "For: NGO teams, future funders"],
       familiar: [
-        "A programme officer who handled your project for three years has just left, and with them went the only copies of hundreds of photos and videos.",
-        "An auditor asks for visual proof of work and your team spends days searching. A new team in a new district starts from scratch, because nothing was recorded in a usable way.",
+        "When a programme officer leaves, the photos and videos on their laptop often leave with them.",
+        "Then an auditor asks for proof, or a new team in another district has to start from scratch.",
       ],
       doesTitle: "What this service does",
       does: [
-        "We film and photograph every stage of your project and store everything in an organised, searchable archive, labelled by project, location, date and subject.",
-        "The archive belongs to your organisation, not to any one person, and stays with you through staff and partner changes. If you already have years of scattered material, we recover and organise that too.",
+        "We film and photograph each stage of the project and keep everything in one archive, searchable by project, place, date and subject.",
+        "The archive belongs to your organisation. If you already have years of scattered material, we can sort that out too.",
       ],
       receive: [
         "Stage-by-stage filming and photography",
@@ -268,8 +298,8 @@ export const NGO: ServiceBook = {
         "A complete handover archive at project close",
       ],
       example: [
-        "An NGO runs a five-year watershed and farming programme across several villages. Every stage is filmed: the dry fields, check-dam construction, farmer trainings, and the first irrigated harvest.",
-        "When it expands to a new district, the archive trains the new team, answers an auditor in minutes, and its before-and-after film helps win funding for two similar projects.",
+        "An NGO runs a five-year watershed and farming programme across several villages. We film every stage: the dry fields, the check dams going up, the farmer trainings and the first harvest with irrigation.",
+        "When the programme moves to a new district, the new team learns from the footage. An auditor’s question takes minutes to answer, and the before-and-after film goes into funding proposals for two similar projects.",
       ],
       fits: [
         "You run projects of two years or more",
@@ -298,16 +328,16 @@ export const NGO: ServiceBook = {
       name: "Digital Docu-Series",
       short: "Builds a public audience",
       madeFor: "Public, CSR partners, supporters",
-      line: "Your work is changing lives. It is time the world saw it.",
+      line: "A new episode of your work every month, for the followers you already have and the funders you haven’t met yet.",
       tags: ["Format: Episodes", "Release: Monthly or fortnightly"],
       familiar: [
-        "Your team works every day in villages, camps and schools, but outside your organisation very few people know about it. Posts get a few likes and are forgotten.",
-        "When a new donor or CSR partner looks you up, they find little that shows the real scale of your work. The problem is not your work: it has no regular way to reach people.",
+        "Your team is out in villages, camps and schools every week, and hardly anyone outside the organisation knows.",
+        "When a new donor or CSR partner looks you up, there isn’t much for them to find.",
       ],
       doesTitle: "What this service does",
       does: [
-        "A Digital Docu-Series turns your everyday work into a documentary series people want to follow, released one episode at a time on a regular schedule.",
-        "Over time your NGO becomes a story people follow, and the series becomes your own digital IP that keeps working for you every day.",
+        "We turn your everyday work into a documentary series, released once a month or every two weeks.",
+        "Each episode is cut for YouTube, with shorter versions for Instagram and LinkedIn. After a year you have a library of films people can find and share.",
       ],
       receive: [
         "Documentary episodes, monthly or fortnightly",
@@ -318,8 +348,8 @@ export const NGO: ServiceBook = {
         "All footage saved to your archive",
       ],
       example: [
-        "An NGO runs mobile health camps in remote tribal villages, but almost nobody outside the region knows. Each month’s episode follows the team to a new village: the journey, the patients waiting, a mother getting her child treated for the first time.",
-        "Subscribers grow on YouTube, a CSR head reaches out on LinkedIn, and volunteers sign up through Instagram. Within a year the NGO has an audience, a trusted reputation, and a community.",
+        "An NGO runs mobile health camps in remote tribal villages, and almost nobody outside the region knows. Each month’s episode goes with the team to a different village: the drive in, the queue of patients, a mother getting her child treated for the first time.",
+        "Over the year the YouTube channel picks up subscribers, a CSR head gets in touch on LinkedIn, and volunteers sign up through Instagram.",
       ],
       fits: [
         "Your work is strong but your online presence is weak",
@@ -353,26 +383,26 @@ export const NGO: ServiceBook = {
       name: "Case Study Film",
       short: "Touches hearts, reaches new people",
       madeFor: "Donors and new audiences",
-      line: "One real life. One powerful story. The human face of your impact.",
+      line: "Scale is a number. We film one person inside it, from where they started to where they are now.",
       tags: ["For: Donors and new audiences"],
       familiar: [
-        "You have helped thousands of people and your reports say so. But “5,000 women trained” is easy to forget, and numbers don’t make anyone feel what your work means.",
-        "People who have never heard of your NGO have no reason to stop for statistics from an organisation they don’t know.",
+        "“5,000 women trained” is true and it’s in your report, but nobody remembers a number like that.",
+        "People who haven’t heard of you won’t stop for a statistic either.",
       ],
       does: [
-        "A Case Study Film tells the emotional story of one beneficiary or local hero: their struggle, the turning point your programme created, and where they stand today.",
-        "When people see one life change, they understand the thousands behind it.",
+        "We follow one person and tell their story: where they started, what your programme changed, and where they are now.",
+        "Seeing one life change helps people understand the many behind the number.",
       ],
       receive: [
-        "A film following one person’s journey",
+        "A film that follows one person over time",
         "A short version for social media",
         "Reels and clips for every platform",
         "Still photographs for reports and press",
         "Story development with informed consent and dignity",
       ],
       example: [
-        "An NGO’s livelihood programme trains rural women in tailoring. The film follows one woman who once depended on daily wage labour: her first nervous days at the centre, buying her first sewing machine, and today running a small unit that employs other women from her village.",
-        "At the donor meeting it brings the room to silence. Shared online, it reaches thousands of new viewers, and several write in asking how to support the programme.",
+        "An NGO’s livelihood programme trains rural women in tailoring. The film follows one woman who used to work as a daily wage labourer: her first nervous days at the centre, the day she buys her own sewing machine, and the small unit she runs now, where other women from her village work too.",
+        "The NGO shows it at a donor meeting and shares it online, and people who had never heard of the programme write in to ask how they can help.",
       ],
       fits: [
         "You have strong individual stories nobody hears",
@@ -399,23 +429,27 @@ export const NGO: ServiceBook = {
     },
   ],
   together: {
-    title: "How we work together",
-    text: "We work with NGOs on a contract basis, not film by film. One team stays with your project, footage builds up over time, and every film costs less than commissioning it alone.",
+    title: "How we work with NGOs",
+    text: "We work with you over months rather than one film at a time. We plan the shoots around your field calendar and your reporting dates, so the film is ready before the donor report is due. The same crew keeps coming back, gets to know the people in your programme, and every visit adds footage to the next film, so each one costs less than it would on its own.",
     ways: [
       {
-        title: "One team, start to finish",
-        text: "The crew that films your baseline films your endline, so the change is genuine",
+        title: "The same crew throughout",
+        text: "The people who film the start of your project film the end, in the same places",
       },
       {
-        title: "Footage that compounds",
-        text: "One field visit serves many films, so costs fall over time",
+        title: "Footage gets reused",
+        text: "One field visit gives us material for several films, so each one costs less",
+      },
+      {
+        title: "Filmed with dignity",
+        text: "People see their footage before anyone else does, anyone can say no, and we never make a village look poorer than it is",
       },
     ],
     plans: [
       {
         months: 3,
         name: "Starter",
-        text: "First-time partners, a short campaign, or a boost before a donor meeting.",
+        text: "For a first project together, a short campaign, or a donor meeting coming up.",
         items: [
           "Donor Film: 1 quarterly film",
           "Case Study Film: 1 story",
@@ -426,7 +460,7 @@ export const NGO: ServiceBook = {
       {
         months: 6,
         name: "Growth",
-        text: "Steady donor communication, stronger visibility, and a proper record.",
+        text: "Regular films for your donors, more people seeing your work, and a proper record.",
         items: [
           "Donor Film: 2 quarterly films",
           "Case Study Film: 2–3 stories",
@@ -438,7 +472,7 @@ export const NGO: ServiceBook = {
       {
         months: 12,
         name: "Full Partnership",
-        text: "A funded, multi-year project that needs complete documentation and communication.",
+        text: "For a funded project that runs a year or more and should be filmed from start to end.",
         items: [
           "Impact Documentary: baseline and progress filming",
           "Donor Film: 4 quarterly + 1 annual",
@@ -472,16 +506,16 @@ export const NGO: ServiceBook = {
     ],
     note: "“Not included (extra cost)” means the service is not part of that partnership, but you can still get it by paying separately.",
     advice:
-      "The longer the partnership, the more value each film carries: the archive grows, the team knows your work deeply, and the story of your impact becomes complete. Most NGOs start with 3 or 6 months and move to 12 once they see the results.",
+      "The films get better the longer we work together, because the archive grows and the team gets to know your work. Most NGOs start with 3 or 6 months and move to 12 once they’ve seen the first films.",
   },
   talk: {
     kicker: "Let’s talk",
-    title: "Let’s tell the story of your work.",
-    text: "Tell us about your project, where it stands today, and who you need to reach. We will suggest the films and partnership that fit.",
+    title: "Tell us where your story is",
+    text: "Tell us about the project, the people in it and who needs to see it. We’ll come back with the films we’d make and how we’d make them.",
     steps: [
-      { title: "Talk", text: "A short call about your project and your audiences" },
-      { title: "Plan", text: "We propose the films, timeline and partnership" },
-      { title: "Film", text: "One team stays with your story from the first day" },
+      { title: "Talk", text: "A short call about your project and who you need to reach" },
+      { title: "Plan", text: "We suggest which films to make, and when" },
+      { title: "Film", text: "The same team films your project from the first day" },
     ],
   },
 };

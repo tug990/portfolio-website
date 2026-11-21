@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { SITE } from "@/content/site";
 import type { OutcomeIcon, Service, ServiceBook as Book } from "@/content/service-books";
 import { cn } from "@/lib/utils";
+import { FilmWords, Grain, Loop, ShapedLoop } from "@/components/StoryFilm";
 
 /*
   A perspective's Service Book (content/service-books.ts), as its world on
@@ -44,10 +45,34 @@ export function ServiceBook({
   // the service open in the list below; chosen from anywhere on the page
   const [open, setOpen] = useState(book.services[0].id);
   const services = useRef<HTMLElement>(null);
+  // told as a film, a service's details open in a sheet over the page, from anywhere on it
+  const [sheet, setSheet] = useState<string | null>(null);
   const show = (id: string) => {
+    if (book.reel) return setSheet(id);
     setOpen(id);
     services.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  if (book.reel) {
+    const n = book.services.findIndex((x) => x.id === sheet);
+    return (
+      <div className="text-foreground">
+        <FilmStory book={book} show={show} />
+        {book.year && <Year book={book} show={show} />}
+        {/* (no portfolio: the clients' films below show the same work) */}
+        {/* a few words cut out of the page, a film inside them, before the films themselves */}
+        <div className="px-4 pt-16 sm:px-6 sm:pt-24">
+          <Rise className="mx-auto max-w-6xl">
+            <FilmWords lines={book.reel.cut.lines} name={book.reel.cut.loop} />
+          </Rise>
+        </div>
+        {children}
+        <Together book={book} />
+        {about}
+        <Talk book={book} ask={ask} />
+        {n >= 0 && <FilmSheet book={book} n={n} ask={ask} onClose={() => setSheet(null)} />}
+      </div>
+    );
+  }
   return (
     <div className="text-foreground">
       <Intro book={book} about={!!about} />
@@ -71,14 +96,63 @@ export function ServiceBook({
 /* headings and big numbers, as the site sets them: Jost, light, close */
 export const HEAD = "font-light tracking-tight";
 
+/*
+  Told as a film (`book.reel`): the chapters, in order (their anchors), so a part's small capitals
+  can say which it is ("Chapter 02 · What the research shows"); a book that isn't keeps its own.
+*/
+function chaptersOf(book: Book) {
+  return ["#world", "#services", "#research", book.year && "#year", "#together"].filter(
+    (x): x is string => !!x,
+  );
+}
+
+/* a chapter's heading as the film sets it: its small capitals, its title, a rule under it */
+function ChapterHead({
+  book,
+  id,
+  label,
+  title,
+  dark,
+  className,
+}: {
+  book: Book;
+  id: string;
+  label: string;
+  title: string;
+  dark?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <Kicker className={dark ? "text-white/80" : undefined}>{chapter(book, id, label)}</Kicker>
+      <Title className="mt-4">{title}</Title>
+      {book.reel && (
+        <span
+          aria-hidden
+          className={cn("mt-5 block h-px w-full", dark ? "bg-white/20" : "bg-black/15")}
+        />
+      )}
+    </div>
+  );
+}
+function chapter(book: Book, id: string, label: string) {
+  if (!book.reel) return label;
+  const n = chaptersOf(book).indexOf(id) + 1;
+  return `Chapter ${String(n).padStart(2, "0")} · ${label}`;
+}
+
 /* the small spaced capitals over each part, as the site's */
 export function Kicker({ children, className }: { children: ReactNode; className?: string }) {
   return <p className={cn("tracked font-sans text-[10px] text-black/50", className)}>{children}</p>;
 }
 
+/* headings in a bold condensed display face (Bebas Neue, loaded in routes/__root.tsx), in
+   capitals, to catch the eye */
+export const LOUD =
+  "[font-family:'Bebas_Neue',Impact,sans-serif] font-normal uppercase tracking-[0.01em]";
 export function Title({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <h2 className={cn(HEAD, "text-[28px] leading-[1.12] sm:text-[40px]", className)}>{children}</h2>
+    <h2 className={cn(LOUD, "text-[42px] leading-[0.94] sm:text-[64px]", className)}>{children}</h2>
   );
 }
 
@@ -356,10 +430,9 @@ function Intro({ book, about }: { book: Book; about: boolean }) {
         </ul>
       </nav>
 
-      <div className="mt-12 grid gap-10 sm:mt-16 lg:grid-cols-[1.15fr_1fr] lg:gap-16">
+      <div className="mt-12 grid gap-10 sm:mt-16 lg:grid-cols-[1.15fr_1fr] lg:gap-x-16">
         <Rise>
-          <Kicker>Introduction</Kicker>
-          <Title className="mt-4">{intro.title}</Title>
+          <ChapterHead book={book} id="#world" label="Introduction" title={intro.title} />
           <p className="relative mt-6 pl-5 text-[19px] font-light leading-snug sm:text-[23px]">
             <Bar />
             {intro.lead}
@@ -375,7 +448,8 @@ function Intro({ book, about }: { book: Book; about: boolean }) {
       <Kicker className="mt-14 sm:mt-20">{intro.outcomesTitle}</Kicker>
       <div
         className={cn(
-          "mt-5 grid grid-cols-2 gap-2.5 sm:gap-3",
+          "mt-5",
+          "grid grid-cols-2 gap-2.5 sm:gap-3",
           intro.outcomes.length % 3 === 0 ? "lg:grid-cols-3" : "lg:grid-cols-4",
         )}
       >
@@ -526,7 +600,7 @@ function Start({ book, show }: { book: Book; show: (id: string) => void }) {
     <Part id="start">
       <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
         <div>
-          <Kicker>At a glance</Kicker>
+          <Kicker>{chapter(book, "#start", "At a glance")}</Kicker>
           <Title className="mt-4">{glance.title}</Title>
           <ul className="mt-8 overflow-hidden rounded-xl border border-black/[0.07] bg-[var(--card)]">
             <li
@@ -736,18 +810,33 @@ function Services({
   const fits = list.some((x) => x.fits?.length);
   return (
     <Part className="pb-10 sm:pb-14">
-      <Kicker>The {book.itemWord.toLowerCase()}s</Kicker>
-      <Title className="mt-4">{book.servicesTitle}</Title>
+      {book.reel ? (
+        <ChapterHead
+          book={book}
+          id="#services"
+          label={`The ${book.itemWord.toLowerCase()}s`}
+          title={book.servicesTitle}
+        />
+      ) : (
+        <>
+          <Kicker>{chapter(book, "#services", `The ${book.itemWord.toLowerCase()}s`)}</Kicker>
+          <Title className="mt-4">{book.servicesTitle}</Title>
+        </>
+      )}
       <p className="mt-3 text-[16px] text-black/60">
         {fits
           ? "Choose one to see what it is, what you receive, and whether it’s right for you."
           : "Choose one to see what it is, where it’s used, what we deliver, and our work."}
       </p>
 
-      <div className="mt-8 lg:grid lg:grid-cols-[17rem_1fr] lg:gap-8">
-        {/* the list: a column beside it on a computer, a row of numbers on a phone */}
+      <div
+        className={cn("mt-8", book.reel ? "sm:mt-10" : "lg:grid lg:grid-cols-[17rem_1fr] lg:gap-8")}
+      >
+        {/* the list: a column beside it on a computer, a row of numbers on a phone (told as a
+            film, the reels above are the list) */}
         <div
           ref={rail}
+          hidden={!!book.reel}
           role="tablist"
           aria-label={book.servicesTitle}
           className="relative -mx-4 flex gap-2 overflow-x-auto px-4 pb-2 lg:sticky lg:top-28 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible lg:px-0"
@@ -1197,8 +1286,7 @@ function Together({ book }: { book: Book }) {
   return (
     <Part id="together" className="bg-muted/60">
       <div className="max-w-3xl">
-        <Kicker>Working together</Kicker>
-        <Title className="mt-4">{together.title}</Title>
+        <ChapterHead book={book} id="#together" label="Working together" title={together.title} />
         <p className="mt-4 text-[16px] leading-relaxed text-black/65">{together.text}</p>
       </div>
 
@@ -1490,20 +1578,65 @@ function OptionCard({
 /* ---------- let's talk ---------- */
 
 function Talk({ book, ask }: { book: Book; ask: string }) {
-  const { talk } = book;
+  const { talk, reel } = book;
   const phone = SITE.phone.replace(/[^\d+]/g, "");
+  // told as a film, the closing is its last scene: over a shot, in the dark
+  const film = !!reel;
+  const ghost = film
+    ? "border-white/25 bg-white/10 text-white backdrop-blur-md hover:bg-white/20"
+    : "border-black/10 bg-white hover:bg-black/[0.03]";
   return (
     <Part id="talk" className="pb-[calc(var(--dock,0px)+3.5rem)] sm:pb-24">
-      <div className="relative isolate overflow-hidden rounded-2xl border border-black/[0.07] bg-[var(--card)] p-6 sm:p-12">
-        {/* a faint light, as a world's: blue one side, amber the other */}
-        <span
-          aria-hidden
-          className="absolute inset-0 -z-10 opacity-[0.07]"
-          style={{ background: "var(--prism)" }}
-        />
-        <Kicker>{talk.kicker}</Kicker>
+      <div
+        data-tone={film ? "dark" : undefined}
+        className={cn(
+          "relative isolate overflow-hidden rounded-2xl p-6 sm:p-12",
+          film
+            ? "min-h-[70svh] bg-black text-white sm:min-h-[560px]"
+            : "border border-black/[0.07] bg-[var(--card)]",
+        )}
+      >
+        {reel ? (
+          <>
+            <ShapedLoop
+              name={reel.loops.talk}
+              phone="reel"
+              wide="wide"
+              grain={false}
+              mono
+              steady
+              className="absolute inset-0 -z-10"
+            />
+            <span
+              aria-hidden
+              className="absolute inset-0 -z-10"
+              style={{ background: SHADE.even }}
+            />
+            <span aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
+              <Grain strength={GRAIN_STRENGTH} blend="normal" />
+            </span>
+            <PrismEdge />
+          </>
+        ) : (
+          /* a faint light, as a world's: blue one side, amber the other */
+          <span
+            aria-hidden
+            className="absolute inset-0 -z-10 opacity-[0.07]"
+            style={{ background: "var(--prism)" }}
+          />
+        )}
+        <Kicker className={film ? "text-white/80" : undefined}>
+          {film ? `Epilogue · ${talk.kicker}` : talk.kicker}
+        </Kicker>
         <Title className="mt-4 max-w-3xl">{talk.title}</Title>
-        <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-black/65">{talk.text}</p>
+        <p
+          className={cn(
+            "mt-4 max-w-2xl text-[16px] leading-relaxed",
+            film ? "text-white/80" : "text-black/65",
+          )}
+        >
+          {talk.text}
+        </p>
         <ol className="mt-10 grid gap-6 sm:grid-cols-3">
           {talk.steps.map((x, k) => (
             <li key={x.title} className="relative pt-5">
@@ -1511,14 +1644,26 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
               <p className="text-[15px] font-medium">
                 {k + 1}. {x.title}
               </p>
-              <p className="mt-1 text-[14px] leading-relaxed text-black/55">{x.text}</p>
+              <p
+                className={cn(
+                  "mt-1 text-[14px] leading-relaxed",
+                  film ? "text-white/80" : "text-black/55",
+                )}
+              >
+                {x.text}
+              </p>
             </li>
           ))}
         </ol>
         <div className="mt-10 flex flex-wrap gap-3">
           <a
             href={`mailto:${SITE.email}?subject=${encodeURIComponent(ask)}`}
-            className="press flex items-center gap-2 rounded-full bg-black px-6 py-3 text-[15px] font-medium text-white transition hover:bg-black/85"
+            className={cn(
+              "press flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-medium transition",
+              film
+                ? "bg-white text-black hover:bg-white/85"
+                : "bg-black text-white hover:bg-black/85",
+            )}
           >
             Write to us
             <Arrow />
@@ -1527,7 +1672,10 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
             <>
               <a
                 href={`tel:${phone}`}
-                className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-medium transition hover:bg-black/[0.03]"
+                className={cn(
+                  "press rounded-full border px-6 py-3 text-[15px] font-medium transition",
+                  ghost,
+                )}
               >
                 Call {SITE.phone}
               </a>
@@ -1535,7 +1683,10 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
                 href={`https://wa.me/${phone.replace("+", "")}`}
                 target="_blank"
                 rel="noreferrer"
-                className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-medium transition hover:bg-black/[0.03]"
+                className={cn(
+                  "press rounded-full border px-6 py-3 text-[15px] font-medium transition",
+                  ghost,
+                )}
               >
                 WhatsApp
               </a>
@@ -1543,13 +1694,457 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
           )}
           <Link
             to="/about"
-            className="press rounded-full border border-black/10 bg-white px-6 py-3 text-[15px] font-medium transition hover:bg-black/[0.03]"
+            className={cn(
+              "press rounded-full border px-6 py-3 text-[15px] font-medium transition",
+              ghost,
+            )}
           >
             Choose another perspective
           </Link>
         </div>
-        <p className="mt-5 text-[14px] text-black/50">{SITE.email}</p>
+        <p className={cn("mt-5 text-[14px]", film ? "text-white/55" : "text-black/50")}>
+          {SITE.email}
+        </p>
       </div>
     </Part>
+  );
+}
+
+/* ---------- told as a film (book.reel) ---------- */
+
+/* the film behind the words: how heavy its grain, and the dark laid over it so words always read
+   (`even` all over, as on a phone; `side` darker on the left, where the words sit on a computer) */
+const GRAIN_STRENGTH = 0.08;
+const SHADE = {
+  even: "linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.58) 50%, rgba(0,0,0,0.72))",
+  side: "linear-gradient(90deg, rgba(0,0,0,0.8), rgba(0,0,0,0.6) 45%, rgba(0,0,0,0.3))",
+};
+
+/*
+  The book as one film (after Alt Carbon's project pages): a shot fills the screen behind it all,
+  in black and white, heavy with grain and darkened so every word reads, and the words scroll over
+  it scene by scene, the shot cutting to each scene's own as it's reached. The scenes: the
+  introduction (its lead; then the rest of it and its outcomes), each service (its number, name,
+  line and who it's for; "See what you receive" opens its details, `FilmSheet`), and the research
+  (the findings pinned over the film as press cuttings). Only the shot on screen and the ones
+  either side of it are loaded (on a phone, its tall cut, framed on whoever's in each shot).
+*/
+function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
+  const reel = book.reel!;
+  const { intro, research } = book;
+  const shots = [
+    reel.loops.intro,
+    reel.loops.talk,
+    ...book.services.map((x) => reel.services[x.id] ?? reel.loops.intro),
+    reel.loops.research,
+  ];
+  const scenes = useRef<(HTMLElement | null)[]>([]);
+  const [at, setAt] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    // the scene across the screen's middle (or, between two, the nearest)
+    const pick = () => {
+      raf = 0;
+      const mid = window.innerHeight * 0.55;
+      let best = 0;
+      let near = Infinity;
+      scenes.current.forEach((el, i) => {
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const d =
+          r.top <= mid && r.bottom >= mid
+            ? 0
+            : Math.min(Math.abs(r.top - mid), Math.abs(r.bottom - mid));
+        if (d < near) {
+          near = d;
+          best = i;
+        }
+      });
+      setAt(best);
+    };
+    const later = () => {
+      if (!raf) raf = requestAnimationFrame(pick);
+    };
+    pick();
+    window.addEventListener("scroll", later, { passive: true });
+    window.addEventListener("resize", later);
+    return () => {
+      window.removeEventListener("scroll", later);
+      window.removeEventListener("resize", later);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+  const scene = (i: number) => (el: HTMLElement | null) => {
+    scenes.current[i] = el;
+  };
+  // a scene's room: just what its words need, so they run on from one to the next over the film
+  const room = "flex items-center px-4 py-9 sm:px-6 sm:py-12";
+  const lead = "relative mt-6 pl-5 text-[19px] font-light leading-snug sm:text-[23px]";
+  return (
+    <section data-tone="dark" className="relative isolate bg-black text-white [overflow:clip]">
+      {/* the film, held on the screen while its scenes pass over it */}
+      <div aria-hidden className="absolute inset-0 -z-10">
+        <div className="sticky top-0 h-[100svh] overflow-hidden">
+          {shots.map((name, i) =>
+            Math.abs(i - at) <= 1 ? (
+              <div
+                key={i}
+                className={cn(
+                  "absolute inset-0 transition-opacity duration-1000",
+                  i === at ? "opacity-100" : "opacity-0",
+                )}
+              >
+                <ShapedLoop
+                  name={name}
+                  phone="reel"
+                  wide="wide"
+                  grain={false}
+                  mono
+                  steady
+                  className="absolute inset-0"
+                />
+              </div>
+            ) : null,
+          )}
+          <span className="absolute inset-0 lg:hidden" style={{ background: SHADE.even }} />
+          <span className="absolute inset-0 max-lg:hidden" style={{ background: SHADE.side }} />
+          <Grain strength={GRAIN_STRENGTH} blend="normal" />
+        </div>
+      </div>
+
+      {/* the introduction */}
+      <div
+        id="world"
+        ref={scene(0)}
+        className={cn(room, "scroll-mt-20 pt-24 sm:scroll-mt-24 sm:pt-32")}
+      >
+        <Rise className="mx-auto w-full max-w-6xl">
+          <div className="max-w-2xl">
+            <ChapterHead book={book} id="#world" label="Introduction" title={intro.title} dark />
+            <p className={lead}>
+              <Bar />
+              {intro.lead}
+            </p>
+          </div>
+        </Rise>
+      </div>
+      <div ref={scene(1)} className={room}>
+        <Rise className="mx-auto w-full max-w-6xl">
+          <div className="max-w-2xl space-y-4 text-[16px] leading-relaxed text-white/90">
+            {intro.text.map((x) => (
+              <p key={x}>{x}</p>
+            ))}
+          </div>
+          <Kicker className="mt-10 text-white/80">{intro.outcomesTitle}</Kicker>
+          <div
+            className={cn(
+              "mt-4 grid max-w-3xl grid-cols-2 gap-2",
+              intro.outcomes.length % 3 === 0 && "sm:grid-cols-3",
+            )}
+          >
+            {intro.outcomes.map((o) => (
+              <div
+                key={o.title}
+                className="rounded-xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur-md sm:p-4"
+              >
+                <svg
+                  aria-hidden
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 text-white/80"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {OUTCOME_ICONS[o.icon]}
+                </svg>
+                <h3 className="mt-3 text-[15px] font-medium leading-snug">{o.title}</h3>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-white/80">{o.text}</p>
+              </div>
+            ))}
+          </div>
+        </Rise>
+      </div>
+
+      {/* the services, a scene each */}
+      {book.services.map((x, k) => (
+        <div
+          key={x.id}
+          id={k === 0 ? "services" : undefined}
+          ref={scene(k + 2)}
+          className={cn(room, k === 0 && "scroll-mt-20 sm:scroll-mt-24")}
+        >
+          <Rise className="mx-auto w-full max-w-6xl">
+            <div className="max-w-2xl">
+              {k === 0 && (
+                <ChapterHead
+                  book={book}
+                  id="#services"
+                  label={`The ${book.itemWord.toLowerCase()}s`}
+                  title={book.servicesTitle}
+                  dark
+                  className="mb-8"
+                />
+              )}
+              <p className={cn(HEAD, "text-[15px] text-white/80")}>
+                {String(k + 1).padStart(2, "0")}
+                <span className="text-white/55">
+                  {" "}
+                  / {String(book.services.length).padStart(2, "0")}
+                </span>
+              </p>
+              <h3 className={cn(LOUD, "mt-1 text-[38px] leading-[0.94] sm:text-[56px]")}>
+                {x.name}
+              </h3>
+              <p className="mt-3 text-[16px] leading-relaxed text-white/90">{x.line}</p>
+              {x.madeFor && <p className="mt-3 text-[13px] text-white/75">Made for: {x.madeFor}</p>}
+              <button
+                type="button"
+                onClick={() => show(x.id)}
+                className="press mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-[15px] font-medium text-black transition hover:bg-white/85"
+              >
+                See what you receive
+                <Arrow />
+              </button>
+            </div>
+          </Rise>
+        </div>
+      ))}
+
+      {/* the research: the findings pinned over the film as press cuttings */}
+      <div
+        id="research"
+        ref={scene(book.services.length + 2)}
+        className="scroll-mt-20 px-4 pb-24 pt-28 sm:scroll-mt-24 sm:px-6 sm:pb-32"
+      >
+        <div className="mx-auto max-w-6xl">
+          <Rise className="max-w-3xl">
+            <ChapterHead
+              book={book}
+              id="#research"
+              label="What the research shows"
+              title={research.title}
+              dark
+            />
+            <p className="mt-5 text-[16px] leading-relaxed text-white/90">{research.text}</p>
+          </Rise>
+          <Clippings book={book} />
+          {research.note && (
+            <Rise>
+              <p className={cn(lead, "mt-12 max-w-4xl")}>
+                <Bar />
+                {research.note}
+              </p>
+            </Rise>
+          )}
+          {research.sources && (
+            <p className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-white/80">
+              <span>Sources:</span>
+              {research.sources.map((x) => (
+                <a
+                  key={x.label}
+                  href={x.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-white underline-offset-4 hover:underline"
+                >
+                  {x.label} ↗
+                </a>
+              ))}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* the research's findings as cuttings pinned to the wall: cream paper, a red pin, the figure
+   counting up as it's seen, and a link to its source at the foot */
+function Clippings({ book }: { book: Book }) {
+  const tilt = ["-rotate-[1.2deg]", "rotate-[1deg]", "rotate-[0.8deg]", "-rotate-[1deg]"];
+  return (
+    <div className="mt-10 grid gap-5 sm:grid-cols-2 sm:gap-7">
+      {book.research.stats.map((x, i) => (
+        <Rise key={x.figure} delay={i * 90}>
+          <article
+            className={cn(
+              "relative h-full rounded-sm bg-[#f4f1e8] p-6 text-[#141414] shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)] sm:p-7",
+              tilt[i % tilt.length],
+            )}
+          >
+            <span
+              aria-hidden
+              className="absolute -top-2 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_35%_35%,#ff8a73,#c0392b_60%,#7b241c)] shadow-[0_3px_6px_rgba(0,0,0,0.5)]"
+            />
+            <p className={cn(HEAD, "mt-2 text-[30px] leading-none sm:text-[36px]")}>
+              <Count value={x.figure} />
+            </p>
+            <p className="mt-4 text-[15px] leading-relaxed text-black/75">{x.text}</p>
+            {x.sources && (
+              <p className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-black/50">
+                {x.sources.map((src) => (
+                  <a
+                    key={src.label}
+                    href={src.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline-offset-4 transition hover:text-black hover:underline"
+                  >
+                    Read the source ↗
+                  </a>
+                ))}
+              </p>
+            )}
+          </article>
+        </Rise>
+      ))}
+    </div>
+  );
+}
+
+/*
+  A service's details, in a sheet over the page (from the foot on a phone, the right on a
+  computer): its shot in colour edge to edge, fading into the page under its number, name and
+  line, then what it's for, what it does, what you receive and an example (`FilmDetail`). Closes with its button, Esc,
+  or a tap outside it; the page behind doesn't move.
+*/
+function FilmSheet({
+  book,
+  n,
+  ask,
+  onClose,
+}: {
+  book: Book;
+  n: number;
+  ask: string;
+  onClose: () => void;
+}) {
+  const s = book.services[n];
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (!d.open) d.showModal();
+    const html = document.documentElement;
+    const was = html.style.overflow;
+    html.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = was;
+      if (d.open) d.close();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      aria-label={s.name}
+      // (a close that comes once it's open again, as React's development run closes and reopens
+      // it, isn't one)
+      onClose={() => {
+        if (!ref.current?.open) onClose();
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 m-0 mt-auto h-[92svh] max-h-none w-full max-w-none overflow-y-auto overscroll-contain rounded-t-2xl border-0 bg-background p-0 text-foreground backdrop:bg-black/60 backdrop:backdrop-blur-sm duration-300 animate-in fade-in slide-in-from-bottom-8 sm:ml-auto sm:mt-0 sm:h-full sm:max-w-2xl sm:rounded-none sm:rounded-l-2xl sm:slide-in-from-bottom-0 sm:slide-in-from-right-8"
+    >
+      <div className="min-h-full pb-12">
+        {/* Close, floating over the film (it takes no room of its own) */}
+        <div className="sticky top-0 z-10 flex h-0 justify-end px-3 pt-3 sm:px-4 sm:pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="press flex h-fit items-center gap-2 rounded-full bg-white/85 px-4 py-2 text-[14px] font-medium shadow-[0_6px_20px_-8px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-white"
+          >
+            Close
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+        {/* its film, edge to edge, fading into the page so the words carry straight on from it */}
+        <div className="relative aspect-[16/10] w-full">
+          <Loop
+            name={book.reel!.services[s.id] ?? book.reel!.loops.intro}
+            shape="wide"
+            grain={0.22}
+            vignette={false}
+            className="absolute inset-0"
+          />
+          <span
+            aria-hidden
+            className="absolute inset-x-0 -bottom-1 top-1/4 z-[2]"
+            style={{
+              background:
+                "linear-gradient(180deg, color-mix(in srgb, var(--background) 0%, transparent), color-mix(in srgb, var(--background) 55%, transparent) 45%, color-mix(in srgb, var(--background) 88%, transparent) 75%, var(--background) 94%)",
+            }}
+          />
+        </div>
+        <div className="relative z-[3] -mt-20 px-5 sm:-mt-24 sm:px-8">
+          <p className={cn(HEAD, "text-[15px] text-black/50")}>{String(n + 1).padStart(2, "0")}</p>
+          <h3 className={cn(LOUD, "mt-1 text-[36px] leading-[0.94] sm:text-[46px]")}>{s.name}</h3>
+          <p className="mt-2 text-[16px] leading-relaxed text-black/65">{s.line}</p>
+          {s.madeFor && <p className="mt-3 text-[13px] text-black/45">Made for: {s.madeFor}</p>}
+          <span aria-hidden className="mt-6 block h-px bg-black/10" />
+          <FilmDetail s={s} ask={ask} single />
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
+/* a service's details: what it's for, what it does, what you get, an example */
+function FilmDetail({ s, ask, single }: { s: Service; ask: string; single?: boolean }) {
+  const mail = `mailto:${SITE.email}?subject=${encodeURIComponent(`${ask}: ${s.name}`)}`;
+  return (
+    <div className={cn("grid gap-8 pb-4 pt-8", !single && "lg:grid-cols-2 lg:gap-14")}>
+      <div className="space-y-8">
+        {s.familiar?.length ? (
+          <div>
+            <h4 className="text-[16px] font-medium">Does this sound familiar?</h4>
+            <Paras items={s.familiar} />
+          </div>
+        ) : null}
+        <div>
+          <h4 className="text-[16px] font-medium">{s.doesTitle ?? "What this film does"}</h4>
+          <Paras items={s.does} />
+        </div>
+        {s.uses?.length ? (
+          <div>
+            <h4 className="text-[16px] font-medium">{s.usesTitle ?? "Where it is used"}</h4>
+            <Ticks items={s.uses} />
+          </div>
+        ) : null}
+      </div>
+      <div className="space-y-8">
+        <div>
+          <h4 className="text-[16px] font-medium">{s.receiveTitle ?? "What you receive"}</h4>
+          <Ticks items={s.receive} />
+        </div>
+        {s.example?.length ? (
+          <div className="relative overflow-hidden rounded-xl bg-[#0a0a0a] p-5 text-white sm:p-6">
+            <PrismEdge />
+            <h4 className="text-[16px] font-medium">For example</h4>
+            <Paras items={s.example} light />
+          </div>
+        ) : null}
+        <a
+          href={mail}
+          className="press inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-[15px] font-medium text-white transition hover:bg-black/85"
+        >
+          Ask about this film
+          <Arrow />
+        </a>
+      </div>
+    </div>
   );
 }

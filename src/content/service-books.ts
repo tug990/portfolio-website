@@ -72,7 +72,26 @@ export type Service = {
   closing?: string;
 };
 
+/*
+  The book told as a film (the About page, StoryFilm.tsx): the shots it's cut with (loops in
+  public/about/loops/, by name: <name>-wide / -tall / -reel .mp4 and .jpg).
+*/
+export type Reel = {
+  /* the shots behind the introduction, the research and the closing, in black and white (on a
+     phone a shot with people close to the camera is shown whole) */
+  loops: { intro: string; research: string; talk: string };
+  /* each service's shot (behind its scene in the film, and at the top of its details), by its id */
+  services: Record<string, string>;
+  /* a few words cut out of the page with a film inside them (the loop's name), before the films */
+  cut: { lines: string[]; loop: string };
+  /* stills from the films that follow the cursor over the opening photograph
+     (public/about/trail/<name>.jpg) */
+  trail: string[];
+};
+
 export type ServiceBook = {
+  /* told as a film: the loops it's cut with (see Reel) */
+  reel?: Reel;
   /* what each is called: "Service", "Film type", "Film" ("Service 3 of 8") */
   itemWord: string;
   cover: { kicker: string; title: string; text: string };
