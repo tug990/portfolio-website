@@ -21,6 +21,10 @@ export function seo(
   } = {},
 ) {
   const full = title ? `${title} | ${SITE.name}` : `${SITE.name} | ${SITE.role}`;
+  // what a shared link's preview says under its title: how to reach us first (a preview cuts the
+  // rest short), then the page's own words
+  const reach = [SITE.phone, SITE.email].filter(Boolean).join(" · ");
+  const told = reach ? `${reach} · ${description}` : description;
   const pic = share.picture ?? SHARE_PICTURE;
   const image = SITE.url + pic.src; // (a shared link's picture must be a full address)
   return {
@@ -29,7 +33,7 @@ export function seo(
       { name: "description", content: description },
       { property: "og:site_name", content: SITE.name },
       { property: "og:title", content: full },
-      { property: "og:description", content: description },
+      { property: "og:description", content: told },
       { property: "og:type", content: share.type ?? "website" },
       ...(share.path ? [{ property: "og:url", content: SITE.url + share.path }] : []),
       { property: "og:image", content: image },
@@ -40,7 +44,7 @@ export function seo(
       { property: "og:image:alt", content: title ?? SITE.name },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: full },
-      { name: "twitter:description", content: description },
+      { name: "twitter:description", content: told },
       { name: "twitter:image", content: image },
     ],
   };

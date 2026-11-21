@@ -1,10 +1,10 @@
 /* Edit this file to make the site yours. Copy below is placeholder. */
 export const SITE = {
   name: "Insight Lab",
-  role: "A non-fiction studio by Famecast",
+  role: "A non-fiction visual studio by Famecast",
   tagline: "Where the light comes through.",
   description:
-    "Insight Lab is a non-fiction studio by Famecast. A portfolio of documentaries, series and stories rooted in what is real.",
+    "Documentary films of real work on the ground, for NGOs, companies, government, education and real estate.",
   email: "info@insightlab.media",
   // the phone number, as people should read it (e.g. "+91 98765 43210"): on the Contact page
   // once it's filled in (left empty, it isn't shown)
