@@ -9,7 +9,7 @@ export const SITE = {
   // the phone number, as people should read it (e.g. "+91 98765 43210"): on the Contact page
   // once it's filled in (left empty, it isn't shown)
   phone: "",
-  url: "https://example.com",
+  url: "https://www.insightlab.media", // the live site (its address in a shared link's picture)
   socials: [
     { label: "Instagram", href: "https://instagram.com/" },
     { label: "LinkedIn", href: "https://linkedin.com/" },

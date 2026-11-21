@@ -10,7 +10,15 @@ export const Route = createFileRoute("/projects/$slug")({
     if (!project) throw notFound();
     return project;
   },
-  head: ({ loaderData }) => seo(loaderData?.title, loaderData?.summary),
+  // a link to a film, shared, shows its thumbnail (as a JPEG: public/work/share/<slug>.jpg)
+  head: ({ loaderData: p }) =>
+    seo(p?.title, p?.summary, {
+      picture: p?.image
+        ? { src: `/work/share/${p.slug}.jpg`, width: 1200, height: 675 }
+        : undefined,
+      path: p ? `/projects/${p.slug}` : undefined,
+      type: "video.other",
+    }),
   component: ProjectPage,
 });
 
