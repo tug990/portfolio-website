@@ -426,7 +426,7 @@ export function PerspectiveHero() {
   return (
     <section
       data-full-screen
-      className="relative isolate flex min-h-[100svh] flex-col items-center overflow-hidden bg-[#ecebea] px-4 pb-[calc(var(--dock,0px)+2rem)] pt-[max(calc(env(safe-area-inset-top)+1.5rem),calc(29svh-8rem))] sm:bg-[#e4e2e3] sm:pt-[7.1rem]"
+      className="relative isolate flex min-h-[100svh] flex-col items-center overflow-hidden bg-[#ecebea] px-4 pb-[calc(var(--dock,0px)+2rem)] pt-[max(calc(env(safe-area-inset-top)+1.5rem),calc(26svh-8rem))] sm:bg-[#e4e2e3] sm:pt-[7.1rem]"
     >
       {/*
         (on phones it runs on under the tab bar, so the page is exactly one
@@ -468,7 +468,7 @@ export function PerspectiveHero() {
           <PerspectivePicker onChoose={enter} />
         </div>
         {/* who we are, a few lines in the open sky between the picker and the door (never over it) */}
-        <p className="mt-4 max-w-xl text-balance text-center text-[13px] leading-[1.55] text-black/75 [text-shadow:0_1px_12px_rgba(255,255,255,0.9)] sm:mt-6 sm:text-[15px]">
+        <p className="mt-4 max-w-xl text-balance text-center text-[12.5px] leading-[1.5] text-black/75 [text-shadow:0_1px_12px_rgba(255,255,255,0.9)] sm:mt-6 sm:text-[15px]">
           {ABOUT_STUDIO}
         </p>
       </div>
