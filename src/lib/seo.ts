@@ -6,7 +6,9 @@ import { SITE } from "@/content/site";
   shows (a JPEG under public/, its path and size: WhatsApp doesn't reliably show WebP), its own
   path for its address, and its kind. Without one, the site's own picture (`SHARE_PICTURE`).
 */
-export const SHARE_PICTURE = { src: "/brand/share.jpg", width: 1200, height: 630 };
+/* the site's card, in the films' thumbnail style: 16:9, what we make, for whom, who we've made
+   films for, and how to reach us */
+export const SHARE_PICTURE = { src: "/brand/share.jpg", width: 1200, height: 675 };
 
 export function seo(
   title?: string,
