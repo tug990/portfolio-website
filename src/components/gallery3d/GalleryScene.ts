@@ -406,6 +406,14 @@ const BIG_SCREEN = { w: 4.4, h: 2.475, y: 2.05, fromFar: 3.6 };
 // start or a resume): the screen keeps the film's cover until they've gone (as the mini player)
 const YT_CLEAN_MS = 4500;
 
+/*
+  The YouTube layer's cut-outs (clipCutouts): how many clipping layers are nested round it (holes
+  that overlap each other go on different ones, as overlapping holes in one clip cancel out), and
+  how many steps of a strip (the Ribbon's edges) go in each of its pieces.
+*/
+const CLIP_LAYERS = 5;
+const STRIP_PIECE = 5;
+
 /* The box round some points on the screen: [minX, minY, maxX, maxY]. */
 const bounds = (pts: [number, number][]) =>
   pts.reduce(
@@ -633,7 +641,9 @@ export class GalleryScene {
     }
     return { ...L, works, stops, end: stops.length - 2 };
   }
-  private clipKey = "";
+  /* the clipping layers round the YouTube layer, outermost first, and what each is set to */
+  private clips: HTMLDivElement[] = [];
+  private clipKeys: string[] = [];
   /* the floor, for teleporting onto in VR, and its material (opaque in VR, where there's no mirror) */
   private floor!: THREE.Mesh;
   private floorMat!: THREE.Material;
@@ -2081,7 +2091,14 @@ export class GalleryScene {
       el.setAttribute("aria-hidden", "true");
       // Over the room, under everything else; clicks and scrolling go through to the room
       Object.assign(el.style, { position: "absolute", inset: "0", pointerEvents: "none" });
-      this.canvas.after(el);
+      // inside the layers its cut-outs are clipped by (clipCutouts), one inside the other
+      this.clips = Array.from({ length: CLIP_LAYERS }, () => {
+        const c = document.createElement("div");
+        Object.assign(c.style, { position: "absolute", inset: "0", pointerEvents: "none" });
+        return c;
+      });
+      this.clips.reduce((outer, inner) => (outer.appendChild(inner), inner)).appendChild(el);
+      this.canvas.after(this.clips[0]);
       const r = this.canvas.getBoundingClientRect();
       this.css.setSize(Math.max(1, r.width), Math.max(1, r.height));
     }
@@ -2285,15 +2302,18 @@ export class GalleryScene {
     room (which draws it in front of the film's cover) shows through there
     instead. Only the outlines over a film playing in view are cut. A clip path
     (a CSS mask doesn't reach the players inside the 3D layer): the whole layer,
-    then each outline as a hole; outlines that overlap are joined into one, as
-    overlapping holes would cancel out. Set only when it changes.
+    then each outline as a hole. Overlapping holes in one clip path would cancel
+    out, so boxes' outlines that overlap are joined into one, and the Ribbon,
+    which winds in front of itself, is cut in short pieces, each on one of the
+    clipping layers nested round the YouTube layer (`clips`) where it overlaps
+    nothing already there. Each layer set only when it changes.
   */
   private clipCutouts(shown: WallYouTube[]) {
     const el = this.css!.domElement;
     const w = el.clientWidth;
     const h = el.clientHeight;
-    let key = "";
-    let clip = "";
+    // the holes in each clipping layer
+    const layers: [number, number][][][] = this.clips.map(() => []);
     if (shown.length && this.cutouts.length && w && h) {
       this.camera.updateMatrixWorld();
       const eye = this.camera.position;
@@ -2304,14 +2324,17 @@ export class GalleryScene {
         .map(bounds);
       const over = (a: number[], b: number[]) =>
         a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+      const onFilm = (out: [number, number][]) => rects.some((f) => over(bounds(out), f));
       let hulls: [number, number][][] = [];
-      const bands: [number, number][][] = [];
+      const pieces: [number, number][][] = [];
       for (const c of this.cutouts) {
         if (!c.when(eye)) continue;
-        const out = c.band
-          ? this.screenBand(c.pts, c.band, w, h)
-          : this.screenHull(c.pts, !!c.box, w, h);
-        if (out && rects.some((f) => over(bounds(out), f))) (c.band ? bands : hulls).push(out);
+        if (c.edge) {
+          pieces.push(...this.screenStrip(c.pts, c.edge, w, h).filter(onFilm));
+          continue;
+        }
+        const out = this.screenHull(c.pts, !!c.box, w, h);
+        if (out && onFilm(out)) hulls.push(out);
       }
       // join the outlines that overlap (only touching, as the far wall's parts, they stay apart)
       for (let joined = true; joined;) {
@@ -2324,9 +2347,22 @@ export class GalleryScene {
               joined = true;
             }
       }
-      const all = [...hulls, ...bands];
-      if (all.length) {
-        const rings = all.map((hu) => {
+      // each outline on the first layer where it overlaps none already there (told by their
+      // convex hulls: a little cautious, never wrong)
+      const placed: [number, number][][][] = this.clips.map(() => []);
+      for (const ring of [...hulls, ...pieces]) {
+        const hull = convexHull(ring);
+        let k = placed.findIndex((list) => !list.some((o) => convexOverlap(o, hull)));
+        if (k < 0) k = placed.length - 1; // (more than there are layers: shares the last)
+        placed[k].push(hull);
+        layers[k].push(ring);
+      }
+    }
+    layers.forEach((holes, i) => {
+      let key = "";
+      let clip = "";
+      if (holes.length) {
+        const rings = holes.map((hu) => {
           const ring = hu.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`);
           return [...ring, ring[0]].join(", ");
         });
@@ -2334,49 +2370,40 @@ export class GalleryScene {
         // (from the corner to each hole and back: the seams are drawn both ways, so they cancel)
         clip = `polygon(evenodd, 0 0, ${w}px 0, ${w}px ${h}px, 0 ${h}px, 0 0, ${rings.join(", 0 0, ")})`;
       }
-    }
-    if (key === this.clipKey) return; // unchanged: don't touch the style
-    this.clipKey = key;
-    const st = el.style as CSSStyleDeclaration & { webkitClipPath?: string };
-    st.clipPath = st.webkitClipPath = clip;
+      if (key === (this.clipKeys[i] ?? "")) return; // unchanged: don't touch the style
+      this.clipKeys[i] = key;
+      const st = this.clips[i].style as CSSStyleDeclaration & { webkitClipPath?: string };
+      st.clipPath = st.webkitClipPath = clip;
+    });
   }
 
   /*
-    The outline on the screen (CSS pixels) of a band running along some points, `half` metres
-    either side of them (drawn as a thick line through them, capped at its ends), or null if any
-    of it is behind you.
+    The outline on the screen (CSS pixels) of a strip in the room, its two edges given side by
+    side, in short pieces (`STRIP_PIECE` steps, each reaching a step into the next, so no seam
+    shows between them): a piece is the stretch of one edge, then back along the other. A piece
+    with any of it behind you is left out.
   */
-  private screenBand(pts: THREE.Vector3[], half: number, w: number, h: number) {
+  private screenStrip(a: THREE.Vector3[], b: THREE.Vector3[], w: number, h: number) {
     const view = this.camera.matrixWorldInverse;
     const P = this.camera.projectionMatrix;
     const near = -(this.camera.near * 1.5);
-    const sp: [number, number, number][] = [];
-    for (const p of pts) {
+    const onScreen = (p: THREE.Vector3): [number, number] | null => {
       const q = p.clone().applyMatrix4(view);
       if (q.z >= near) return null;
-      const a = q.clone().applyMatrix4(P);
-      const b = q
-        .clone()
-        .setX(q.x + half)
-        .applyMatrix4(P);
-      sp.push([((a.x + 1) / 2) * w, ((1 - a.y) / 2) * h, Math.abs(((b.x - a.x) / 2) * w)]);
+      q.applyMatrix4(P);
+      return [((q.x + 1) / 2) * w, ((1 - q.y) / 2) * h];
+    };
+    const sa = a.map(onScreen);
+    const sb = b.map(onScreen);
+    const pieces: [number, number][][] = [];
+    for (let s = 0; s < sa.length - 1; s += STRIP_PIECE) {
+      const e = Math.min(sa.length - 1, s + STRIP_PIECE + 1);
+      const one = sa.slice(s, e + 1);
+      const other = sb.slice(s, e + 1).reverse();
+      const ring = [...one, ...other];
+      if (ring.every((p) => p)) pieces.push(ring as [number, number][]);
     }
-    const left: [number, number][] = [];
-    const right: [number, number][] = [];
-    let first: [number, number] = [0, 0];
-    let last: [number, number] = [0, 0];
-    sp.forEach(([x, y, r], i) => {
-      const p0 = sp[Math.max(0, i - 1)];
-      const p1 = sp[Math.min(sp.length - 1, i + 1)];
-      const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1;
-      const tx = (p1[0] - p0[0]) / len;
-      const ty = (p1[1] - p0[1]) / len;
-      left.push([x - ty * r, y + tx * r]);
-      right.push([x + ty * r, y - tx * r]);
-      if (i === 0) first = [x - tx * r, y - ty * r];
-      if (i === sp.length - 1) last = [x + tx * r, y + ty * r];
-    });
-    return [first, ...left, last, ...right.reverse()];
+    return pieces;
   }
 
   /*
@@ -3241,7 +3268,7 @@ export class GalleryScene {
         /* still getting ready: it goes with the layer below */
       }
     });
-    this.css?.domElement.remove(); // and the YouTube players in it
+    (this.clips[0] ?? this.css?.domElement)?.remove(); // and the YouTube players in it
     if (this.probe) {
       this.probe.rt.dispose();
       this.probe.spots.forEach((sp) => sp.rt?.dispose());

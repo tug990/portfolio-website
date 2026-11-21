@@ -86,10 +86,10 @@ export type Place = { name: string; x: number; y: number; z: number; yaw: number
 /*
   Something standing in front of a film frame (the Threshold, the Lens, the Ribbon): its outline,
   as points round it, is cut out of the layer the films play in (that layer is drawn over the room,
-  GalleryScene `clipCutouts`), so it stays in front. `band`: the points run along a band that
-  winds about (the Ribbon), its outline that line drawn this many metres either side.
+  GalleryScene `clipCutouts`), so it stays in front. `edge`: it's a strip that winds about (the
+  Ribbon): the points run along one of its edges and these along the other, side by side.
 */
-export type Cutout = { pts: THREE.Vector3[]; band?: number };
+export type Cutout = { pts: THREE.Vector3[]; edge?: THREE.Vector3[] };
 /* The doors out, at the end: to the About and Contact pages */
 export type WorldDoor = { x: number; z: number; label: string; to: "/about" | "/contact" };
 
@@ -202,6 +202,31 @@ function lightPoolTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+/* A band's two edges along a curve, `width` apart, turning `twists` times round its length */
+function ribbonEdges(
+  curve: THREE.Curve<THREE.Vector3>,
+  segments: number,
+  width: number,
+  twists: number,
+) {
+  const frames = curve.computeFrenetFrames(segments, false);
+  const a: THREE.Vector3[] = [];
+  const b: THREE.Vector3[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const p = curve.getPointAt(t);
+    const turn = t * Math.PI * 2 * twists;
+    const d = frames.normals[i]
+      .clone()
+      .multiplyScalar(Math.cos(turn))
+      .add(frames.binormals[i].clone().multiplyScalar(Math.sin(turn)))
+      .multiplyScalar(width / 2);
+    a.push(p.clone().add(d));
+    b.push(p.clone().sub(d));
+  }
+  return { a, b };
+}
+
 /* A band (a ribbon) along a curve, `width` wide, turning `twists` times round its length */
 function ribbonGeometry(
   curve: THREE.Curve<THREE.Vector3>,
@@ -209,19 +234,11 @@ function ribbonGeometry(
   width: number,
   twists: number,
 ) {
-  const frames = curve.computeFrenetFrames(segments, false);
+  const { a, b } = ribbonEdges(curve, segments, width, twists);
   const pos: number[] = [];
   const idx: number[] = [];
   for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const p = curve.getPointAt(t);
-    const a = t * Math.PI * 2 * twists;
-    const d = frames.normals[i]
-      .clone()
-      .multiplyScalar(Math.cos(a))
-      .add(frames.binormals[i].clone().multiplyScalar(Math.sin(a)));
-    pos.push(p.x + (d.x * width) / 2, p.y + (d.y * width) / 2, p.z + (d.z * width) / 2);
-    pos.push(p.x - (d.x * width) / 2, p.y - (d.y * width) / 2, p.z - (d.z * width) / 2);
+    pos.push(a[i].x, a[i].y, a[i].z, b[i].x, b[i].y, b[i].z);
     if (i < segments) {
       const k = i * 2;
       idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
@@ -779,9 +796,13 @@ export function buildWorld(
       const r = 1.1 + Math.sin(t * Math.PI) * 0.9;
       pts.push(new THREE.Vector3(x + Math.cos(a) * r, 0.35 + t * 7.8, z + Math.sin(a) * r));
     }
-    // (its outline: the band along its curve, a little wider than its half-width)
-    cutouts.push({ pts, band: 0.36 });
-    const geo = ribbonGeometry(new THREE.CatmullRomCurve3(pts), 360, 0.62, 1.5);
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const geo = ribbonGeometry(curve, 360, 0.62, 1.5);
+    // its outline: its own two edges (a little wider than it, and every third step: enough to
+    // follow it), so the films behind it are cut exactly where it is, twisting and all
+    const edges = ribbonEdges(curve, 360, 0.7, 1.5);
+    const every3 = (e: THREE.Vector3[]) => e.filter((_, i) => i % 3 === 0 || i === e.length - 1);
+    cutouts.push({ pts: every3(edges.a), edge: every3(edges.b) });
     keep(geo);
     const rib = new THREE.Mesh(geo, mirror);
     rib.castShadow = hq;
