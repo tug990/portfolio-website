@@ -3,6 +3,7 @@ import { CORPORATE } from "@/content/books/corporate";
 import { GOVERNMENT } from "@/content/books/government";
 import { NGO } from "@/content/books/ngo";
 import { REAL_ESTATE } from "@/content/books/real-estate";
+import { HEALTHCARE } from "@/content/books/healthcare";
 import { EDUCATION } from "@/content/books/education";
 
 /*
@@ -166,4 +167,5 @@ export const SERVICE_BOOKS: Partial<Record<PerspectiveId, ServiceBook>> = {
   government: GOVERNMENT,
   "real-estate": REAL_ESTATE,
   education: EDUCATION,
+  healthcare: HEALTHCARE,
 };

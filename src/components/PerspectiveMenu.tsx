@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
   it without loading the page.
 */
 
-/* Line icons: a hand holding a heart, a briefcase, a columned building, towers, a mortarboard; and the door */
+/* Line icons: a hand holding a heart, a briefcase, a columned building, towers, a mortarboard, a medical cross; and the door */
 const PERSPECTIVE_ICONS: Record<PerspectiveId, string> = {
   ngo: "M12 4.6c-.9-1.4-3.4-1.3-3.4.7 0 1.5 1.9 2.8 3.4 3.9 1.5-1.1 3.4-2.4 3.4-3.9 0-2-2.5-2.1-3.4-.7z M3 14.5h2.8l2.7 1.9h3.9a1.3 1.3 0 010 2.6H9.6 M12.6 18.8l5.1-2.3a1.4 1.4 0 011.5 2.3L14 22H8.2l-2.4-1.5H3",
   corporate:
@@ -23,6 +23,7 @@ const PERSPECTIVE_ICONS: Record<PerspectiveId, string> = {
     "M4.5 20V9.5l4.5-1.8V20 M9 20V5.2l6 2V20 M15 20v-8.5l4.5 1.3V20 M3 20h18 M11.4 9.5h1.2 M11.4 12.5h1.2 M11.4 15.5h1.2 M6.2 12h1.1 M6.2 15h1.1 M16.8 15h1.1",
   education:
     "M2.5 9.5L12 5l9.5 4.5L12 14z M6.5 11.6v3.9c1.6 1.5 3.6 2.2 5.5 2.2s3.9-.7 5.5-2.2v-3.9 M21.5 9.5v5",
+  healthcare: "M9.5 4h5v5.5H20v5h-5.5V20h-5v-5.5H4v-5h5.5z",
 };
 const DOOR_ICON = "M7 20V5.5l4.2 2.1V20 M12.8 20V7.2l4.2-1.4V20 M4 20h16";
 
