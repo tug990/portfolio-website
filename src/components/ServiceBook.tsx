@@ -1,9 +1,17 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Link } from "@tanstack/react-router";
-import { SITE } from "@/content/site";
+import { SITE, type PerspectiveId } from "@/content/site";
 import type { OutcomeIcon, Service, ServiceBook as Book } from "@/content/service-books";
 import { cn } from "@/lib/utils";
-import { FilmWords, Grain, Loop, ShapedLoop } from "@/components/StoryFilm";
+import { FilmWords, ShapedLoop } from "@/components/StoryFilm";
 
 /*
   A perspective's Service Book (content/service-books.ts), as its world on
@@ -29,15 +37,109 @@ import { FilmWords, Grain, Loop, ShapedLoop } from "@/components/StoryFilm";
   `Rise`, `PrismEdge`, `Arrow`, `HEAD`) are shared with `about`, so it
   speaks the same way.
 */
+/*
+  Each perspective's look, told as a film: bright, in the colours of the flag for every one of
+  them (`FLAG`: white paper, navy ink, saffron and India green, the tricolour for its lines), each
+  told apart by its paintings and its marks rather than its colour. `paper` the page's ground and
+  the wash over the film; `ink` the words and what's chosen (where black was); `accent` saffron,
+  `accent2` green; `kicker` the small capitals; `cardHead` the outcome cards' titles; `line` and
+  `bar` the lines across and the short upright one beside a lead; `film` the film's grade; `mark`
+  how a title's last words are marked (`marker` a pen line under them, `split` the second half in
+  saffron, `highlight` a highlighter, `corners` drawing-sheet corners on the film, `plus` a cross
+  by the chapter, `tricolour` the tricolour under it and wider capitals); `card` the outcome cards.
+*/
+type Look = {
+  paper: string;
+  ink: string;
+  accent: string;
+  accent2: string;
+  kicker: string;
+  cardHead: string;
+  line: string;
+  bar: string;
+  film: string;
+  mark: "marker" | "split" | "tricolour" | "corners" | "highlight" | "plus";
+  card: string;
+};
+/* the flag's colours, every perspective's */
+const FLAG = {
+  paper: "#fffdf8",
+  ink: "#14213d",
+  accent: "#ef8a1f",
+  accent2: "#138808",
+  kicker: "#138808",
+  cardHead: "#14213d",
+  line: "var(--tricolour)",
+  bar: "var(--tricolour-v)",
+  film: "contrast(1.04) saturate(1.02) brightness(1.03)",
+};
+const LOOKS: Record<PerspectiveId, Look> = {
+  // a field notebook: a pen line under the title, notebook-slip cards
+  ngo: {
+    ...FLAG,
+    mark: "marker",
+    card: "rounded-md border-[1.5px] border-dashed border-(--accent)/45 bg-white/85",
+  },
+  // an annual report: the title's second half in saffron, cards with a top rule
+  corporate: {
+    ...FLAG,
+    mark: "split",
+    card: "rounded-sm border border-(--ink)/10 border-t-[3px] border-t-(--accent) bg-white",
+  },
+  // an official file: the tricolour under the title, wider capitals, cards edged in navy
+  government: {
+    ...FLAG,
+    mark: "tricolour",
+    card: "rounded-sm border-l-4 border-l-(--ink) bg-white shadow-[0_1px_0_rgba(0,0,0,0.06)]",
+  },
+  // a drawing sheet: corners round the film, hairline cards
+  "real-estate": {
+    ...FLAG,
+    mark: "corners",
+    card: "border-y border-t-(--accent) border-b-(--ink)/10 bg-white/85",
+  },
+  // a campus: a highlighter on the title, soft rounded cards
+  education: {
+    ...FLAG,
+    mark: "highlight",
+    card: "rounded-2xl bg-white shadow-[0_10px_24px_-16px_rgba(20,33,61,0.45)]",
+  },
+  // clean and calm: a green cross by each chapter, soft green cards
+  healthcare: {
+    ...FLAG,
+    cardHead: "#138808",
+    mark: "plus",
+    card: "rounded-xl bg-(--accent2)/10",
+  },
+};
+const LookContext = createContext<Look | null>(null);
+
+/* a look's colours, set on the page for everything in it to use */
+function lookVars(l: Look) {
+  return {
+    "--paper": l.paper,
+    "--ink": l.ink,
+    "--accent": l.accent,
+    "--accent2": l.accent2,
+    "--kicker": l.kicker,
+    "--card-head": l.cardHead,
+    "--line": l.line,
+    "--bar": l.bar,
+  } as CSSProperties;
+}
+
 export function ServiceBook({
   book,
   ask,
+  world,
   children,
   about,
 }: {
   book: Book;
   /* the email subject for this perspective (ABOUT_PERSPECTIVES `ask`) */
   ask: string;
+  /* whose world it is, for its look (`LOOKS`), told as a film */
+  world?: PerspectiveId;
   children?: ReactNode;
   /* who we are, before let's talk */
   about?: ReactNode;
@@ -54,23 +156,26 @@ export function ServiceBook({
   };
   if (book.reel) {
     const n = book.services.findIndex((x) => x.id === sheet);
+    const look = LOOKS[world ?? "ngo"];
     return (
-      <div className="text-foreground">
-        <FilmStory book={book} show={show} />
-        {book.year && <Year book={book} show={show} />}
-        {/* (no portfolio: the clients' films below show the same work) */}
-        {/* a few words cut out of the page, a film inside them, before the films themselves */}
-        <div className="px-4 pt-16 sm:px-6 sm:pt-24">
-          <Rise className="mx-auto max-w-6xl">
-            <FilmWords lines={book.reel.cut.lines} name={book.reel.cut.loop} />
-          </Rise>
+      <LookContext.Provider value={look}>
+        <div className="bg-(--paper) text-(--ink)" style={lookVars(look)}>
+          <FilmStory book={book} show={show} />
+          {book.year && <Year book={book} show={show} />}
+          {/* (no portfolio: the clients' films below show the same work) */}
+          {/* a few words cut out of the page, a film inside them, before the films themselves */}
+          <div className="px-4 pt-16 sm:px-6 sm:pt-24">
+            <Rise className="mx-auto max-w-6xl">
+              <FilmWords lines={book.reel.cut.lines} name={book.reel.cut.loop} />
+            </Rise>
+          </div>
+          {children}
+          <Together book={book} />
+          {about}
+          <Talk book={book} ask={ask} />
+          {n >= 0 && <FilmSheet book={book} n={n} ask={ask} onClose={() => setSheet(null)} />}
         </div>
-        {children}
-        <Together book={book} />
-        {about}
-        <Talk book={book} ask={ask} />
-        {n >= 0 && <FilmSheet book={book} n={n} ask={ask} onClose={() => setSheet(null)} />}
-      </div>
+      </LookContext.Provider>
     );
   }
   return (
@@ -122,17 +227,44 @@ function ChapterHead({
   dark?: boolean;
   className?: string;
 }) {
+  const look = useContext(LookContext);
   return (
     <div className={className}>
-      <Kicker className={dark ? "text-white/80" : undefined}>{chapter(book, id, label)}</Kicker>
+      <Kicker className={dark ? "text-white/80" : undefined}>
+        {look?.mark === "plus" && <Cross />}
+        {chapter(book, id, label)}
+      </Kicker>
       <Title className="mt-4">{title}</Title>
-      {book.reel && (
-        <span
-          aria-hidden
-          className={cn("mt-5 block h-px w-full", dark ? "bg-white/20" : "bg-black/15")}
-        />
-      )}
+      {book.reel &&
+        (look ? (
+          // the look's own line under it: the tricolour's place
+          <span
+            aria-hidden
+            className={cn(
+              "mt-5 block w-full",
+              look.mark === "tricolour" ? "h-[3px] max-w-40 rounded-full" : "h-px opacity-50",
+            )}
+            style={{ background: "var(--line)" }}
+          />
+        ) : (
+          <span
+            aria-hidden
+            className={cn("mt-5 block h-px w-full", dark ? "bg-white/20" : "bg-black/15")}
+          />
+        ))}
     </div>
+  );
+}
+
+/* a small red cross, before a chapter's name (healthcare's look) */
+function Cross() {
+  return (
+    <span
+      aria-hidden
+      className="mr-2 inline-grid h-4 w-4 place-items-center rounded-[4px] bg-(--accent2) align-[-3px] text-[13px] font-black leading-none tracking-normal text-white"
+    >
+      +
+    </span>
   );
 }
 function chapter(book: Book, id: string, label: string) {
@@ -143,16 +275,76 @@ function chapter(book: Book, id: string, label: string) {
 
 /* the small spaced capitals over each part, as the site's */
 export function Kicker({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cn("tracked font-sans text-[10px] text-black/50", className)}>{children}</p>;
+  const look = useContext(LookContext);
+  return (
+    <p
+      className={cn(
+        "tracked font-sans text-[10px]",
+        look ? "font-medium text-(--kicker)" : "text-black/50",
+        className,
+      )}
+    >
+      {children}
+    </p>
+  );
 }
 
-/* headings in a bold condensed display face (Bebas Neue, loaded in routes/__root.tsx), in
-   capitals, to catch the eye */
+/* the opening's title in a bold condensed display face (Bebas Neue, loaded in
+   routes/__root.tsx), in capitals: kept for each world's header */
 export const LOUD =
   "[font-family:'Bebas_Neue',Impact,sans-serif] font-normal uppercase tracking-[0.01em]";
+/* headings inside the page in heavy capitals (Montserrat ExtraBold, as the share card's) */
+export const BOLD =
+  "[font-family:'Montserrat',Arial,sans-serif] font-extrabold uppercase tracking-[-0.005em]";
 export function Title({ children, className }: { children: ReactNode; className?: string }) {
+  const look = useContext(LookContext);
   return (
-    <h2 className={cn(LOUD, "text-[42px] leading-[0.94] sm:text-[64px]", className)}>{children}</h2>
+    <h2
+      className={cn(
+        BOLD,
+        "text-[30px] leading-[1.04] sm:text-[46px]",
+        look?.mark === "tricolour" && "tracking-[0.02em]",
+        look?.mark === "corners" && "tracking-[0.015em]",
+        className,
+      )}
+    >
+      {marked(children, look)}
+    </h2>
+  );
+}
+
+/* a title's last words marked in the look's way (a pen line, a highlighter, the accent) */
+function marked(children: ReactNode, look: Look | null) {
+  if (!look || typeof children !== "string") return children;
+  const words = children.split(" ");
+  if (words.length < 3) return children;
+  if (look.mark === "split") {
+    const h = Math.ceil(words.length / 2);
+    return (
+      <>
+        {words.slice(0, h).join(" ")}{" "}
+        <span className="text-(--accent)">{words.slice(h).join(" ")}</span>
+      </>
+    );
+  }
+  if (look.mark !== "marker" && look.mark !== "highlight") return children;
+  const pen =
+    look.mark === "marker"
+      ? {
+          backgroundImage:
+            "linear-gradient(transparent 76%, color-mix(in srgb, var(--accent) 50%, transparent) 76%, color-mix(in srgb, var(--accent) 50%, transparent) 93%, transparent 93%)",
+        }
+      : { background: "var(--accent)", padding: "0 0.1em" };
+  return (
+    <>
+      {words.slice(0, -2).join(" ")}{" "}
+      <span
+        className="[-webkit-box-decoration-break:clone] [box-decoration-break:clone]"
+        style={pen}
+      >
+        {words.slice(-2).join(" ")}
+      </span>
+    </>
   );
 }
 
@@ -231,7 +423,7 @@ export function PrismEdge() {
     <span
       aria-hidden
       className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-90"
-      style={{ background: "var(--prism)" }}
+      style={{ background: "var(--line, var(--prism))" }}
     />
   );
 }
@@ -242,7 +434,7 @@ function Bar() {
     <span
       aria-hidden
       className="absolute bottom-1 left-0 top-1 w-[3px] rounded-full"
-      style={{ background: "var(--tricolour-v)" }}
+      style={{ background: "var(--bar, var(--tricolour-v))" }}
     />
   );
 }
@@ -253,7 +445,7 @@ function TopLine() {
     <span
       aria-hidden
       className="absolute inset-x-0 top-0 h-[2px] rounded-full"
-      style={{ background: "var(--tricolour)" }}
+      style={{ background: "var(--line, var(--tricolour))" }}
     />
   );
 }
@@ -696,19 +888,22 @@ function Year({ book, show }: { book: Book; show: (id: string) => void }) {
   const stage = year.stages[at];
   const name = (id: string) => book.services.find((s) => s.id === id)?.name ?? id;
   return (
-    <Part id="year" className="relative bg-[#0a0a0a] text-white" dark>
+    <Part
+      id="year"
+      className="relative bg-[color-mix(in_srgb,var(--accent)_7%,var(--paper))] text-(--ink)"
+    >
       <div className="max-w-3xl">
-        <Kicker className="text-white/55">{year.kicker}</Kicker>
+        <Kicker>{year.kicker}</Kicker>
         <Title className="mt-4">{year.title}</Title>
-        <p className="mt-4 text-[16px] leading-relaxed text-white/70">{year.text}</p>
+        <p className="mt-4 text-[16px] leading-relaxed text-(--ink)/70">{year.text}</p>
       </div>
 
-      {/* the stages, a tricolour line running through them; tap one */}
+      {/* the stages, the look's line running through them; tap one */}
       <div role="tablist" aria-label={year.title} className="relative mt-10">
         <span
           aria-hidden
           className="absolute left-0 right-0 top-[21px] hidden h-[2px] rounded-full opacity-80 sm:block"
-          style={{ background: "var(--tricolour)" }}
+          style={{ background: "var(--line, var(--tricolour))" }}
         />
         <div
           className="grid gap-2 sm:grid-cols-[repeat(var(--n),minmax(0,1fr))] sm:gap-0"
@@ -725,7 +920,7 @@ function Year({ book, show }: { book: Book; show: (id: string) => void }) {
                 onClick={() => setAt(i)}
                 className={cn(
                   "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition sm:flex-col sm:items-start sm:gap-4 sm:rounded-none sm:px-0 sm:pr-4 sm:pt-0",
-                  on ? "bg-white/10 sm:bg-transparent" : "hover:bg-white/5 sm:hover:bg-transparent",
+                  on ? "bg-white sm:bg-transparent" : "hover:bg-white/60 sm:hover:bg-transparent",
                 )}
               >
                 <span
@@ -733,8 +928,8 @@ function Year({ book, show }: { book: Book; show: (id: string) => void }) {
                     HEAD,
                     "relative grid h-11 w-11 shrink-0 place-items-center rounded-full text-[15px] transition",
                     on
-                      ? "bg-white text-black shadow-[0_0_0_6px_rgba(255,255,255,0.14)]"
-                      : "bg-[#0a0a0a] text-white/75 ring-1 ring-white/30",
+                      ? "bg-(--ink) text-white shadow-[0_0_0_6px_color-mix(in_srgb,var(--ink)_12%,transparent)]"
+                      : "bg-white text-(--ink)/70 ring-1 ring-(--ink)/20",
                   )}
                 >
                   {String(i + 1).padStart(2, "0")}
@@ -742,7 +937,7 @@ function Year({ book, show }: { book: Book; show: (id: string) => void }) {
                 <span
                   className={cn(
                     "text-[15px] font-medium leading-snug",
-                    on ? "text-white" : "text-white/70",
+                    on ? "text-(--ink)" : "text-(--ink)/65",
                   )}
                 >
                   {s.name}
@@ -1031,7 +1226,7 @@ function ServicePage({
       className="mt-4 overflow-hidden rounded-2xl border border-black/[0.07] bg-[var(--card)] duration-500 animate-in fade-in slide-in-from-bottom-2 lg:mt-0"
     >
       {/* its band, as in the book */}
-      <header className="relative bg-[#0a0a0a] px-5 pb-7 pt-6 text-white sm:px-8 sm:pb-9 sm:pt-8">
+      <header className="relative bg-[var(--ink,#0a0a0a)] px-5 pb-7 pt-6 text-white sm:px-8 sm:pb-9 sm:pt-8">
         <PrismEdge />
         <Kicker className="text-white/55">
           {word} {n + 1} of {total}
@@ -1225,7 +1420,7 @@ function Paras({ items, light }: { items: string[]; light?: boolean }) {
 /* a dark card, the prism's light along its top */
 function Dark({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="relative h-full overflow-hidden rounded-xl bg-[#0a0a0a] p-5 text-white sm:p-6">
+    <div className="relative h-full overflow-hidden rounded-xl bg-[var(--ink,#0a0a0a)] p-5 text-white sm:p-6">
       <PrismEdge />
       <h4 className="text-[16px] font-medium">{title}</h4>
       {children}
@@ -1313,7 +1508,7 @@ function Together({ book }: { book: Book }) {
                   key={w.title}
                   className={cn(
                     "relative overflow-hidden rounded-xl p-5",
-                    last ? "bg-[#0a0a0a] text-white" : "bg-[var(--card)]",
+                    last ? "bg-[var(--ink,#0a0a0a)] text-white" : "bg-[var(--card)]",
                   )}
                 >
                   {last && <PrismEdge />}
@@ -1394,7 +1589,7 @@ function Together({ book }: { book: Book }) {
                 key={x.title}
                 className={cn(
                   "relative flex items-center gap-3 overflow-hidden rounded-xl px-4 py-3",
-                  last ? "bg-[#0a0a0a] text-white" : "bg-[var(--card)]",
+                  last ? "bg-[var(--ink,#0a0a0a)] text-white" : "bg-[var(--card)]",
                 )}
               >
                 {last && <PrismEdge />}
@@ -1456,7 +1651,7 @@ function Together({ book }: { book: Book }) {
           <div className="mt-4 overflow-hidden rounded-xl border border-black/[0.07] bg-[var(--card)] sm:mt-8">
             <table className="w-full border-collapse text-left text-[14px]">
               <thead>
-                <tr className="bg-[#0a0a0a] text-white">
+                <tr className="bg-[var(--ink,#0a0a0a)] text-white">
                   <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-[0.18em]">
                     {book.itemWord}
                   </th>
@@ -1546,7 +1741,7 @@ function OptionCard({
       className={cn(
         "press flex h-full flex-col rounded-xl p-5 text-left transition",
         on
-          ? "relative overflow-hidden bg-[#0a0a0a] text-white shadow-[0_22px_44px_-24px_rgba(0,0,0,0.7)]"
+          ? "relative overflow-hidden bg-[var(--ink,#0a0a0a)] text-white shadow-[0_22px_44px_-24px_rgba(0,0,0,0.7)]"
           : "bg-[var(--card)] hover:shadow-[0_16px_36px_-24px_rgba(0,0,0,0.35)]",
       )}
     >
@@ -1584,41 +1779,46 @@ function OptionCard({
 function Talk({ book, ask }: { book: Book; ask: string }) {
   const { talk, reel } = book;
   const phone = SITE.phone.replace(/[^\d+]/g, "");
-  // told as a film, the closing is its last scene: over a shot, in the dark
+  // told as a film, the closing is its last scene: over a shot in colour, under the look's wash
   const film = !!reel;
+  const look = useContext(LookContext);
   const ghost = film
-    ? "border-white/25 bg-white/10 text-white backdrop-blur-md hover:bg-white/20"
+    ? "border-(--ink)/15 bg-white/70 text-(--ink) backdrop-blur-md hover:bg-white"
     : "border-black/10 bg-white hover:bg-black/[0.03]";
   return (
     <Part id="talk" className="pb-[calc(var(--dock,0px)+3.5rem)] sm:pb-24">
       <div
-        data-tone={film ? "dark" : undefined}
         className={cn(
           "relative isolate overflow-hidden rounded-2xl p-6 sm:p-12",
           film
-            ? "min-h-[70svh] bg-black text-white sm:min-h-[560px]"
+            ? "min-h-[70svh] bg-(--paper) text-(--ink) ring-1 ring-(--ink)/10 sm:min-h-[560px]"
             : "border border-black/[0.07] bg-[var(--card)]",
         )}
       >
         {reel ? (
           <>
-            <ShapedLoop
-              name={reel.loops.talk}
-              phone="reel"
-              wide="wide"
-              grain={false}
-              mono
-              steady
-              className="absolute inset-0 -z-10"
+            <span aria-hidden className={cn("absolute inset-0 -z-10 overflow-hidden", SOFT)}>
+              <ShapedLoop
+                name={reel.loops.talk}
+                phone="reel"
+                wide="wide"
+                grain={false}
+                look={look?.film}
+                vignette={false}
+                steady
+                className="absolute inset-0"
+              />
+            </span>
+            <span
+              aria-hidden
+              className="absolute inset-0 -z-10 lg:hidden"
+              style={{ background: WASH.even }}
             />
             <span
               aria-hidden
-              className="absolute inset-0 -z-10"
-              style={{ background: SHADE.even }}
+              className="absolute inset-0 -z-10 max-lg:hidden"
+              style={{ background: WASH.close }}
             />
-            <span aria-hidden className="absolute inset-0 -z-10 overflow-hidden">
-              <Grain strength={GRAIN_STRENGTH} blend="normal" />
-            </span>
             <PrismEdge />
           </>
         ) : (
@@ -1629,14 +1829,15 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
             style={{ background: "var(--prism)" }}
           />
         )}
-        <Kicker className={film ? "text-white/80" : undefined}>
+        <Kicker>
+          {look?.mark === "plus" && <Cross />}
           {film ? `Epilogue · ${talk.kicker}` : talk.kicker}
         </Kicker>
         <Title className="mt-4 max-w-3xl">{talk.title}</Title>
         <p
           className={cn(
             "mt-4 max-w-2xl text-[16px] leading-relaxed",
-            film ? "text-white/80" : "text-black/65",
+            film ? "text-(--ink)/80" : "text-black/65",
           )}
         >
           {talk.text}
@@ -1651,7 +1852,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
               <p
                 className={cn(
                   "mt-1 text-[14px] leading-relaxed",
-                  film ? "text-white/80" : "text-black/55",
+                  film ? "text-(--ink)/70" : "text-black/55",
                 )}
               >
                 {x.text}
@@ -1665,7 +1866,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
             className={cn(
               "press flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-medium transition",
               film
-                ? "bg-white text-black hover:bg-white/85"
+                ? "bg-(--ink) text-white hover:opacity-90"
                 : "bg-black text-white hover:bg-black/85",
             )}
           >
@@ -1706,7 +1907,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
             Choose another perspective
           </Link>
         </div>
-        <p className={cn("mt-5 text-[14px]", film ? "text-white/55" : "text-black/50")}>
+        <p className={cn("mt-5 text-[14px]", film ? "text-(--ink)/55" : "text-black/50")}>
           {SITE.email}
         </p>
       </div>
@@ -1716,18 +1917,25 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
 
 /* ---------- told as a film (book.reel) ---------- */
 
-/* the film behind the words: how heavy its grain, and the dark laid over it so words always read
-   (`even` all over, as on a phone; `side` darker on the left, where the words sit on a computer) */
-const GRAIN_STRENGTH = 0.08;
-const SHADE = {
-  even: "linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.58) 50%, rgba(0,0,0,0.72))",
-  side: "linear-gradient(90deg, rgba(0,0,0,0.8), rgba(0,0,0,0.6) 45%, rgba(0,0,0,0.3))",
+/* on a phone the film sits behind the words themselves, so it's softened a little (its fine detail
+   gone, the picture still plain to see) under a lighter paper (`WASH.even`); on a computer it stays
+   sharp beside them */
+const SOFT = "max-lg:scale-105 max-lg:blur-[2px]";
+
+/* the film behind the words: the look's paper laid over it so ink words always read (`even` all
+   over, as on a phone; `side` strongest on the left, where the words sit on a computer, the film
+   clear on the right; `close` the closing's, whose words run the full width) */
+const paper = (k: number) => `color-mix(in srgb, var(--paper) ${k}%, transparent)`;
+const WASH = {
+  even: `linear-gradient(180deg, ${paper(74)}, ${paper(66)} 50%, ${paper(80)})`,
+  side: `linear-gradient(90deg, ${paper(97)}, ${paper(93)} 42%, ${paper(62)} 62%, ${paper(22)} 82%, ${paper(8)})`,
+  close: `linear-gradient(90deg, ${paper(96)}, ${paper(90)} 50%, ${paper(78)})`,
 };
 
 /*
   The book as one film (after Alt Carbon's project pages): a shot fills the screen behind it all,
-  in black and white, heavy with grain and darkened so every word reads, and the words scroll over
-  it scene by scene, the shot cutting to each scene's own as it's reached. The scenes: the
+  in colour, graded to the look and washed in its paper so every word reads, and the words scroll
+  over it scene by scene, the shot cutting to each scene's own as it's reached. The scenes: the
   introduction (its lead; then the rest of it and its outcomes), each service (its number, name,
   line and who it's for; "See what you receive" opens its details, `FilmSheet`), and the research
   (the findings pinned over the film as press cuttings). Only the shot on screen and the ones
@@ -1736,6 +1944,7 @@ const SHADE = {
 function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
   const reel = book.reel!;
   const { intro, research } = book;
+  const look = useContext(LookContext);
   const shots = [
     reel.loops.intro,
     reel.loops.talk,
@@ -1746,10 +1955,11 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
   const [at, setAt] = useState(0);
   useEffect(() => {
     let raf = 0;
-    // the scene across the screen's middle (or, between two, the nearest)
+    // the scene across the line where the eye reads, a little above the screen's middle (or,
+    // between two, the nearest), so the picture is the one for the words being read
     const pick = () => {
       raf = 0;
-      const mid = window.innerHeight * 0.55;
+      const mid = window.innerHeight * 0.45;
       let best = 0;
       let near = Infinity;
       scenes.current.forEach((el, i) => {
@@ -1785,34 +1995,45 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
   const room = "flex items-center px-4 py-9 sm:px-6 sm:py-12";
   const lead = "relative mt-6 pl-5 text-[19px] font-light leading-snug sm:text-[23px]";
   return (
-    <section data-tone="dark" className="relative isolate bg-black text-white [overflow:clip]">
+    <section className="relative isolate bg-(--paper) text-(--ink) [overflow:clip]">
       {/* the film, held on the screen while its scenes pass over it */}
       <div aria-hidden className="absolute inset-0 -z-10">
         <div className="sticky top-0 h-[100svh] overflow-hidden">
-          {shots.map((name, i) =>
-            Math.abs(i - at) <= 1 ? (
-              <div
-                key={i}
-                className={cn(
-                  "absolute inset-0 transition-opacity duration-1000",
-                  i === at ? "opacity-100" : "opacity-0",
-                )}
-              >
-                <ShapedLoop
-                  name={name}
-                  phone="reel"
-                  wide="wide"
-                  grain={false}
-                  mono
-                  steady
-                  className="absolute inset-0"
-                />
-              </div>
-            ) : null,
+          {/* each scene's film, held in place: the next is already loaded beside it, so it's simply
+              there as its scene comes in (no fade), two are never seen at once, and two scenes in a
+              row with the same film share it, so it holds */}
+          {[...new Set(shots.filter((_, i) => Math.abs(i - at) <= 1))].map((name) => (
+            <div
+              key={name}
+              className={cn("absolute inset-0", name === shots[at] ? "visible" : "invisible", SOFT)}
+            >
+              <ShapedLoop
+                name={name}
+                phone="reel"
+                wide="wide"
+                grain={false}
+                look={look?.film}
+                vignette={false}
+                steady
+                className="absolute inset-0"
+              />
+            </div>
+          ))}
+          <span className="absolute inset-0 lg:hidden" style={{ background: WASH.even }} />
+          <span className="absolute inset-0 max-lg:hidden" style={{ background: WASH.side }} />
+          {/* real estate's look: a drawing sheet's corners round the film */}
+          {look?.mark === "corners" && (
+            <span className="absolute inset-4 sm:inset-6">
+              {[
+                "left-0 top-0 border-l border-t",
+                "right-0 top-0 border-r border-t",
+                "bottom-0 left-0 border-b border-l",
+                "bottom-0 right-0 border-b border-r",
+              ].map((x) => (
+                <span key={x} className={cn("absolute h-8 w-8 border-(--accent)", x)} />
+              ))}
+            </span>
           )}
-          <span className="absolute inset-0 lg:hidden" style={{ background: SHADE.even }} />
-          <span className="absolute inset-0 max-lg:hidden" style={{ background: SHADE.side }} />
-          <Grain strength={GRAIN_STRENGTH} blend="normal" />
         </div>
       </div>
 
@@ -1824,7 +2045,7 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
       >
         <Rise className="mx-auto w-full max-w-6xl">
           <div className="max-w-2xl">
-            <ChapterHead book={book} id="#world" label="Introduction" title={intro.title} dark />
+            <ChapterHead book={book} id="#world" label="Introduction" title={intro.title} />
             <p className={lead}>
               <Bar />
               {intro.lead}
@@ -1834,12 +2055,12 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
       </div>
       <div ref={scene(1)} className={room}>
         <Rise className="mx-auto w-full max-w-6xl">
-          <div className="max-w-2xl space-y-4 text-[16px] leading-relaxed text-white/90">
+          <div className="max-w-2xl space-y-4 text-[16px] leading-relaxed text-(--ink)/85">
             {intro.text.map((x) => (
               <p key={x}>{x}</p>
             ))}
           </div>
-          <Kicker className="mt-10 text-white/80">{intro.outcomesTitle}</Kicker>
+          <Kicker className="mt-10">{intro.outcomesTitle}</Kicker>
           <div
             className={cn(
               "mt-4 grid max-w-3xl grid-cols-2 gap-2",
@@ -1847,14 +2068,11 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
             )}
           >
             {intro.outcomes.map((o) => (
-              <div
-                key={o.title}
-                className="rounded-xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur-md sm:p-4"
-              >
+              <div key={o.title} className={cn("p-3.5 backdrop-blur-md sm:p-4", look?.card)}>
                 <svg
                   aria-hidden
                   viewBox="0 0 24 24"
-                  className="h-5 w-5 text-white/80"
+                  className="h-5 w-5 text-(--accent)"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth={1.6}
@@ -1863,8 +2081,15 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
                 >
                   {OUTCOME_ICONS[o.icon]}
                 </svg>
-                <h3 className="mt-3 text-[15px] font-medium leading-snug">{o.title}</h3>
-                <p className="mt-0.5 text-[13px] leading-relaxed text-white/80">{o.text}</p>
+                <h3
+                  className={cn(
+                    "mt-3 text-[15px] font-semibold leading-snug text-(--card-head)",
+                    look?.mark === "corners" && "text-[12px] uppercase tracking-[0.08em]",
+                  )}
+                >
+                  {o.title}
+                </h3>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-(--ink)/70">{o.text}</p>
               </div>
             ))}
           </div>
@@ -1887,26 +2112,27 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
                   id="#services"
                   label={`The ${book.itemWord.toLowerCase()}s`}
                   title={book.servicesTitle}
-                  dark
                   className="mb-8"
                 />
               )}
-              <p className={cn(HEAD, "text-[15px] text-white/80")}>
+              <p className={cn(HEAD, "text-[15px] text-(--accent)")}>
                 {String(k + 1).padStart(2, "0")}
-                <span className="text-white/55">
+                <span className="text-(--ink)/45">
                   {" "}
                   / {String(book.services.length).padStart(2, "0")}
                 </span>
               </p>
-              <h3 className={cn(LOUD, "mt-1 text-[38px] leading-[0.94] sm:text-[56px]")}>
+              <h3 className={cn(BOLD, "mt-1 text-[28px] leading-[1.05] sm:text-[40px]")}>
                 {x.name}
               </h3>
-              <p className="mt-3 text-[16px] leading-relaxed text-white/90">{x.line}</p>
-              {x.madeFor && <p className="mt-3 text-[13px] text-white/75">Made for: {x.madeFor}</p>}
+              <p className="mt-3 text-[16px] leading-relaxed text-(--ink)/85">{x.line}</p>
+              {x.madeFor && (
+                <p className="mt-3 text-[13px] text-(--ink)/65">Made for: {x.madeFor}</p>
+              )}
               <button
                 type="button"
                 onClick={() => show(x.id)}
-                className="press mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-[15px] font-medium text-black transition hover:bg-white/85"
+                className="press mt-6 inline-flex items-center gap-2 rounded-full bg-(--ink) px-6 py-3 text-[15px] font-medium text-white transition hover:opacity-90"
               >
                 See what you receive
                 <Arrow />
@@ -1929,9 +2155,8 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
               id="#research"
               label="What the research shows"
               title={research.title}
-              dark
             />
-            <p className="mt-5 text-[16px] leading-relaxed text-white/90">{research.text}</p>
+            <p className="mt-5 text-[16px] leading-relaxed text-(--ink)/85">{research.text}</p>
           </Rise>
           <Clippings book={book} />
           {research.note && (
@@ -1943,7 +2168,7 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
             </Rise>
           )}
           {research.sources && (
-            <p className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-white/80">
+            <p className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-(--ink)/70">
               <span>Sources:</span>
               {research.sources.map((x) => (
                 <a
@@ -1951,7 +2176,7 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
                   href={x.href}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-medium text-white underline-offset-4 hover:underline"
+                  className="font-medium text-(--ink) underline-offset-4 hover:underline"
                 >
                   {x.label} ↗
                 </a>
@@ -1974,7 +2199,7 @@ function Clippings({ book }: { book: Book }) {
         <Rise key={x.figure} delay={i * 90}>
           <article
             className={cn(
-              "relative h-full rounded-sm bg-[#f4f1e8] p-6 text-[#141414] shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)] sm:p-7",
+              "relative h-full rounded-sm bg-[#fffdf8] p-6 text-[#141414] shadow-[0_24px_48px_-28px_rgba(0,0,0,0.45)] ring-1 ring-black/[0.04] sm:p-7",
               tilt[i % tilt.length],
             )}
           >
@@ -2026,6 +2251,7 @@ function FilmSheet({
   onClose: () => void;
 }) {
   const s = book.services[n];
+  const look = useContext(LookContext);
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -2048,23 +2274,25 @@ function FilmSheet({
       onClose={() => {
         if (!ref.current?.open) onClose();
       }}
-      className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none overflow-y-auto overscroll-contain border-0 bg-black p-0 text-white backdrop:bg-black duration-500 animate-in fade-in"
+      className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none overflow-y-auto overscroll-contain border-0 bg-(--paper) p-0 text-(--ink) backdrop:bg-white duration-500 animate-in fade-in"
     >
-      {/* its film over the whole screen, held steady and slow behind the words, darkened so they read */}
+      {/* its film over the whole screen, held steady and slow behind the words, washed in the look's
+          paper towards the foot so they read */}
       <div aria-hidden className="pointer-events-none fixed inset-0">
         <ShapedLoop
           name={book.reel!.services[s.id] ?? book.reel!.loops.intro}
           phone="reel"
           wide="wide"
-          grain={0.18}
+          grain={false}
+          look={look?.film}
+          vignette={false}
           steady
           className="absolute inset-0"
         />
         <span
           className="absolute inset-0 z-[2]"
           style={{
-            background:
-              "linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.2) 30%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.85))",
+            background: `linear-gradient(180deg, ${paper(10)}, ${paper(25)} 30%, ${paper(80)} 58%, ${paper(96)})`,
           }}
         />
       </div>
@@ -2089,14 +2317,16 @@ function FilmSheet({
       <div className="relative z-10 mx-auto max-w-3xl px-5 sm:px-8">
         {/* its name at the foot of the first screen, the film above it */}
         <div className="flex min-h-[72svh] flex-col justify-end pb-8">
-          <p className={cn(HEAD, "text-[15px] text-white/75")}>{String(n + 1).padStart(2, "0")}</p>
-          <h3 className={cn(LOUD, "mt-1 text-[44px] leading-[0.94] sm:text-[64px]")}>{s.name}</h3>
-          <p className="mt-3 max-w-2xl text-[17px] leading-relaxed text-white/90">{s.line}</p>
-          {s.madeFor && <p className="mt-3 text-[13px] text-white/70">Made for: {s.madeFor}</p>}
+          <p className={cn(HEAD, "text-[15px] text-(--accent)")}>
+            {String(n + 1).padStart(2, "0")}
+          </p>
+          <h3 className={cn(BOLD, "mt-1 text-[32px] leading-[1.04] sm:text-[48px]")}>{s.name}</h3>
+          <p className="mt-3 max-w-2xl text-[17px] leading-relaxed text-(--ink)/85">{s.line}</p>
+          {s.madeFor && <p className="mt-3 text-[13px] text-(--ink)/65">Made for: {s.madeFor}</p>}
         </div>
-        {/* then everything about it, on dark glass over the film */}
-        <div className="mb-[calc(var(--dock,0px)+2.5rem)] rounded-2xl bg-black/55 px-5 pb-6 ring-1 ring-white/10 backdrop-blur-md sm:mb-12 sm:px-8 sm:pb-8">
-          <FilmDetail s={s} ask={ask} dark />
+        {/* then everything about it, on light glass over the film */}
+        <div className="mb-[calc(var(--dock,0px)+2.5rem)] rounded-2xl bg-white/80 px-5 pb-6 ring-1 ring-(--ink)/10 backdrop-blur-md sm:mb-12 sm:px-8 sm:pb-8">
+          <FilmDetail s={s} ask={ask} />
         </div>
       </div>
     </dialog>
@@ -2135,7 +2365,7 @@ function FilmDetail({ s, ask, dark }: { s: Service; ask: string; dark?: boolean 
           <div
             className={cn(
               "relative overflow-hidden rounded-xl p-5 text-white sm:p-6",
-              dark ? "bg-white/[0.08] ring-1 ring-white/15" : "bg-[#0a0a0a]",
+              dark ? "bg-white/[0.08] ring-1 ring-white/15" : "bg-[var(--ink,#0a0a0a)]",
             )}
           >
             <PrismEdge />
@@ -2149,7 +2379,7 @@ function FilmDetail({ s, ask, dark }: { s: Service; ask: string; dark?: boolean 
             "press inline-flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-medium transition",
             dark
               ? "bg-white text-black hover:bg-white/85"
-              : "bg-black text-white hover:bg-black/85",
+              : "bg-[var(--ink,#0a0a0a)] text-white hover:opacity-90",
           )}
         >
           Ask about this film

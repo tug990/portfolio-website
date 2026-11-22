@@ -2,17 +2,17 @@ import type { ServiceBook } from "@/content/service-books";
 
 /* "Insight Lab - Corporate Service Book.pdf", as the corporate world shows it */
 export const CORPORATE: ServiceBook = {
-  // told as a film: the shots from our films it's cut with
+  // told as a film: the footage it’s cut with (supplied to us, one shot to a loop)
   reel: {
-    loops: { intro: "corp-faces", research: "corp-river", talk: "corp-rain" },
+    loops: { intro: "corp-plant", research: "corp-mill", talk: "corp-pitch" },
     services: {
-      "csr-film": "corp-grazing",
-      "csr-impact-story": "corp-herd",
-      "brand-film": "corp-road",
-      "pr-film": "corp-faces",
-      "personal-branding": "corp-rain",
+      "csr-film": "corp-mill",
+      "csr-impact-story": "corp-sparks",
+      "brand-film": "corp-plant",
+      "pr-film": "corp-pitch",
+      "personal-branding": "corp-suit",
     },
-    cut: { lines: ["Show the", "real work"], loop: "corp-river" },
+    cut: { lines: ["Show the", "real work"], loop: "corp-sparks" },
     trail: [
       "corp-01",
       "corp-02",
@@ -26,9 +26,6 @@ export const CORPORATE: ServiceBook = {
       "corp-10",
       "corp-11",
       "corp-12",
-      "corp-13",
-      "corp-14",
-      "corp-15",
     ],
   },
   itemWord: "Service",
