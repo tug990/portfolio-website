@@ -2,20 +2,34 @@ import type { ServiceBook } from "@/content/service-books";
 
 /* "Insight Lab - Real Estate Service Book.pdf", as the real estate world shows it */
 export const REAL_ESTATE: ServiceBook = {
-  // told as a film: the shots from our films it's cut with
+  // told as a film: the footage it’s cut with (supplied to us, one shot to a loop)
   reel: {
-    loops: { intro: "re-hills", research: "re-woods", talk: "re-valley" },
+    loops: { intro: "re-complex", research: "re-housing", talk: "re-keys" },
     services: {
-      "project-launch": "re-hills",
-      "construction-progress": "re-stream",
-      walkthrough: "re-woods",
-      "neighbourhood-lifestyle": "re-valley",
-      "homeowner-story": "re-forest",
-      "developer-brand": "re-hills",
-      "possession-handover": "re-stream",
+      "project-launch": "re-architect",
+      "construction-progress": "re-cranes",
+      walkthrough: "re-towers",
+      "neighbourhood-lifestyle": "re-housing",
+      "homeowner-story": "re-complex",
+      "developer-brand": "re-skyline",
+      "possession-handover": "re-keys",
     },
-    cut: { lines: ["Show buyers", "what’s real"], loop: "re-valley" },
-    trail: ["re-01", "re-02", "re-03", "re-04", "re-05", "re-06", "re-07"],
+    cut: { lines: ["Show buyers", "what’s real"], loop: "re-skyline" },
+    trail: [
+      "re-01",
+      "re-02",
+      "re-03",
+      "re-04",
+      "re-05",
+      "re-06",
+      "re-07",
+      "re-08",
+      "re-09",
+      "re-10",
+      "re-11",
+      "re-12",
+      "re-13",
+    ],
   },
   itemWord: "Film",
   cover: {

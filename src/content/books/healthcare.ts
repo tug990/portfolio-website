@@ -8,19 +8,19 @@ import type { ServiceBook } from "@/content/service-books";
   patients filmed only with informed, written consent. Its research findings are sourced.
 */
 export const HEALTHCARE: ServiceBook = {
-  // told as a film: the shots from our films it's cut with
+  // told as a film: the footage it’s cut with (supplied to us, one shot to a loop)
   reel: {
-    loops: { intro: "hc-ward", research: "hc-centre", talk: "hc-care" },
+    loops: { intro: "hc-building", research: "hc-complex", talk: "hc-doctor" },
     services: {
-      "hospital-story": "hc-ward",
-      "care-team": "hc-care",
-      "care-explainer": "hc-centre",
-      "health-awareness": "hc-care",
-      "community-health": "hc-centre",
-      "recruitment-film": "hc-ward",
+      "hospital-story": "hc-complex",
+      "care-team": "hc-gurney",
+      "care-explainer": "hc-doctor",
+      "health-awareness": "hc-building",
+      "community-health": "hc-complex",
+      "recruitment-film": "hc-gurney",
     },
-    cut: { lines: ["Let patients", "see the care"], loop: "hc-care" },
-    trail: ["hc-01", "hc-02", "hc-03", "hc-04", "hc-05", "hc-06", "hc-07"],
+    cut: { lines: ["Let patients", "see the care"], loop: "hc-gurney" },
+    trail: ["hc-01", "hc-02", "hc-03", "hc-04", "hc-05", "hc-06", "hc-07", "hc-08", "hc-09"],
   },
   itemWord: "Film",
   cover: {

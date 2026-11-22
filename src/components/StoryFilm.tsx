@@ -34,32 +34,33 @@ const SHOTS: Record<string, [number, number]> = {
   "gov-lines": [1.14, 2.16],
   "gov-light": [0.08, 2.24],
   "gov-home": [0.18, 1.12],
-  "edu-morning": [1.46, 3.68],
-  "edu-yard": [0.98, 2.08],
-  "edu-siblings": [1.3, 3.8],
-  "edu-chores": [2.1, 3.12],
-  "edu-ready": [0.82, 5.9],
-  "edu-walk": [0.5, 3.44],
-  "edu-class": [1.3, 3.3],
-  "hc-ward": [0.9, 1.68],
   "ngo-mothers": [0.42, 0.88],
   "ngo-fields": [1.22, 2.08],
   "ngo-home": [1.62, 3.3],
-  "hc-centre": [0.9, 1.76],
-  "hc-care": [1.86, 3.3],
   "ngo-paddy": [0.34, 1.36],
   "ngo-sowing": [0.08, 3.51],
-  "corp-herd": [1.3, 2.3],
-  "corp-faces": [0.98, 2.08],
-  "corp-road": [1.06, 1.92],
-  "corp-rain": [1.22, 2.2],
-  "corp-river": [0.18, 1.6],
-  "corp-grazing": [1.14, 2.8],
-  "re-hills": [0.08, 1.76],
-  "re-valley": [2.5, 4.0],
-  "re-forest": [1.06, 3.5],
-  "re-stream": [0.08, 1.92],
-  "re-woods": [0.08, 2.72],
+  // the supplied footage (one shot each, start to end)
+  "corp-plant": [0.08, 5.9],
+  "corp-mill": [0.08, 5.9],
+  "corp-sparks": [0.08, 5.9],
+  "corp-suit": [0.08, 5.9],
+  "corp-pitch": [0.08, 5.9],
+  "edu-campus": [0.08, 5.9],
+  "edu-roofs": [0.08, 5.9],
+  "edu-classroom": [0.08, 5.5],
+  "edu-student": [0.08, 5.9],
+  "edu-school": [0.08, 5.9],
+  "hc-building": [0.08, 5.9],
+  "hc-complex": [0.08, 5.9],
+  "hc-doctor": [0.08, 5.9],
+  "hc-gurney": [0.08, 5.9],
+  "re-complex": [0.08, 5.9],
+  "re-housing": [0.08, 5.9],
+  "re-keys": [0.08, 5.9],
+  "re-architect": [0.08, 5.9],
+  "re-cranes": [0.08, 5.9],
+  "re-towers": [0.08, 5.9],
+  "re-skyline": [0.08, 5.9],
 };
 
 /* how a loop is graded: a film's colour, or black and white with a little more bite */
@@ -321,6 +322,8 @@ export function ShapedLoop({
   wide,
   grain,
   mono,
+  look,
+  vignette,
   steady,
   className,
 }: {
@@ -329,6 +332,9 @@ export function ShapedLoop({
   wide: Shape;
   grain?: boolean | number;
   mono?: boolean;
+  /* its own grade (a CSS filter), over `mono` and the film's */
+  look?: string;
+  vignette?: boolean;
   steady?: boolean;
   className?: string;
 }) {
@@ -339,6 +345,8 @@ export function ShapedLoop({
         shape={phone}
         grain={grain}
         mono={mono}
+        look={look}
+        vignette={vignette}
         steady={steady}
         className={cn("sm:hidden", className)}
       />
@@ -347,6 +355,8 @@ export function ShapedLoop({
         shape={wide}
         grain={grain}
         mono={mono}
+        look={look}
+        vignette={vignette}
         steady={steady}
         className={cn("max-sm:hidden", className)}
       />
@@ -433,8 +443,9 @@ export function ShotTrail({ shots, className }: { shots: string[]; className?: s
 
 /*
   Words cut out of the page, a film playing inside the letters (the page's own colour all round
-  them, so only the words are film): large, in capitals (Bebas Neue), each line kept to one line
-  and sized to the longest. The film's graded a little darker so it never shows past the letters.
+  them, `--paper` where the page sets one, so only the words are film): large, in heavy capitals
+  (Montserrat Black, as the share card's), each line kept to one line and sized to the longest.
+  The film's graded a little darker so it never shows past the letters.
 */
 export function FilmWords({
   lines,
@@ -458,9 +469,9 @@ export function FilmWords({
         className="absolute inset-[2px]"
       />
       <h2
-        className="relative -my-px whitespace-nowrap bg-background [font-family:'Bebas_Neue',Impact,sans-serif] font-normal uppercase leading-[0.86] tracking-[0.005em] text-black mix-blend-lighten"
+        className="relative -my-px whitespace-nowrap bg-[var(--paper,var(--background))] [font-family:'Montserrat',Arial,sans-serif] font-black uppercase leading-[0.9] tracking-[-0.02em] text-black mix-blend-lighten"
         style={{
-          fontSize: `min(230px, calc(min(100vw - 32px, 1104px) / ${(longest * 0.43).toFixed(2)}))`,
+          fontSize: `min(200px, calc(min(100vw - 32px, 1104px) / ${(longest * 0.7).toFixed(2)}))`,
           padding: "0.04em 0 0.02em",
         }}
       >

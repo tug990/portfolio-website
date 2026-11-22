@@ -6,20 +6,20 @@ import type { ServiceBook } from "@/content/service-books";
   research findings are the book's, as sourced); as the world shows it.
 */
 export const EDUCATION: ServiceBook = {
-  // told as a film: the shots from our films it's cut with
+  // told as a film: the footage it’s cut with (supplied to us, one shot to a loop)
   reel: {
-    loops: { intro: "edu-class", research: "edu-chores", talk: "edu-morning" },
+    loops: { intro: "edu-campus", research: "edu-classroom", talk: "edu-student" },
     services: {
-      "campus-film": "edu-walk",
-      "student-life": "edu-ready",
-      "programme-spotlight": "edu-class",
-      "research-film": "edu-chores",
-      "alumni-story": "edu-siblings",
-      "event-coverage": "edu-yard",
-      "campus-archive": "edu-morning",
-      "digital-presence": "edu-ready",
+      "campus-film": "edu-school",
+      "student-life": "edu-student",
+      "programme-spotlight": "edu-classroom",
+      "research-film": "edu-roofs",
+      "alumni-story": "edu-campus",
+      "event-coverage": "edu-school",
+      "campus-archive": "edu-roofs",
+      "digital-presence": "edu-student",
     },
-    cut: { lines: ["Let students", "see the place"], loop: "edu-walk" },
+    cut: { lines: ["Let students", "see the place"], loop: "edu-campus" },
     trail: [
       "edu-01",
       "edu-02",
@@ -31,14 +31,6 @@ export const EDUCATION: ServiceBook = {
       "edu-08",
       "edu-09",
       "edu-10",
-      "edu-11",
-      "edu-12",
-      "edu-13",
-      "edu-14",
-      "edu-15",
-      "edu-16",
-      "edu-17",
-      "edu-18",
     ],
   },
   itemWord: "Service",

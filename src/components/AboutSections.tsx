@@ -1180,7 +1180,7 @@ export function PerspectiveWorld({ id }: { id: PerspectiveId }) {
 
       {book ? (
         // the perspective's Service Book, its clients and their films after its services
-        <ServiceBook book={book} ask={p.ask} about={<AboutUs />}>
+        <ServiceBook book={book} ask={p.ask} world={id} about={<AboutUs />}>
           {(clients.length > 0 || films.length > 0) && (
             <section
               id="films"
