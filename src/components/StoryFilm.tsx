@@ -36,7 +36,7 @@ const SHOTS: Record<string, [number, number]> = {
   "gov-light": [0.08, 2.24],
   "gov-home": [0.18, 1.12],
   "ngo-mothers": [0.42, 0.88],
-  "ngo-fields": [1.22, 2.08],
+  "ngo-fields": [0.34, 1.08], // the woman carrying the basket, facing us (not the next shot)
   "ngo-home": [1.62, 3.3],
   "ngo-paddy": [0.34, 1.36],
   "ngo-sowing": [0.08, 3.51],

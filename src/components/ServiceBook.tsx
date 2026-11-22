@@ -1943,12 +1943,15 @@ const WASH = {
   it, and the words scroll over it slide by slide: one film to a slide, never changing while that
   slide is read, and the next slide's film dissolving in over it as that slide comes in
   (`DISSOLVE`). The slides: the introduction (its lead, the rest of it and its outcomes, all on
-  the introduction's film), each service on a screen of its own (its number, name,
+  the introduction's film), each service a slide of its own, space either side of it (`SLIDE`) (its number, name,
   line and who it's for; "See what you receive" opens its details, `FilmSheet`), and the research
   (the findings pinned over the film as press cuttings). Only the shot on screen and the ones
   either side of it are loaded (on a phone, its tall cut, framed on whoever's in each shot).
 */
 const DISSOLVE = 1200;
+/* the space round each service's slide: enough to set it apart and for its film to dissolve into the
+   next while the eye is between them, not a screen of its own (a short slide left it mostly empty) */
+const SLIDE = "py-[11svh] sm:py-[11svh]";
 function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
   const reel = book.reel!;
   const { intro, research } = book;
@@ -2132,13 +2135,13 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
         </Rise>
       </div>
 
-      {/* the services, a slide each: a screen of its own, so its film is the only one while it's read */}
+      {/* the services, a slide each, set apart by `SLIDE`'s space (where its film dissolves into the next) */}
       {book.services.map((x, k) => (
         <div
           key={x.id}
           id={k === 0 ? "services" : undefined}
           ref={scene(k + 2)}
-          className={cn(room, "min-h-[100svh]", k === 0 && "scroll-mt-20 sm:scroll-mt-24")}
+          className={cn(room, SLIDE, k === 0 && "scroll-mt-20 sm:scroll-mt-24")}
         >
           <Rise className="mx-auto w-full max-w-6xl">
             <div className="max-w-2xl">
