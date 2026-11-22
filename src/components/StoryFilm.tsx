@@ -23,10 +23,11 @@ const loopSrc = (name: string, shape: Shape) => `/about/loops/${name}-${shape}`;
 /*
   Behind words, a loop holds one shot (no cuts to pull the eye off the text): the longest single
   shot in each loop, in seconds from its start, measured from the files. A shot at least
-  `STEADY.min` long plays at `STEADY.rate` and goes round within itself; a shorter one holds its
-  middle frame and drifts in slowly.
+  `STEADY.min` long plays at `STEADY.rate` and goes round within itself, its end dissolving back
+  into its first frame over `STEADY.round` ms (never a jump); a shorter one holds its middle frame
+  and drifts in slowly.
 */
-const STEADY = { rate: 0.5, min: 1.5, drift: 14000 };
+const STEADY = { rate: 0.5, min: 1.5, drift: 14000, round: 1600 };
 const SHOTS: Record<string, [number, number]> = {
   "gov-patrol": [0.42, 2.08],
   "gov-march": [0.26, 2.48],
@@ -44,7 +45,6 @@ const SHOTS: Record<string, [number, number]> = {
   "corp-mill": [0.08, 5.9],
   "corp-sparks": [0.08, 5.9],
   "corp-suit": [0.08, 5.9],
-  "corp-pitch": [0.08, 5.9],
   "edu-campus": [0.08, 5.9],
   "edu-roofs": [0.08, 5.9],
   "edu-classroom": [0.08, 5.5],
@@ -105,8 +105,11 @@ const calm = () =>
 export function Grain({
   strength = 0.16,
   blend = "overlay",
+  className,
 }: {
   strength?: number;
+  /* where it sits in its box's stack (it lies above the picture, below anything with a z-index) */
+  className?: string;
   /* how it's laid on: `overlay` works the shot's own light; `normal` lies on top as static, so it
      shows even where the picture's been darkened for words */
   blend?: "overlay" | "normal";
@@ -154,6 +157,7 @@ export function Grain({
       className={cn(
         "pointer-events-none absolute inset-0 z-[1] h-full w-full",
         blend === "overlay" && "mix-blend-overlay",
+        className,
       )}
       style={{ opacity: strength, imageRendering: "pixelated" }}
     />
@@ -198,6 +202,8 @@ export function Loop({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
+  // the shot's first frame, kept under the film for it to dissolve back into as it goes round
+  const first = useRef<HTMLCanvasElement>(null);
   const shot = steady ? SHOTS[name] : undefined;
   // a shot too short to play slowly holds its middle frame
   const held = !!shot && shot[1] - shot[0] < STEADY.min;
@@ -221,12 +227,32 @@ export function Loop({
     io.observe(el);
     return () => io.disconnect();
   }, [near, held]);
-  // one shot only: start on it, slow it, and go round within it (or hold its middle, drifting in)
+  // one shot only: start on it, slow it, and go round within it, the end dissolving back into its
+  // first frame (or hold its middle, drifting in)
   useEffect(() => {
     const v = video.current;
     if (!v || !shot) return;
     let raf = 0;
     let drift: Animation | undefined;
+    let fade: Animation | undefined;
+    let kept = false;
+    const keep = () => {
+      const c = first.current;
+      if (!c || v.readyState < 2) return;
+      try {
+        c.width = v.videoWidth;
+        c.height = v.videoHeight;
+        c.getContext("2d")?.drawImage(v, 0, 0);
+        kept = true;
+      } catch {
+        // no first frame to dissolve into: it simply starts over
+      }
+    };
+    // back at the start, the film shows again over its own first frame (no change to see)
+    const back = () => {
+      fade?.cancel();
+      fade = undefined;
+    };
     const ready = () => {
       v.playbackRate = STEADY.rate;
       if (held) {
@@ -240,9 +266,31 @@ export function Loop({
         });
         return;
       }
+      v.addEventListener(
+        "seeked",
+        () => (v.readyState >= 2 ? keep() : v.addEventListener("loadeddata", keep, { once: true })),
+        {
+          once: true,
+        },
+      );
       v.currentTime = shot[0];
+      // how far before the shot's end the dissolve begins, in the film's own seconds
+      const lead = (STEADY.round / 1000) * STEADY.rate;
       const watch = () => {
-        if (v.currentTime >= shot[1] || v.currentTime < shot[0] - 0.05) v.currentTime = shot[0];
+        const t = v.currentTime;
+        if (!fade && kept && t >= shot[1] - lead) {
+          fade = v.animate([{ opacity: 1 }, { opacity: 0 }], {
+            duration: STEADY.round,
+            easing: "ease-in-out",
+            fill: "forwards",
+          });
+          fade.finished
+            .then(() => {
+              v.addEventListener("seeked", back, { once: true });
+              v.currentTime = shot[0];
+            })
+            .catch(() => {});
+        } else if (!fade && (t >= shot[1] || t < shot[0] - 0.05)) v.currentTime = shot[0];
         raf = requestAnimationFrame(watch);
       };
       raf = requestAnimationFrame(watch);
@@ -252,7 +300,10 @@ export function Loop({
     return () => {
       cancelAnimationFrame(raf);
       drift?.cancel();
+      fade?.cancel();
       v.removeEventListener("loadedmetadata", ready);
+      v.removeEventListener("seeked", back);
+      v.removeEventListener("loadeddata", keep);
     };
   }, [near, shot, held]);
   const src = loopSrc(name, shape);
@@ -285,6 +336,16 @@ export function Loop({
         )}
         style={still}
       />
+      {near && !calmed && shot && !held && (
+        <canvas
+          ref={first}
+          className={cn(
+            "absolute inset-0 h-full w-full",
+            fit === "contain" ? "object-contain" : "object-cover",
+          )}
+          style={{ filter, objectPosition: position }}
+        />
+      )}
       {near && !calmed && (
         <video
           ref={video}

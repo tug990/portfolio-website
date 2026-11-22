@@ -11,7 +11,7 @@ import { Link } from "@tanstack/react-router";
 import { SITE, type PerspectiveId } from "@/content/site";
 import type { OutcomeIcon, Service, ServiceBook as Book } from "@/content/service-books";
 import { cn } from "@/lib/utils";
-import { FilmWords, ShapedLoop } from "@/components/StoryFilm";
+import { FilmWords, Grain, ShapedLoop } from "@/components/StoryFilm";
 
 /*
   A perspective's Service Book (content/service-books.ts), as its world on
@@ -1819,6 +1819,7 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
               className="absolute inset-0 -z-10 max-lg:hidden"
               style={{ background: WASH.close }}
             />
+            <Grain strength={GRAIN} className="-z-10" />
             <PrismEdge />
           </>
         ) : (
@@ -1922,6 +1923,10 @@ function Talk({ book, ask }: { book: Book; ask: string }) {
    sharp beside them */
 const SOFT = "max-lg:scale-105 max-lg:blur-[2px]";
 
+/* film grain over the films behind the words (`Grain`, overlaid on the washed picture, so it shows
+   where the film does and leaves the paper clean), and how strong */
+const GRAIN = 0.18;
+
 /* the film behind the words: the look's paper laid over it so ink words always read (`even` all
    over, as on a phone; `side` strongest on the left, where the words sit on a computer, the film
    clear on the right; `close` the closing's, whose words run the full width) */
@@ -1934,25 +1939,40 @@ const WASH = {
 
 /*
   The book as one film (after Alt Carbon's project pages): a shot fills the screen behind it all,
-  in colour, graded to the look and washed in its paper so every word reads, and the words scroll
-  over it scene by scene, the shot cutting to each scene's own as it's reached. The scenes: the
-  introduction (its lead; then the rest of it and its outcomes), each service (its number, name,
+  in colour, graded to the look and washed in its paper so every word reads, with film grain over
+  it, and the words scroll over it slide by slide: one film to a slide, never changing while that
+  slide is read, and the next slide's film dissolving in over it as that slide comes in
+  (`DISSOLVE`). The slides: the introduction (its lead, the rest of it and its outcomes, all on
+  the introduction's film), each service on a screen of its own (its number, name,
   line and who it's for; "See what you receive" opens its details, `FilmSheet`), and the research
   (the findings pinned over the film as press cuttings). Only the shot on screen and the ones
   either side of it are loaded (on a phone, its tall cut, framed on whoever's in each shot).
 */
+const DISSOLVE = 1200;
 function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
   const reel = book.reel!;
   const { intro, research } = book;
   const look = useContext(LookContext);
+  // a film for each scene: the introduction's two scenes are one slide, on one film
   const shots = [
     reel.loops.intro,
-    reel.loops.talk,
+    reel.loops.intro,
     ...book.services.map((x) => reel.services[x.id] ?? reel.loops.intro),
     reel.loops.research,
   ];
   const scenes = useRef<(HTMLElement | null)[]>([]);
   const [at, setAt] = useState(0);
+  // the film being dissolved out of, held under the new one till it's fully in
+  const shown = shots[at];
+  const last = useRef(shown);
+  const [was, setWas] = useState<string>();
+  useEffect(() => {
+    if (last.current === shown) return;
+    setWas(last.current);
+    last.current = shown;
+    const done = window.setTimeout(() => setWas(undefined), DISSOLVE);
+    return () => window.clearTimeout(done);
+  }, [shown]);
   useEffect(() => {
     let raf = 0;
     // the scene across the line where the eye reads, a little above the screen's middle (or,
@@ -1999,28 +2019,44 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
       {/* the film, held on the screen while its scenes pass over it */}
       <div aria-hidden className="absolute inset-0 -z-10">
         <div className="sticky top-0 h-[100svh] overflow-hidden">
-          {/* each scene's film, held in place: the next is already loaded beside it, so it's simply
-              there as its scene comes in (no fade), two are never seen at once, and two scenes in a
-              row with the same film share it, so it holds */}
-          {[...new Set(shots.filter((_, i) => Math.abs(i - at) <= 1))].map((name) => (
-            <div
-              key={name}
-              className={cn("absolute inset-0", name === shots[at] ? "visible" : "invisible", SOFT)}
-            >
-              <ShapedLoop
-                name={name}
-                phone="reel"
-                wide="wide"
-                grain={false}
-                look={look?.film}
-                vignette={false}
-                steady
-                className="absolute inset-0"
-              />
-            </div>
-          ))}
+          {/* each slide's film, held in place, the next already loaded beside it: as its slide
+              comes in it dissolves in over the last one (still there under it till it's fully in),
+              and two slides in a row with the same film share it, so it holds */}
+          <div className="absolute inset-0 isolate">
+            {[
+              ...new Set([...shots.filter((_, i) => Math.abs(i - at) <= 1), ...(was ? [was] : [])]),
+            ].map((name) => (
+              <div
+                key={name}
+                className={cn(
+                  "absolute inset-0",
+                  name === shown
+                    ? "z-[2] motion-safe:animate-in motion-safe:fade-in motion-safe:ease-in-out"
+                    : name === was
+                      ? "z-[1]"
+                      : "invisible",
+                  SOFT,
+                )}
+                style={name === shown ? { animationDuration: `${DISSOLVE}ms` } : undefined}
+              >
+                <ShapedLoop
+                  name={name}
+                  phone="reel"
+                  wide="wide"
+                  grain={false}
+                  look={look?.film}
+                  vignette={false}
+                  steady
+                  className="absolute inset-0"
+                />
+              </div>
+            ))}
+          </div>
           <span className="absolute inset-0 lg:hidden" style={{ background: WASH.even }} />
           <span className="absolute inset-0 max-lg:hidden" style={{ background: WASH.side }} />
+          {/* film grain over the picture: overlay, so it shows where the film does and leaves the
+              paper the words sit on clean */}
+          <Grain strength={GRAIN} />
           {/* real estate's look: a drawing sheet's corners round the film */}
           {look?.mark === "corners" && (
             <span className="absolute inset-4 sm:inset-6">
@@ -2096,13 +2132,13 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
         </Rise>
       </div>
 
-      {/* the services, a scene each */}
+      {/* the services, a slide each: a screen of its own, so its film is the only one while it's read */}
       {book.services.map((x, k) => (
         <div
           key={x.id}
           id={k === 0 ? "services" : undefined}
           ref={scene(k + 2)}
-          className={cn(room, k === 0 && "scroll-mt-20 sm:scroll-mt-24")}
+          className={cn(room, "min-h-[100svh]", k === 0 && "scroll-mt-20 sm:scroll-mt-24")}
         >
           <Rise className="mx-auto w-full max-w-6xl">
             <div className="max-w-2xl">
@@ -2295,6 +2331,7 @@ function FilmSheet({
             background: `linear-gradient(180deg, ${paper(10)}, ${paper(25)} 30%, ${paper(80)} 58%, ${paper(96)})`,
           }}
         />
+        <Grain strength={GRAIN} className="z-[3]" />
       </div>
       <button
         type="button"

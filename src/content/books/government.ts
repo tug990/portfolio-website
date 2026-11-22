@@ -33,7 +33,7 @@ export const GOVERNMENT: ServiceBook = {
   cover: {
     kicker: "For government departments and district administrations",
     title: "We film your department’s work in the field.",
-    text: "We also make them for state missions and PSUs (public sector undertakings). A scheme is filmed where it is implemented, with its beneficiaries on camera and the figures from the progress report on screen.",
+    text: "Documentary films shot where your scheme is implemented, with its beneficiaries on camera. For state missions and PSUs too.",
   },
   intro: {
     title: "What the progress report can’t show",

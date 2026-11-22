@@ -4,12 +4,12 @@ import type { ServiceBook } from "@/content/service-books";
 export const CORPORATE: ServiceBook = {
   // told as a film: the footage it’s cut with (supplied to us, one shot to a loop)
   reel: {
-    loops: { intro: "corp-plant", research: "corp-mill", talk: "corp-pitch" },
+    loops: { intro: "corp-plant", research: "corp-mill", talk: "corp-suit" },
     services: {
       "csr-film": "corp-mill",
       "csr-impact-story": "corp-sparks",
       "brand-film": "corp-plant",
-      "pr-film": "corp-pitch",
+      "pr-film": "corp-sparks",
       "personal-branding": "corp-suit",
     },
     cut: { lines: ["Show the", "real work"], loop: "corp-sparks" },
@@ -23,9 +23,6 @@ export const CORPORATE: ServiceBook = {
       "corp-07",
       "corp-08",
       "corp-09",
-      "corp-10",
-      "corp-11",
-      "corp-12",
     ],
   },
   itemWord: "Service",
