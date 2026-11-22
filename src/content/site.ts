@@ -4,7 +4,7 @@ export const SITE = {
   role: "A non-fiction visual studio by Famecast",
   tagline: "Where the light comes through.",
   description:
-    "Documentary films of real work on the ground, for NGOs, companies, government, education and real estate.",
+    "Documentary films of real work on the ground, for NGOs, companies, government, healthcare, education and real estate.",
   email: "info@insightlab.media",
   // the phone number, as people should read it (e.g. "+91 98765 43210"): on the Contact page
   // once it's filled in (left empty, it isn't shown)
@@ -67,7 +67,8 @@ export const ABOUT_PERSPECTIVE_TITLE = "Know us from the perspective of you";
 /* who we are, in a few lines in the sky between the picker and the door (the studio's own words) */
 export const ABOUT_STUDIO =
   "Insight Lab is a non-fiction visual storytelling studio by Famecast. Since 2019, Famecast has built its creative journey around finding and telling stories across diverse landscapes, from major film promotions and election campaigns to government communication and advertising films. Now, Insight Lab takes this legacy forward through documentary filmmaking, ground-level research and cinematic visual journalism.";
-export type PerspectiveId = "ngo" | "corporate" | "government" | "real-estate" | "education";
+export type PerspectiveId =
+  "ngo" | "corporate" | "government" | "real-estate" | "education" | "healthcare";
 export const ABOUT_PERSPECTIVES: {
   id: PerspectiveId;
   label: string;
@@ -104,20 +105,20 @@ export const ABOUT_PERSPECTIVES: {
   {
     id: "ngo",
     label: "NGO",
-    title: "Stories that move people to act",
-    text: "We film the people and places your work reaches, so donors, partners and the public can see the change for themselves, in the words of those who lived it.",
+    title: "Let your donors see the work in the field",
+    text: "We film your programmes where they run, with your field team and the communities you work with, so the people who fund you can see the work for themselves instead of only reading about it in a report.",
     offers: [
       {
         title: "Impact documentaries",
-        text: "Your programme on the ground, told through the people it serves.",
+        text: "Your project filmed from its start to its end, with the people it works with.",
       },
       {
-        title: "Campaign films",
-        text: "Short true stories that open hearts and wallets, made for every screen.",
+        title: "Case story films",
+        text: "One person your programme worked with, in their own words, for your appeals and social media.",
       },
       {
         title: "Reports on film",
-        text: "Your year, or a project's results, as a film people actually watch.",
+        text: "Your quarterly or annual report as a short film, with your numbers beside the people they belong to.",
       },
     ],
     clients: ["MLINDA Charitable Trust", "Better World Foundation"],
@@ -135,20 +136,20 @@ export const ABOUT_PERSPECTIVES: {
   {
     id: "corporate",
     label: "Corporate",
-    title: "Your work, told as a true story",
-    text: "Non-fiction films about your people, your craft and the good your company does, told with a documentary eye rather than as an advert.",
+    title: "Let people see the work behind your reports",
+    text: "We film your company’s corporate social responsibility (CSR) projects where they run, with your implementing partner, and the people who lead your company, so your board and people outside the company can see the work.",
     offers: [
       {
-        title: "Brand documentaries",
-        text: "Who you are and why it matters, through real people and real places.",
+        title: "CSR films",
+        text: "Your projects filmed at the sites, with the people they work with and your own figures on screen.",
       },
       {
-        title: "CSR and sustainability films",
-        text: "The change your programmes make, shown honestly and on the ground.",
+        title: "Company films",
+        text: "How your company started and how it works today, told by the people who run it.",
       },
       {
-        title: "Culture and leadership stories",
-        text: "The people behind the name, for your teams, investors and hires.",
+        title: "Leadership films",
+        text: "Your founder or leaders on film, for the press, award juries, investors and LinkedIn.",
       },
     ],
     clients: [],
@@ -171,20 +172,20 @@ export const ABOUT_PERSPECTIVES: {
   {
     id: "government",
     label: "Government Institution",
-    title: "Public programmes, seen through the people they reach",
-    text: "We document schemes and initiatives where they happen, in the voices of the citizens they serve, for ministries, departments and the public.",
+    title: "Your schemes, filmed where they reach people",
+    text: "We film your department’s work in the field, with the people it reached, so you can show it at a review meeting and it stays on record after you hand over charge.",
     offers: [
       {
         title: "Scheme documentaries",
-        text: "How a programme works on the ground, from policy to a family's life.",
+        text: "How a scheme was carried out in the field, and what changed for the people it reached.",
       },
       {
-        title: "Impact stories",
-        text: "Short films of real change, for outreach, reviews and the media.",
+        title: "Beneficiary stories",
+        text: "One person from the beneficiary list, from where they started to where they are now.",
       },
       {
-        title: "Docu-series",
-        text: "A state or a mission told across episodes, district by district.",
+        title: "Documentary series",
+        text: "A large programme filmed in episodes, one place or one theme at a time.",
       },
     ],
     clients: [
@@ -219,20 +220,20 @@ export const ABOUT_PERSPECTIVES: {
   {
     id: "real-estate",
     label: "Real Estate Company",
-    title: "The story of a place, before it's built and after",
-    text: "Films about the land, the people and the craft behind a project, made to last longer than a sales video and to be trusted more.",
+    title: "Films of your projects, from launch to possession",
+    text: "We film your sites and the areas around them, so your sales team and channel partners can show buyers the real project, wherever those buyers live.",
     offers: [
       {
-        title: "Project documentaries",
-        text: "From the first drawing to the first family moving in.",
+        title: "Launch and walkthrough films",
+        text: "The actual site and sample flat, ready for launch week and for buyers who can’t visit.",
       },
       {
-        title: "Craft and construction stories",
-        text: "The hands and the thinking behind what you build.",
+        title: "Construction progress films",
+        text: "An update from site every month or quarter, for your buyers and your RERA progress reports.",
       },
       {
-        title: "Neighbourhood films",
-        text: "The place and the community your project becomes part of.",
+        title: "Handover and track-record films",
+        text: "Possession day and the projects you’ve delivered, ready for your next launch.",
       },
     ],
     clients: [],
@@ -257,20 +258,20 @@ export const ABOUT_PERSPECTIVES: {
     // was /about/university, which still leads there: routes/about.$perspective.tsx)
     id: "education",
     label: "Educational Institution",
-    title: "Learning and campus life, told truthfully",
-    text: "Documentaries about your students, your teachers and what they go on to achieve, from a school's first morning to a university's convocation, for students, parents, partners and everyone who should know.",
+    title: "Ordinary days at your school, college or university, on film",
+    text: "We film your students and teachers on ordinary days, so families who never visit your campus can see what it’s like to study with you.",
     offers: [
       {
         title: "Campus films",
-        text: "What a day at your school, college or university really feels like.",
+        text: "An ordinary day with your students and teachers, for families who can’t visit.",
       },
       {
         title: "Student and alumni stories",
-        text: "Real students and former students, in their own words.",
+        text: "Your current and former students, in their own words.",
       },
       {
-        title: "Programme and research films",
-        text: "What you teach and discover, made clear without dumbing it down.",
+        title: "Course and research films",
+        text: "How a course is taught and where it leads, and your research explained in plain words.",
       },
     ],
     clients: [],
@@ -293,6 +294,43 @@ export const ABOUT_PERSPECTIVES: {
         subject: 0.55,
         top: "#225899",
       },
+    },
+  },
+  {
+    // hospitals, clinics and diagnostic centres, and health programmes
+    id: "healthcare",
+    label: "Healthcare",
+    title: "Films of the work inside your hospital",
+    text: "Documentary films made in your wards, outpatient departments and outreach camps with your own doctors, nurses and staff, for the families, referring doctors, partners and nurses you need to reach.",
+    offers: [
+      {
+        title: "Hospital story films",
+        text: "How your hospital works, told by the staff who run it.",
+      },
+      {
+        title: "Care explainers",
+        text: "What to expect before an admission or a procedure, filmed once by your nurses in the patient’s language.",
+      },
+      {
+        title: "Health awareness films",
+        text: "Screening and prevention explained in the local language, by the health workers people already trust.",
+      },
+    ],
+    clients: [],
+    ask: "A film for our hospital",
+    hero: {
+      alt: "A hospital at sunrise, its red cross bright on a white wall, a doctor wheeling a patient along the drive, an ambulance and trees in the warm light",
+      tone: "dark",
+      words: "left",
+      top: "#5a87ac",
+      fade: [0, 0.3],
+      wide: {
+        src: "/brand/world-healthcare-wide.webp",
+        size: [1672, 941],
+        focus: "62% 50%",
+        subject: 0.5,
+      },
+      tall: { src: "/brand/world-healthcare-tall.webp", size: [941, 1672], subject: 0.48 },
     },
   },
 ];
@@ -381,7 +419,8 @@ export const HISTORY: {
 ];
 
 /*
-  "In their words": on the About page (a slideshow; the Contact page's drawer is unused). Voices
+  "In their words": not shown now (taken off the About page's perspectives; the Contact page's
+  drawer is unused too), kept to bring back. Voices
   from our films: what people say on camera, word for word from the films' English subtitles
   ("…" where a few words are left out), under their names and roles as the films' own captions
   give them; `company` is where (the card's label and its tab). `film`: the film's slug, for

@@ -7,23 +7,13 @@ import {
   ABOUT_PERSPECTIVE_TITLE,
   ABOUT_STUDIO,
   APPROACH,
-  TESTIMONIALS,
   SITE,
   WORK_CLIENTS,
   type PerspectiveId,
 } from "@/content/site";
 import { PROJECTS } from "@/content/projects";
 import { SERVICE_BOOKS } from "@/content/service-books";
-import {
-  Kicker,
-  LOUD,
-  Part,
-  PrismEdge,
-  Rise,
-  ServiceBook,
-  Title,
-  HEAD,
-} from "@/components/ServiceBook";
+import { Kicker, LOUD, Part, Rise, ServiceBook, Title, HEAD } from "@/components/ServiceBook";
 import { ShotTrail } from "@/components/StoryFilm";
 import { ClientBadge, VideoCard } from "@/components/work/WorkUI";
 import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
@@ -107,9 +97,8 @@ export function HangingHeadline() {
 /*
   The studio itself, in the language of the perspective's Service Book
   (ServiceBook.tsx's pieces: its parts, small spaced capitals, light
-  headings, hairline cards, black for what's chosen, the prism's
-  light along a dark card's top, the tricolour for lines). It sits between
-  how we work together and let's talk: our approach, and what people say.
+  headings, hairline cards, the tricolour for lines). It sits between how
+  we work together and let's talk: our approach.
   Each part reads its content from content/site.ts, and a part with nothing
   in it is left out.
 */
@@ -117,16 +106,9 @@ export function AboutUs() {
   return (
     <div id="about" className="scroll-mt-20 sm:scroll-mt-24">
       <Approach />
-      <Testimonials />
     </div>
   );
 }
-
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/* a chosen one in a list: black, as the services' */
-const CHOSEN = "bg-foreground text-background shadow-[0_14px_30px_-18px_rgba(0,0,0,0.6)]";
-const UNCHOSEN = "bg-foreground/[0.05] hover:bg-foreground/[0.09]";
 
 /* ---------- Our approach: the habit struck through, and what we do instead ---------- */
 
@@ -155,136 +137,6 @@ function Approach() {
         ))}
       </div>
     </Part>
-  );
-}
-
-/* ---------- In their words: one at a time, chosen from a list ---------- */
-
-function Testimonials() {
-  const [i, setI] = useState(0);
-  if (!TESTIMONIALS.length) return null;
-  const t = TESTIMONIALS[i];
-  const film = t.film ? PROJECTS.find((p) => p.slug === t.film) : undefined;
-  // the words they're known for, marked with the tricolour
-  const [before, after] = t.highlight ? t.quote.split(t.highlight) : [t.quote, undefined];
-  return (
-    <Part className="bg-muted/60">
-      <Title>In their words</Title>
-      <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_17rem] lg:gap-8">
-        <figure
-          key={i}
-          className="relative overflow-hidden rounded-2xl bg-[#0a0a0a] p-7 text-white duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-10"
-        >
-          <PrismEdge />
-          <Kicker className="text-white/55">{t.company}</Kicker>
-          {!!t.stars && (
-            <p
-              className="mt-4 text-[15px] tracking-[0.2em] text-white/85"
-              aria-label={`${t.stars} of 5`}
-            >
-              {"★".repeat(t.stars)}
-              <span className="text-white/25">{"★".repeat(5 - t.stars)}</span>
-            </p>
-          )}
-          <blockquote className={cn(HEAD, "mt-5 text-[23px] leading-snug sm:text-[30px]")}>
-            “{before}
-            {after !== undefined && (
-              <span className="bg-[image:var(--tricolour)] bg-[length:100%_3px] bg-bottom bg-no-repeat pb-0.5">
-                {t.highlight}
-              </span>
-            )}
-            {after}”
-          </blockquote>
-          <figcaption className="mt-8 flex items-center gap-3">
-            <span className="h-12 w-12 shrink-0 overflow-hidden rounded-full ring-1 ring-white/20">
-              <Portrait name={t.name} image={t.image} className="text-[15px]" />
-            </span>
-            <span className="text-[14px] leading-snug">
-              <span className="block font-medium">{t.name}</span>
-              <span className="block text-white/60">
-                {t.role}, {t.company}
-              </span>
-            </span>
-          </figcaption>
-          {/* the film they're in: opens its page, where it plays */}
-          {film && (
-            <Link
-              to="/projects/$slug"
-              params={{ slug: film.slug }}
-              className="press mt-7 flex w-fit max-w-full items-center gap-3 rounded-2xl border border-white/15 bg-white/[0.06] py-2 pl-2 pr-5 transition hover:bg-white/[0.12]"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-black">
-                <svg aria-hidden viewBox="0 0 24 24" className="ml-0.5 h-4 w-4" fill="currentColor">
-                  <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
-                </svg>
-              </span>
-              <span className="min-w-0 leading-snug">
-                <span className="block text-[11px] uppercase tracking-[0.2em] text-white/55">
-                  Watch the film{film.duration ? ` · ${film.duration}` : ""}
-                </span>
-                <span className="block text-[15px] font-medium">{film.title}</span>
-              </span>
-            </Link>
-          )}
-        </figure>
-        {TESTIMONIALS.length > 1 && (
-          <div
-            role="tablist"
-            aria-label="In their words"
-            className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0"
-          >
-            {TESTIMONIALS.map((x, j) => (
-              <button
-                key={j}
-                type="button"
-                role="tab"
-                aria-selected={j === i}
-                onClick={() => setI(j)}
-                className={cn(
-                  "press flex shrink-0 items-center gap-3 rounded-xl px-3.5 py-2.5 text-left transition lg:py-3",
-                  j === i ? CHOSEN : UNCHOSEN,
-                )}
-              >
-                <span className={cn(HEAD, "text-[15px]", j === i ? "text-white" : "opacity-45")}>
-                  {pad(j + 1)}
-                </span>
-                <span className="whitespace-nowrap text-[14px] font-medium">{x.company}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </Part>
-  );
-}
-
-/* a portrait, or their initials */
-function Portrait({
-  name,
-  image,
-  className,
-}: {
-  name: string;
-  image?: string;
-  className?: string;
-}) {
-  const initials = name
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-  return image ? (
-    <img src={image} alt="" className="h-full w-full object-cover grayscale" />
-  ) : (
-    <span
-      className={cn(
-        "flex h-full w-full items-center justify-center bg-muted font-medium text-black/35",
-        className,
-      )}
-    >
-      {initials}
-    </span>
   );
 }
 
@@ -948,6 +800,7 @@ const WORLD_LIGHT: Record<PerspectiveId, [string, string]> = {
   government: ["rgba(255,153,51,0.18)", "rgba(19,136,8,0.14)"],
   "real-estate": ["rgba(185,140,90,0.2)", "rgba(255,196,130,0.18)"],
   education: ["rgba(40,60,200,0.18)", "rgba(140,100,255,0.16)"],
+  healthcare: ["rgba(255,90,90,0.15)", "rgba(80,170,255,0.16)"],
 };
 
 /*
