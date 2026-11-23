@@ -71,7 +71,9 @@ const FLAG = {
   cardHead: "#14213d",
   line: "var(--tricolour)",
   bar: "var(--tricolour-v)",
-  film: "contrast(1.04) saturate(1.02) brightness(1.03)",
+  // no grade on the films: a CSS filter on a film playing across a big screen is redone for every
+  // frame and was what made the pages lag on computers (the films are bright as they are)
+  film: "none",
 };
 const LOOKS: Record<PerspectiveId, Look> = {
   // a field notebook: a pen line under the title, notebook-slip cards
@@ -1943,15 +1945,12 @@ const WASH = {
   it, and the words scroll over it slide by slide: one film to a slide, never changing while that
   slide is read, and the next slide's film dissolving in over it as that slide comes in
   (`DISSOLVE`). The slides: the introduction (its lead, the rest of it and its outcomes, all on
-  the introduction's film), each service a slide of its own, space either side of it (`SLIDE`) (its number, name,
+  the introduction's film), each service a slide of its own, close together (its number, name,
   line and who it's for; "See what you receive" opens its details, `FilmSheet`), and the research
   (the findings pinned over the film as press cuttings). Only the shot on screen and the ones
   either side of it are loaded (on a phone, its tall cut, framed on whoever's in each shot).
 */
 const DISSOLVE = 1200;
-/* the space round each service's slide: enough to set it apart and for its film to dissolve into the
-   next while the eye is between them, not a screen of its own (a short slide left it mostly empty) */
-const SLIDE = "py-[11svh] sm:py-[11svh]";
 function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
   const reel = book.reel!;
   const { intro, research } = book;
@@ -2050,6 +2049,7 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
                   look={look?.film}
                   vignette={false}
                   steady
+                  playing={name === shown || name === was}
                   className="absolute inset-0"
                 />
               </div>
@@ -2107,7 +2107,7 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
             )}
           >
             {intro.outcomes.map((o) => (
-              <div key={o.title} className={cn("p-3.5 backdrop-blur-md sm:p-4", look?.card)}>
+              <div key={o.title} className={cn("p-3.5 max-lg:backdrop-blur-md sm:p-4", look?.card)}>
                 <svg
                   aria-hidden
                   viewBox="0 0 24 24"
@@ -2135,13 +2135,13 @@ function FilmStory({ book, show }: { book: Book; show: (id: string) => void }) {
         </Rise>
       </div>
 
-      {/* the services, a slide each, set apart by `SLIDE`'s space (where its film dissolves into the next) */}
+      {/* the services, a slide each, close together: as the next comes up its film dissolves in */}
       {book.services.map((x, k) => (
         <div
           key={x.id}
           id={k === 0 ? "services" : undefined}
           ref={scene(k + 2)}
-          className={cn(room, SLIDE, k === 0 && "scroll-mt-20 sm:scroll-mt-24")}
+          className={cn(room, k === 0 && "scroll-mt-20 sm:scroll-mt-24")}
         >
           <Rise className="mx-auto w-full max-w-6xl">
             <div className="max-w-2xl">

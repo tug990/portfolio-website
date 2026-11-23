@@ -99,8 +99,10 @@ const calm = () =>
 
 /*
   Film grain over whatever it's put in (its parent: relative): fine static, a random grey for every
-  pixel, changing many times a second while it's on screen, as film's does (drawn on a canvas from
-  the noise tiles, each frame a tile at a random offset); still under reduced motion.
+  pixel, changing many times a second while it's on screen, as film's does; still under reduced
+  motion. Light to run on any screen: drawn once, from a noise tile, onto a canvas a tile larger than
+  its box each way, then only moved to a random offset each time (a move the graphics card makes on
+  its own, nothing drawn again).
 */
 export function Grain({
   strength = 0.16,
@@ -114,35 +116,39 @@ export function Grain({
      shows even where the picture's been darkened for words */
   blend?: "overlay" | "normal";
 }) {
+  const box = useRef<HTMLSpanElement>(null);
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
+    const b = box.current;
     const c = ref.current;
     const ctx = c?.getContext("2d");
-    if (!c || !ctx) return;
-    const patterns = noiseTiles().map((t) => ctx.createPattern(t, "repeat")!);
-    const draw = () => {
+    if (!b || !c || !ctx) return;
+    const pattern = ctx.createPattern(noiseTiles()[0], "repeat")!;
+    // a grain to a pixel of the page, over the box and a tile more each way
+    const size = () => {
+      const r = b.getBoundingClientRect();
+      c.width = Math.max(1, Math.ceil(r.width)) + TILE;
+      c.height = Math.max(1, Math.ceil(r.height)) + TILE;
+      c.style.width = `${c.width}px`;
+      c.style.height = `${c.height}px`;
+      ctx.fillStyle = pattern;
+      ctx.fillRect(0, 0, c.width, c.height);
+    };
+    const move = () => {
       const x = (Math.random() * TILE) | 0;
       const y = (Math.random() * TILE) | 0;
-      ctx.setTransform(1, 0, 0, 1, x, y);
-      ctx.fillStyle = patterns[(Math.random() * patterns.length) | 0];
-      ctx.fillRect(-x, -y, c.width, c.height);
-    };
-    // a grain to a pixel of the page
-    const size = () => {
-      const r = c.getBoundingClientRect();
-      c.width = Math.max(1, Math.ceil(r.width));
-      c.height = Math.max(1, Math.ceil(r.height));
-      draw();
+      c.style.transform = `translate3d(${-x}px, ${-y}px, 0)`;
     };
     size();
+    move();
     const ro = new ResizeObserver(size);
-    ro.observe(c);
+    ro.observe(b);
     if (calm()) return () => ro.disconnect();
     let seen = false;
     const io = new IntersectionObserver(([e]) => (seen = e.isIntersecting));
-    io.observe(c);
+    io.observe(b);
     const timer = window.setInterval(() => {
-      if (seen && !document.hidden) draw();
+      if (seen && !document.hidden) move();
     }, 1000 / GRAIN_FPS);
     return () => {
       window.clearInterval(timer);
@@ -151,16 +157,22 @@ export function Grain({
     };
   }, []);
   return (
-    <canvas
-      ref={ref}
+    <span
+      ref={box}
       aria-hidden
       className={cn(
-        "pointer-events-none absolute inset-0 z-[1] h-full w-full",
+        "pointer-events-none absolute inset-0 z-[1] overflow-hidden",
         blend === "overlay" && "mix-blend-overlay",
         className,
       )}
-      style={{ opacity: strength, imageRendering: "pixelated" }}
-    />
+      style={{ opacity: strength }}
+    >
+      <canvas
+        ref={ref}
+        className="absolute left-0 top-0 will-change-transform"
+        style={{ imageRendering: "pixelated" }}
+      />
+    </span>
   );
 }
 
@@ -181,6 +193,7 @@ export function Loop({
   look,
   position,
   steady = false,
+  playing = true,
 }: {
   name: string;
   shape: Shape;
@@ -199,8 +212,12 @@ export function Loop({
   position?: string;
   /* behind words: hold one shot, slowly (`SHOTS`, `STEADY`), never cutting */
   steady?: boolean;
+  /* false: loaded and ready on its first frame, but not playing (a film waiting its turn) */
+  playing?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  // on screen (or nearly), as last seen
+  const seen = useRef(false);
   const video = useRef<HTMLVideoElement>(null);
   // the shot's first frame, kept under the film for it to dissolve back into as it goes round
   const first = useRef<HTMLCanvasElement>(null);
@@ -215,18 +232,26 @@ export function Loop({
     if (!el) return;
     const io = new IntersectionObserver(
       ([e]) => {
+        seen.current = e.isIntersecting;
         if (e.isIntersecting) setNear(true);
         const v = video.current;
         if (!v) return;
         if (held) return;
-        if (e.isIntersecting) v.play().catch(() => {});
+        if (e.isIntersecting && playing) v.play().catch(() => {});
         else v.pause();
       },
       { rootMargin: "240px 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [near, held]);
+  }, [near, held, playing]);
+  // its turn comes or goes: play or wait (only one film behind the words is ever decoding)
+  useEffect(() => {
+    const v = video.current;
+    if (!v || held) return;
+    if (playing && seen.current) v.play().catch(() => {});
+    else if (!playing) v.pause();
+  }, [playing, near, held]);
   // one shot only: start on it, slow it, and go round within it, the end dissolving back into its
   // first frame (or hold its middle, drifting in)
   useEffect(() => {
@@ -236,18 +261,28 @@ export function Loop({
     let drift: Animation | undefined;
     let fade: Animation | undefined;
     let kept = false;
+    // copied at half size (it's only seen as the film dissolves into it), and only while the film
+    // is on its first frame
     const keep = () => {
       const c = first.current;
-      if (!c || v.readyState < 2) return;
+      if (kept || !c || v.readyState < 2 || Math.abs(v.currentTime - shot[0]) > 0.05) return;
       try {
-        c.width = v.videoWidth;
-        c.height = v.videoHeight;
-        c.getContext("2d")?.drawImage(v, 0, 0);
+        c.width = Math.round(v.videoWidth / 2);
+        c.height = Math.round(v.videoHeight / 2);
+        c.getContext("2d")?.drawImage(v, 0, 0, c.width, c.height);
         kept = true;
       } catch {
         // no first frame to dissolve into: it simply starts over
       }
     };
+    // a film waiting its turn (paused on its first frame) is copied once the page is idle, not in the
+    // middle of a scene changing; one already playing at once, before it moves on
+    const idle = (fn: () => void) => {
+      if (typeof window.requestIdleCallback === "function")
+        window.requestIdleCallback(fn, { timeout: 1500 });
+      else setTimeout(fn, 300);
+    };
+    const soon = () => (v.paused ? idle(keep) : keep());
     // back at the start, the film shows again over its own first frame (no change to see)
     const back = () => {
       fade?.cancel();
@@ -268,7 +303,7 @@ export function Loop({
       }
       v.addEventListener(
         "seeked",
-        () => (v.readyState >= 2 ? keep() : v.addEventListener("loadeddata", keep, { once: true })),
+        () => (v.readyState >= 2 ? soon() : v.addEventListener("loadeddata", soon, { once: true })),
         {
           once: true,
         },
@@ -290,7 +325,11 @@ export function Loop({
               v.currentTime = shot[0];
             })
             .catch(() => {});
-        } else if (!fade && (t >= shot[1] || t < shot[0] - 0.05)) v.currentTime = shot[0];
+        } else if (!fade && (t >= shot[1] || t < shot[0] - 0.05)) {
+          // no first frame kept yet: start over, and keep it this time
+          if (!kept) v.addEventListener("seeked", keep, { once: true });
+          v.currentTime = shot[0];
+        }
         raf = requestAnimationFrame(watch);
       };
       raf = requestAnimationFrame(watch);
@@ -303,7 +342,8 @@ export function Loop({
       fade?.cancel();
       v.removeEventListener("loadedmetadata", ready);
       v.removeEventListener("seeked", back);
-      v.removeEventListener("loadeddata", keep);
+      v.removeEventListener("loadeddata", soon);
+      v.removeEventListener("seeked", keep);
     };
   }, [near, shot, held]);
   const src = loopSrc(name, shape);
@@ -353,7 +393,7 @@ export function Loop({
           muted
           loop={!shot}
           playsInline
-          autoPlay={!held}
+          autoPlay={!held && playing}
           preload="auto"
           className={cn(
             "absolute inset-0 h-full w-full",
@@ -386,6 +426,7 @@ export function ShapedLoop({
   look,
   vignette,
   steady,
+  playing,
   className,
 }: {
   name: string;
@@ -397,6 +438,7 @@ export function ShapedLoop({
   look?: string;
   vignette?: boolean;
   steady?: boolean;
+  playing?: boolean;
   className?: string;
 }) {
   return (
@@ -409,6 +451,7 @@ export function ShapedLoop({
         look={look}
         vignette={vignette}
         steady={steady}
+        playing={playing}
         className={cn("sm:hidden", className)}
       />
       <Loop
@@ -419,6 +462,7 @@ export function ShapedLoop({
         look={look}
         vignette={vignette}
         steady={steady}
+        playing={playing}
         className={cn("max-sm:hidden", className)}
       />
     </>
