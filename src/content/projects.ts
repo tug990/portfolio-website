@@ -88,20 +88,207 @@ const chapters = (question: string, gettingIn: string | null, makingIt: string) 
   ].filter((c): c is { heading: string; text: string[] } => c !== null);
 
 /*
-  The films. First Nutrition Garden (written from the film itself, as it has
-  no write-up yet: Better World Foundation's, with the Khunti district
-  administration, as its closing card says). Then the twelve from "All Project
-  Page Details (12 Films)". Then four more, written from the films themselves
-  (their subtitles and on-screen names): Lucknow: Swachh Bharat Mission,
-  Banarasi Shehnai, Banarasi Wooden Toys and Maa Subhadra. Each plays from its
-  YouTube link (`youtube`), with its thumbnail (`image`). Still to come for all
-  of them, so not shown yet: the real release year (2026 is a placeholder),
+  The films, in the order the Work page shows them: first Banarasi Saree,
+  Mirzapur Carpet, Pandum Cafe, Mallakhamb, Khushbu Nag and Om Prakash Sahu,
+  then the rest. Nutrition Garden was written from the film itself, as it has
+  no write-up yet (Better World Foundation's, with the Khunti district
+  administration, as its closing card says); most come from "All Project Page
+  Details (12 Films)"; Banarasi Shehnai and Maa Subhadra from the films
+  themselves (their subtitles and on-screen names). Last come three from 2023,
+  written from their pictures: NABARD's Raushni Ki Raah Par, SIDHKOFED's
+  Namkum LAMPS and the Jharkhand government's The Ashrita Purti Story. More
+  are made but not yet released by the client: `UPCOMING`, below. Each plays from its YouTube
+  link (`youtube`), with its thumbnail (`image`). Still to come for all of
+  them, so not shown yet: the real release year (2026 is a placeholder),
   stills (the frames to take are noted by each), credits, and for most, how we
   got in. Their clients: Rising of Bastar, the Chhattisgarh government; Karanj
   Oil, MLINDA; Maa Subhadra, the Odisha government; the rest, the central
   government.
 */
 export const PROJECTS: Project[] = [
+  {
+    slug: "banarasi-saree",
+    title: "Banarasi Saree: Threads of Timeless Tradition",
+    summary:
+      "The Banarasi saree as a global fashion icon, seen through its showrooms and the weavers behind it.",
+    year: 2026,
+    tags: ["ODOP film"],
+    client: "Central Govt. of India",
+    duration: "6:14",
+    place: "Varanasi, Uttar Pradesh",
+    youtube: "https://youtu.be/UMAlKaI9NPQ",
+    image: "/work/banarasi-saree.webp",
+    themes: themes(
+      "Heritage Crafts",
+      "One District One Product",
+      "Weaver Livelihoods",
+      "Fashion and Markets",
+      "Cultural Heritage",
+    ),
+    body: [
+      "The Banarasi saree has become an icon of global fashion. The film visits showrooms where buyers treat a saree as a collectible, and workshops where weavers talk about the years when work became scarce and how they were connected to markets. It ends the way the city ends its day, with the evening aarti on the ghats.",
+    ],
+    story: chapters(
+      "What does it take for a craft to be loved around the world and still keep its weavers in steady work?",
+      "The film moves between showroom owners and weavers.",
+      "Aerial views of the ghats open the film, with a title over a red saree and the Ganga. Interviews run in showrooms and loom sheds, and the aarti closes it.",
+    ),
+    quote: { text: "It becomes a collectible piece for them.", name: "A speaker at a showroom" },
+    // stills to take: the ghats at the start (0:01), the weaver in the loom shed (3:33), the aarti (6:03)
+  },
+  {
+    slug: "mirzapur-carpet",
+    title: "Mirzapur Carpet",
+    summary:
+      "The carpet weavers of Mirzapur, their loom work and the fairs that bring them buyers.",
+    year: 2026,
+    tags: ["ODOP film"],
+    client: "Central Govt. of India",
+    duration: "6:11",
+    place: "Mirzapur, Uttar Pradesh",
+    youtube: "https://youtu.be/5OEbdC1OcSA",
+    image: "/work/mirzapur-carpet.webp",
+    themes: themes(
+      "Heritage Crafts",
+      "One District One Product",
+      "Artisan Livelihoods",
+      "Export Markets",
+      "Rural Enterprises",
+    ),
+    body: [
+      "The film opens on a wide view of the river and the city, then goes down to the looms. We watch hands trim a carpet with long shears and hear weavers say that work used to come only from time to time. The India Carpet Expo appears as a new meeting place between weavers and buyers, and the film closes on the hard-working hands behind every carpet.",
+    ],
+    story: chapters(
+      "How does a craft that depends on steady orders keep its weavers in work?",
+      "The film sits beside weavers at their looms.",
+      "Low-angle shots through the loom threads, close shots of tools on the carpet pile, and archive footage of the expo, with English subtitles over Hindi.",
+    ),
+    quote: { text: "Work was not available from time to time.", name: "A weaver" },
+    // stills to take: the river at the start (0:03), the shears on the carpet (1:07), the weaver through the loom (2:20)
+  },
+  {
+    slug: "pandum-cafe",
+    title: "Pandum Cafe",
+    summary:
+      "A brick-walled cafe in Bastar run as a place of dignity, livelihood and a second chance.",
+    year: 2026,
+    tags: ["Rise of Hope series"],
+    client: "Central Govt. of India",
+    duration: "4:46",
+    place: "Bastar, Chhattisgarh",
+    youtube: "https://youtu.be/L7yCpe_eYXM",
+    image: "/work/pandum-cafe.webp",
+    themes: themes(
+      "Rehabilitation",
+      "Women Empowerment",
+      "Rural Enterprises",
+      "Hospitality",
+      "Conflict to Opportunity",
+    ),
+    body: [
+      "The staff of the cafe tell us how they came to work there. One of them says that with her own earnings she can now buy the clothes she wears. A closing card states that the focus has been on both security and rehabilitation, and describes the cafe as a place of dignity, livelihood and second chance.",
+    ],
+    story: chapters(
+      "What does a second chance look like when it is a job, a uniform and a salary?",
+      "The people in the film speak about their own lives.",
+      "Interviews are shot against warm red brick inside the cafe, with a logo shot and a night exterior for the final card.",
+    ),
+    quote: {
+      text: "Now I'm able to both buy and wear them.",
+      name: "A member of the cafe's staff",
+    },
+    // stills to take: the man at the cafe's logo (0:51), the woman in the yellow shirt (1:48), the second interview (2:42)
+  },
+  {
+    slug: "mallakhamb",
+    title: "Mallakhamb",
+    summary:
+      "Children in Abujhmad take up the pole sport of mallakhamb, with a coach who says his dream is not dead yet.",
+    year: 2026,
+    tags: ["Rise of Hope series"],
+    client: "Central Govt. of India",
+    duration: "4:15",
+    place: "Abujhmad, Chhattisgarh",
+    youtube: "https://youtu.be/bgoLjkpqujQ",
+    image: "/work/mallakhamb.webp",
+    themes: themes(
+      "Sports",
+      "Youth",
+      "Khelo India",
+      "Conflict to Opportunity",
+      "Community Coaching",
+    ),
+    body: [
+      "Mallakhamb is a sport of gymnastics done on a wooden pole, and in Abujhmad it has become a way for children to find a future. Coaches go out looking for young talent. Durgeshwari Kumeti shares the medals her team has won, and a coach talks about his own dream. The film ends on the Abujhmad Mallakhamb Academy team, with a note on Khelo India and the Bastar Olympics.",
+    ],
+    story: chapters(
+      "Can a village sport in a conflict-affected area give children a reason to stay, train and dream?",
+      "The film is built around the academy, its coach and its young athletes.",
+      "Children lined up on a dusty ground open the film, followed by interviews at the pole, in front of a painted gym wall and on a tyre. A team photograph closes it.",
+    ),
+    quote: { text: "My dream is not dead yet.", name: "A coach" },
+    // stills to take: the children in a line (0:46), the man at the pole (1:36), Durgeshwari Kumeti (2:25)
+  },
+  {
+    slug: "khushbu-nag",
+    title: "Khushbu Nag",
+    summary:
+      "A young Bastar athlete and the people around her, in a region where sport is only now getting support.",
+    year: 2026,
+    tags: ["Rise of Hope series"],
+    client: "Central Govt. of India",
+    duration: "4:43",
+    place: "Bastar, Chhattisgarh",
+    youtube: "https://youtu.be/3YlufA888qk",
+    image: "/work/khushbu-nag.webp",
+    themes: themes(
+      "Sports",
+      "Women Empowerment",
+      "Youth",
+      "Khelo India",
+      "Conflict to Opportunity",
+    ),
+    body: [
+      "The film opens on barbed wire and mist, then moves to a young athlete whose name fills the title card. Voices from her community explain how hard it was to progress without support and how that is now changing. A closing card places her rise within Khelo India and the Bastar Olympics.",
+    ],
+    story: chapters(
+      "What happens to talent in a place that has long been seen only through conflict, once a track and a coach arrive?",
+      "The film follows one young athlete and speaks with those around her.",
+      "A silhouette against the sun carries the title, followed by interviews, training ground shots and a final card in English.",
+    ),
+    quote: { text: "However, that is changing now.", name: "From the film" },
+    // stills to take: the silhouette title (0:51), the athlete's interview (1:47), the closing card (4:34)
+  },
+  {
+    slug: "om-prakash-sahu",
+    title: "Om Prakash Sahu",
+    summary: "One man's long walk away from the gun and toward a livelihood in Gumla.",
+    year: 2026,
+    tags: ["Rise of Hope series"],
+    client: "Central Govt. of India",
+    duration: "5:00",
+    place: "Gumla, Jharkhand",
+    youtube: "https://youtu.be/aW0vNmOQRzQ",
+    image: "/work/om-prakash-sahu.webp",
+    themes: themes(
+      "Rehabilitation",
+      "Livelihoods",
+      "Rural Enterprises",
+      "Conflict to Opportunity",
+      "Inclusive Growth",
+    ),
+    body: [
+      "The title card begins with the words “From Gun”, and the film follows one man from that past toward a settled life. Om Prakash Sahu recalls a moment when a pistol was aimed at him. The film then moves to open farmland and water, where he and the people around him now earn a living.",
+    ],
+    story: chapters(
+      "What does it take for someone who lived with violence to build a life that other people trust?",
+      "The film rests on one man's willingness to tell his story.",
+      "Slow aerial shots of land and water, a black title card that builds letter by letter, and a seated interview in a village setting with English subtitles.",
+    ),
+    quote: { text: "He stepped forward, drew a pistol, and aimed at me.", name: "From the film" },
+    // (confirm the full title)
+    // stills to take: the seated interview (1:12), the land and water from the air (3:30), the man in the white shirt (4:15)
+  },
   {
     slug: "nutrition-garden",
     title: "Nutrition Garden",
@@ -325,224 +512,6 @@ export const PROJECTS: Project[] = [
     // stills to take: Adam Imam painting (0:30), the heron and fish (1:58), the museum wall (3:28)
   },
   {
-    slug: "khushbu-nag",
-    title: "Khushbu Nag",
-    summary:
-      "A young Bastar athlete and the people around her, in a region where sport is only now getting support.",
-    year: 2026,
-    tags: ["Rise of Hope series"],
-    client: "Central Govt. of India",
-    duration: "4:43",
-    place: "Bastar, Chhattisgarh",
-    youtube: "https://youtu.be/3YlufA888qk",
-    image: "/work/khushbu-nag.webp",
-    themes: themes(
-      "Sports",
-      "Women Empowerment",
-      "Youth",
-      "Khelo India",
-      "Conflict to Opportunity",
-    ),
-    body: [
-      "The film opens on barbed wire and mist, then moves to a young athlete whose name fills the title card. Voices from her community explain how hard it was to progress without support and how that is now changing. A closing card places her rise within Khelo India and the Bastar Olympics.",
-    ],
-    story: chapters(
-      "What happens to talent in a place that has long been seen only through conflict, once a track and a coach arrive?",
-      "The film follows one young athlete and speaks with those around her.",
-      "A silhouette against the sun carries the title, followed by interviews, training ground shots and a final card in English.",
-    ),
-    quote: { text: "However, that is changing now.", name: "From the film" },
-    // stills to take: the silhouette title (0:51), the athlete's interview (1:47), the closing card (4:34)
-  },
-  {
-    slug: "mallakhamb",
-    title: "Mallakhamb",
-    summary:
-      "Children in Abujhmad take up the pole sport of mallakhamb, with a coach who says his dream is not dead yet.",
-    year: 2026,
-    tags: ["Rise of Hope series"],
-    client: "Central Govt. of India",
-    duration: "4:15",
-    place: "Abujhmad, Chhattisgarh",
-    youtube: "https://youtu.be/bgoLjkpqujQ",
-    image: "/work/mallakhamb.webp",
-    themes: themes(
-      "Sports",
-      "Youth",
-      "Khelo India",
-      "Conflict to Opportunity",
-      "Community Coaching",
-    ),
-    body: [
-      "Mallakhamb is a sport of gymnastics done on a wooden pole, and in Abujhmad it has become a way for children to find a future. Coaches go out looking for young talent. Durgeshwari Kumeti shares the medals her team has won, and a coach talks about his own dream. The film ends on the Abujhmad Mallakhamb Academy team, with a note on Khelo India and the Bastar Olympics.",
-    ],
-    story: chapters(
-      "Can a village sport in a conflict-affected area give children a reason to stay, train and dream?",
-      "The film is built around the academy, its coach and its young athletes.",
-      "Children lined up on a dusty ground open the film, followed by interviews at the pole, in front of a painted gym wall and on a tyre. A team photograph closes it.",
-    ),
-    quote: { text: "My dream is not dead yet.", name: "A coach" },
-    // stills to take: the children in a line (0:46), the man at the pole (1:36), Durgeshwari Kumeti (2:25)
-  },
-  {
-    slug: "om-prakash-sahu",
-    title: "Om Prakash Sahu",
-    summary: "One man's long walk away from the gun and toward a livelihood in Gumla.",
-    year: 2026,
-    tags: ["Rise of Hope series"],
-    client: "Central Govt. of India",
-    duration: "5:00",
-    place: "Gumla, Jharkhand",
-    youtube: "https://youtu.be/aW0vNmOQRzQ",
-    image: "/work/om-prakash-sahu.webp",
-    themes: themes(
-      "Rehabilitation",
-      "Livelihoods",
-      "Rural Enterprises",
-      "Conflict to Opportunity",
-      "Inclusive Growth",
-    ),
-    body: [
-      "The title card begins with the words “From Gun”, and the film follows one man from that past toward a settled life. Om Prakash Sahu recalls a moment when a pistol was aimed at him. The film then moves to open farmland and water, where he and the people around him now earn a living.",
-    ],
-    story: chapters(
-      "What does it take for someone who lived with violence to build a life that other people trust?",
-      "The film rests on one man's willingness to tell his story.",
-      "Slow aerial shots of land and water, a black title card that builds letter by letter, and a seated interview in a village setting with English subtitles.",
-    ),
-    quote: { text: "He stepped forward, drew a pistol, and aimed at me.", name: "From the film" },
-    // (confirm the full title)
-    // stills to take: the seated interview (1:12), the land and water from the air (3:30), the man in the white shirt (4:15)
-  },
-  {
-    slug: "pandum-cafe",
-    title: "Pandum Cafe",
-    summary:
-      "A brick-walled cafe in Bastar run as a place of dignity, livelihood and a second chance.",
-    year: 2026,
-    tags: ["Rise of Hope series"],
-    client: "Central Govt. of India",
-    duration: "4:46",
-    place: "Bastar, Chhattisgarh",
-    youtube: "https://youtu.be/L7yCpe_eYXM",
-    image: "/work/pandum-cafe.webp",
-    themes: themes(
-      "Rehabilitation",
-      "Women Empowerment",
-      "Rural Enterprises",
-      "Hospitality",
-      "Conflict to Opportunity",
-    ),
-    body: [
-      "The staff of the cafe tell us how they came to work there. One of them says that with her own earnings she can now buy the clothes she wears. A closing card states that the focus has been on both security and rehabilitation, and describes the cafe as a place of dignity, livelihood and second chance.",
-    ],
-    story: chapters(
-      "What does a second chance look like when it is a job, a uniform and a salary?",
-      "The people in the film speak about their own lives.",
-      "Interviews are shot against warm red brick inside the cafe, with a logo shot and a night exterior for the final card.",
-    ),
-    quote: {
-      text: "Now I'm able to both buy and wear them.",
-      name: "A member of the cafe's staff",
-    },
-    // stills to take: the man at the cafe's logo (0:51), the woman in the yellow shirt (1:48), the second interview (2:42)
-  },
-  {
-    slug: "mirzapur-carpet",
-    title: "Mirzapur Carpet",
-    summary:
-      "The carpet weavers of Mirzapur, their loom work and the fairs that bring them buyers.",
-    year: 2026,
-    tags: ["ODOP film"],
-    client: "Central Govt. of India",
-    duration: "6:11",
-    place: "Mirzapur, Uttar Pradesh",
-    youtube: "https://youtu.be/5OEbdC1OcSA",
-    image: "/work/mirzapur-carpet.webp",
-    themes: themes(
-      "Heritage Crafts",
-      "One District One Product",
-      "Artisan Livelihoods",
-      "Export Markets",
-      "Rural Enterprises",
-    ),
-    body: [
-      "The film opens on a wide view of the river and the city, then goes down to the looms. We watch hands trim a carpet with long shears and hear weavers say that work used to come only from time to time. The India Carpet Expo appears as a new meeting place between weavers and buyers, and the film closes on the hard-working hands behind every carpet.",
-    ],
-    story: chapters(
-      "How does a craft that depends on steady orders keep its weavers in work?",
-      "The film sits beside weavers at their looms.",
-      "Low-angle shots through the loom threads, close shots of tools on the carpet pile, and archive footage of the expo, with English subtitles over Hindi.",
-    ),
-    quote: { text: "Work was not available from time to time.", name: "A weaver" },
-    // stills to take: the river at the start (0:03), the shears on the carpet (1:07), the weaver through the loom (2:20)
-  },
-  {
-    slug: "banarasi-saree",
-    title: "Banarasi Saree: Threads of Timeless Tradition",
-    summary:
-      "The Banarasi saree as a global fashion icon, seen through its showrooms and the weavers behind it.",
-    year: 2026,
-    tags: ["ODOP film"],
-    client: "Central Govt. of India",
-    duration: "6:14",
-    place: "Varanasi, Uttar Pradesh",
-    youtube: "https://youtu.be/UMAlKaI9NPQ",
-    image: "/work/banarasi-saree.webp",
-    themes: themes(
-      "Heritage Crafts",
-      "One District One Product",
-      "Weaver Livelihoods",
-      "Fashion and Markets",
-      "Cultural Heritage",
-    ),
-    body: [
-      "The Banarasi saree has become an icon of global fashion. The film visits showrooms where buyers treat a saree as a collectible, and workshops where weavers talk about the years when work became scarce and how they were connected to markets. It ends the way the city ends its day, with the evening aarti on the ghats.",
-    ],
-    story: chapters(
-      "What does it take for a craft to be loved around the world and still keep its weavers in steady work?",
-      "The film moves between showroom owners and weavers.",
-      "Aerial views of the ghats open the film, with a title over a red saree and the Ganga. Interviews run in showrooms and loom sheds, and the aarti closes it.",
-    ),
-    quote: { text: "It becomes a collectible piece for them.", name: "A speaker at a showroom" },
-    // stills to take: the ghats at the start (0:01), the weaver in the loom shed (3:33), the aarti (6:03)
-  },
-  {
-    slug: "lucknow-swachh-bharat",
-    title: "Lucknow: Swachh Bharat Mission",
-    summary:
-      "How Lucknow cleared its mountains of garbage and climbed from 44th in the Swachh Survekshan to among the three cleanest cities in India.",
-    year: 2026,
-    tags: ["Impact film"],
-    client: "Central Govt. of India",
-    duration: "9:39",
-    place: "Lucknow, Uttar Pradesh",
-    youtube: "https://youtu.be/WYbMtnKktUU",
-    image: "/work/lucknow-swachh-bharat.webp",
-    themes: themes(
-      "Urban Sanitation",
-      "Waste Management",
-      "Public Participation",
-      "Infrastructure",
-      "Cultural Heritage",
-    ),
-    body: [
-      "From the Swachh Bharat Mission's series The Stories of Transformation. Lucknow has always been known as a city of etiquette and culture, but the film admits that this identity had started to blur, with a dumping yard grown into a mountain. Then, in 2014, the Swachh Bharat Mission began. We follow Durgawati, a sanitation worker with Lucknow Nagar Nigam for ten years, and Swati Dwivedi, a ward in-charge in Zone 3, as waste is collected from every household, sorted into bottles, plastics, metal, glass and board, compacted at transfer stations and taken to the Shivri plant. Around 18.5 lakh metric tonnes of old waste are processed, a command centre and the 1533 helpline take complaints, and where garbage once stood 25 to 30 metres high there is now a park. The film ends on the city's climb from 44th in the Swachh Survekshan to among the three cleanest cities in the country.",
-    ],
-    story: chapters(
-      "What does it take to turn a city's mountains of garbage back into parks, and who does the work every morning?",
-      "The film follows the people who keep the city clean, from a sanitation worker and a ward in-charge to the engineers at the plants and the officials who run the mission.",
-      "Lucknow's monuments and streets open the film, the years of garbage turn to black and white, and colour returns with the sorting lines, the command centre and aerial views of the new park, with English subtitles over Hindi.",
-    ),
-    quote: {
-      text: "My work looks easy to people, but it is not.",
-      name: "Durgawati",
-      role: "sanitation worker, Lucknow Nagar Nigam",
-    },
-    // (confirm the client: the Swachh Bharat Mission's film, with Lucknow's Nagar Nigam)
-    // stills to take: the sweeper against the sky (2:00), the sorting line (3:50), the park from the air (8:30)
-  },
-  {
     slug: "banarasi-shehnai",
     title: "Banarasi Shehnai",
     summary:
@@ -578,37 +547,6 @@ export const PROJECTS: Project[] = [
     // stills to take: the boat at dawn (0:40), the shehnai played close (3:35), the young player on the boat (7:55)
   },
   {
-    slug: "banarasi-wooden-toys",
-    title: "Banarasi Wooden Toys",
-    summary:
-      "The lacquered wooden toys of Banaras, nearly lost to cheap machine-made ones, and how a GI tag and training brought their makers back.",
-    year: 2026,
-    tags: ["Heritage film"],
-    client: "Central Govt. of India",
-    duration: "8:07",
-    place: "Varanasi, Uttar Pradesh",
-    youtube: "https://youtu.be/c_uwB2nrO34",
-    image: "/work/banarasi-wooden-toys.webp",
-    themes: themes(
-      "Heritage Crafts",
-      "Artisan Livelihoods",
-      "Export Markets",
-      "Next Generation",
-      "Cultural Heritage",
-    ),
-    body: [
-      "In a world full of screens, the film asks how a simple wooden toy can still keep a child's curiosity alive. In the workshops of Varanasi, Rameshwar Singh, whose ancestors made toys for kings and for the crowds at the Ram Leela, shows how wood that arrives in lengths of eight or ten feet becomes a toy: cut, turned, sanded, coloured with non-toxic lacquer and polished with a bamboo or kewra leaf. There was a time when the toys stopped selling, and makers sat by the roadside or left to drive rickshaws and autos. Artisan cards, fairs in Delhi, Mumbai and Kolkata, a GI tag and a training scheme have brought them back, and one shop's toys now go as far as Dubai.",
-    ],
-    story: chapters(
-      "Can a wooden toy hold its own against a phone, and keep a centuries-old craft alive?",
-      "The film spends its time in family workshops and toy shops in Varanasi, with makers from three generations.",
-      "Close shots of the lathe and the lacquer, warm workshop interiors, the crowded lanes of Varanasi and children at play, with English subtitles over Hindi.",
-    ),
-    quote: { text: "Our ancestors even worked for the kings.", name: "Rameshwar Singh" },
-    // (confirm the client)
-    // stills to take: the spinning top (3:25), the painted dolls (5:10), the boy at the toy shop (8:05)
-  },
-  {
     slug: "maa-subhadra",
     title: "Maa Subhadra",
     summary:
@@ -637,6 +575,203 @@ export const PROJECTS: Project[] = [
     ),
     quote: { text: "The money I received has helped me a lot.", name: "Prabhati Behra" },
     // stills to take: the chariots at the Rath Yatra (0:30), Kukumina Das with turmeric (1:25), painting an idol (5:30)
+  },
+  // the last three, at the end of the Work page as asked: their year is their YouTube release
+  {
+    slug: "pahariya-raushni-ki-raah",
+    title: "Raushni Ki Raah Par: Pahariya Janjati",
+    summary:
+      "NABARD's film from the hill villages of the Pahariya: their fields and poultry, a pond dug for water, and light in their homes.",
+    year: 2023,
+    tags: ["Impact film"],
+    client: "NABARD",
+    duration: "6:10",
+    youtube: "https://youtu.be/c84_t_Ux9jo",
+    image: "/work/pahariya-raushni-ki-raah.webp",
+    themes: themes(
+      "Tribal Development",
+      "Sustainable Rural Growth",
+      "Rural Enterprises",
+      "Rural Electrification",
+    ),
+    body: [
+      "Raushni ki raah par means on the path of light. NABARD presents the film, which opens on hills and forest at sunrise and its title, Pahariya Janjati: the Pahariya, a tribe of the hills. In their villages it meets the people who speak in it: a woman at the door of her house, a board with NABARD's mark on the wall beside her; a young farmer in his field of vegetables and peas; a man sitting among his hens. From the air there's a pond dug in red earth; inside a dark home an old woman sits by a lit bulb, and outside another house a solar light stands on a pole. It ends on the hills and on Mahatma Gandhi's words: The future of India lies in its villages.",
+    ],
+    story: chapters(
+      "What does the path to light look like for the Pahariya, in their villages in the hills?",
+      null,
+      "Hills at sunrise and the forest floor, the villages from the air, people speaking at their homes and in their fields, and Mahatma Gandhi's words to close.",
+    ),
+    // (written from the film's pictures, as its Hindi isn't subtitled: confirm where it was filmed, the people's names, and add a quote)
+    // its thumbnail: the man by the lit bulb (5:34); stills to take: the title over the hills (0:05), the farmer in his field (3:12), the pond from the air (5:10)
+  },
+  {
+    slug: "namkum-lamps",
+    title: "Sahkarita Se Swavalamban: Namkum LAMPS",
+    summary:
+      "Self-reliance through cooperation: Namkum LAMPS, a cooperative society near Ranchi, and the farmers it serves, from fertiliser to the market.",
+    year: 2023,
+    tags: ["Case study film"],
+    client: "SIDHKOFED",
+    duration: "10:46",
+    place: "Namkum, Ranchi, Jharkhand",
+    youtube: "https://youtu.be/KTqYs6pCp2g",
+    image: "/work/namkum-lamps.webp",
+    themes: themes(
+      "Rural Enterprises",
+      "Financial Inclusion",
+      "Inclusive Growth",
+      "Sustainable Rural Growth",
+    ),
+    body: [
+      "Sahkarita se swavalamban means self-reliance through cooperation. The film opens on the hills, a waterfall and paddy being planted, then comes to Namkum LAMPS, a large-area multipurpose cooperative society, its yellow walls painted with IFFCO's fertiliser sale centre and the line khaad to khaad, beema bhi saath: fertiliser, and insurance too. Inside, sacks of fertiliser are stacked, records are kept on a computer, and women at the counter look after the members who come in. The manager, Niraj Kumar by the nameplate on his door, talks about the society's work, and an animated card sets out the seven principles of cooperation that make a LAMPS a support to the village economy. It closes in a vegetable market and on the words sahkar se satat vikas: lasting growth through cooperation.",
+    ],
+    story: chapters(
+      "How does a village cooperative society help its farmers stand on their own feet?",
+      null,
+      "Wide views of the hills and paddy fields, the society's yellow building and its counter, interviews in its office, and an animated card on the seven principles of cooperation, in Hindi.",
+    ),
+    // (written from the film's pictures, as its Hindi isn't subtitled: confirm the manager's name and add a quote)
+    // its thumbnail: the woman with paddy seedlings (10:22); stills to take: the title over the hills (0:02), the society's building (3:01), the market (10:27)
+  },
+  {
+    slug: "ashrita-purti",
+    title: "The Ashrita Purti Story",
+    summary:
+      "Ashrita Purti has been an ASHA worker, a Sahiya, in her village in Khunti since 2006, visiting mothers and young children and getting malnourished children care.",
+    year: 2023,
+    tags: ["Case study film"],
+    client: "Jharkhand Govt.",
+    duration: "4:37",
+    place: "Khunti, Jharkhand",
+    youtube: "https://youtu.be/wB5jMm0SgvE",
+    image: "/work/ashrita-purti.webp",
+    themes: themes("Mother and Child Health", "Nutrition Security", "Women Empowerment"),
+    body: [
+      "Ashrita Purti is an Accredited Social Health Activist, an ASHA, known in Jharkhand as a Sahiya, and has been one since 2006; when she started, she says, her husband and mother-in-law didn't support her. Her village in Khunti has about 1,100 people. She surveys eligible couples, advises pregnant women to take their vaccinations, holds the village health, sanitation and nutrition days and the committee and mothers' meetings, and visits the homes of pregnant women and of children aged three to fifteen months. When she finds a severely malnourished child, she advises the mother to take the child to the malnutrition treatment centre. The film follows her to the Nutrition on Wheels van, the anganwadi and the hospital, where a baby is born. Its closing card: since 2021, through the Nutrition on Wheels (CMAM) programme, 1,149 malnourished children have recovered in Khunti and Dhanbad.",
+    ],
+    story: chapters(
+      "What does an ASHA worker's day hold, in a village in Khunti?",
+      null,
+      "Ashrita walking the lanes of her village, the village from the air with its population on screen, interviews at her door, the Nutrition on Wheels van and a newborn at the hospital, with English subtitles over Hindi.",
+    ),
+    quote: {
+      text: "All I yearn for is to see the happiness in the faces of others.",
+      name: "Ashrita Purti",
+      role: "ASHA worker (Sahiya), Khunti",
+    },
+    // its thumbnail: Ashrita lifting a baby under the tree (4:22); stills to take: Ashrita at her door (1:32), the Nutrition on Wheels van (1:51), the newborn (4:10)
+  },
+];
+
+/*
+  Films we've made that the client hasn't released yet: on the Work page only,
+  at its foot under "Upcoming projects", their cards locked (the picture, no
+  film, no page). They're kept out of `PROJECTS`, so nothing else on the site
+  lists or plays them, and their YouTube links are kept out of the site and of
+  this repository, which is public (some are unlisted). When one is released,
+  add its link as `youtube` and move it into `PROJECTS`.
+*/
+export const UPCOMING: Project[] = [
+  {
+    slug: "banarasi-wooden-toys",
+    title: "Banarasi Wooden Toys",
+    summary:
+      "The lacquered wooden toys of Banaras, nearly lost to cheap machine-made ones, and how a GI tag and training brought their makers back.",
+    year: 2026,
+    tags: ["Heritage film"],
+    client: "Central Govt. of India",
+    duration: "8:07",
+    place: "Varanasi, Uttar Pradesh",
+    // its YouTube link is kept out of the site and this (public) repository till the client releases it
+    image: "/work/banarasi-wooden-toys.webp",
+    themes: themes(
+      "Heritage Crafts",
+      "Artisan Livelihoods",
+      "Export Markets",
+      "Next Generation",
+      "Cultural Heritage",
+    ),
+    body: [
+      "In a world full of screens, the film asks how a simple wooden toy can still keep a child's curiosity alive. In the workshops of Varanasi, Rameshwar Singh, whose ancestors made toys for kings and for the crowds at the Ram Leela, shows how wood that arrives in lengths of eight or ten feet becomes a toy: cut, turned, sanded, coloured with non-toxic lacquer and polished with a bamboo or kewra leaf. There was a time when the toys stopped selling, and makers sat by the roadside or left to drive rickshaws and autos. Artisan cards, fairs in Delhi, Mumbai and Kolkata, a GI tag and a training scheme have brought them back, and one shop's toys now go as far as Dubai.",
+    ],
+    story: chapters(
+      "Can a wooden toy hold its own against a phone, and keep a centuries-old craft alive?",
+      "The film spends its time in family workshops and toy shops in Varanasi, with makers from three generations.",
+      "Close shots of the lathe and the lacquer, warm workshop interiors, the crowded lanes of Varanasi and children at play, with English subtitles over Hindi.",
+    ),
+    quote: { text: "Our ancestors even worked for the kings.", name: "Rameshwar Singh" },
+    // (confirm the client)
+    // stills to take: the spinning top (3:25), the painted dolls (5:10), the boy at the toy shop (8:05)
+  },
+  {
+    slug: "lucknow-swachh-bharat",
+    title: "Lucknow: Swachh Bharat Mission",
+    summary:
+      "How Lucknow cleared its mountains of garbage and climbed from 44th in the Swachh Survekshan to among the three cleanest cities in India.",
+    year: 2026,
+    tags: ["Impact film"],
+    client: "Central Govt. of India",
+    duration: "9:39",
+    place: "Lucknow, Uttar Pradesh",
+    // its YouTube link is kept out of the site and this (public) repository till the client releases it
+    image: "/work/lucknow-swachh-bharat.webp",
+    themes: themes(
+      "Urban Sanitation",
+      "Waste Management",
+      "Public Participation",
+      "Infrastructure",
+      "Cultural Heritage",
+    ),
+    body: [
+      "From the Swachh Bharat Mission's series The Stories of Transformation. Lucknow has always been known as a city of etiquette and culture, but the film admits that this identity had started to blur, with a dumping yard grown into a mountain. Then, in 2014, the Swachh Bharat Mission began. We follow Durgawati, a sanitation worker with Lucknow Nagar Nigam for ten years, and Swati Dwivedi, a ward in-charge in Zone 3, as waste is collected from every household, sorted into bottles, plastics, metal, glass and board, compacted at transfer stations and taken to the Shivri plant. Around 18.5 lakh metric tonnes of old waste are processed, a command centre and the 1533 helpline take complaints, and where garbage once stood 25 to 30 metres high there is now a park. The film ends on the city's climb from 44th in the Swachh Survekshan to among the three cleanest cities in the country.",
+    ],
+    story: chapters(
+      "What does it take to turn a city's mountains of garbage back into parks, and who does the work every morning?",
+      "The film follows the people who keep the city clean, from a sanitation worker and a ward in-charge to the engineers at the plants and the officials who run the mission.",
+      "Lucknow's monuments and streets open the film, the years of garbage turn to black and white, and colour returns with the sorting lines, the command centre and aerial views of the new park, with English subtitles over Hindi.",
+    ),
+    quote: {
+      text: "My work looks easy to people, but it is not.",
+      name: "Durgawati",
+      role: "sanitation worker, Lucknow Nagar Nigam",
+    },
+    // (confirm the client: the Swachh Bharat Mission's film, with Lucknow's Nagar Nigam)
+    // stills to take: the sweeper against the sky (2:00), the sorting line (3:50), the park from the air (8:30)
+  },
+  {
+    slug: "vishwakarma-the-creators",
+    title: "Vishwakarma: The Creators",
+    summary:
+      "A 400-year-old craft of Varanasi that its people gave a pink colour, and the artisans the PM Vishwakarma Yojana is helping to carry it on.",
+    year: 2026,
+    tags: ["Impact film"],
+    client: "Central Govt. of India",
+    duration: "13:08",
+    place: "Varanasi, Uttar Pradesh",
+    image: "/work/vishwakarma-the-creators.webp",
+    body: [
+      "Varanasi lit at night, and a craft four hundred years old that the people here gave a pink colour, its drawing designed first. The artisans who learnt it from their ancestors tell of a time they wondered if learning it was a mistake; the PM Vishwakarma Yojana's training and stipend, and a stall at an international trade show, follow.",
+    ],
+    // (written from the film's English subtitles, for when it's released: check the words then, and write its story)
+    // its thumbnail: sunrise over the Ganga (0:57)
+  },
+  {
+    slug: "solar-revolution",
+    title: "Solar Revolution: India's Rise in the Solar Era",
+    summary:
+      "Rooftop solar under PM Surya Ghar in Lucknow: homes that now make their own power, and bills brought down to zero.",
+    year: 2026,
+    tags: ["Impact film"],
+    client: "Central Govt. of India",
+    duration: "12:05",
+    place: "Lucknow, Uttar Pradesh",
+    image: "/work/solar-revolution.webp",
+    body: [
+      "Power cuts around the world open the film; then Lucknow, where a beneficiary, a solar consultant and families with panels on their roofs talk about life before and after PM Surya Ghar: technical approval within seven to fifteen days, the motor, the AC and the cooler running, and, it says, 1.7 million families with zero bills.",
+    ],
+    // (written from the film's English subtitles, for when it's released: check the words then, and write its story)
+    // its thumbnail: the solar farm from the air (12:02)
   },
 ];
 
