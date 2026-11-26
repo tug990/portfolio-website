@@ -12,11 +12,11 @@ import { toast } from "sonner";
 import type { Project } from "@/content/projects";
 import type { WorkClient } from "@/content/site";
 import { Poster } from "@/components/Poster";
-import { SORTS, UI, clientOf, coverSources, filmOf, kindOf, type SortKey } from "@/lib/work";
+import { UI, clientOf, coverSources, filmOf, kindOf } from "@/lib/work";
 import { usePlayer } from "@/lib/player";
 import { ScrubFrame } from "@/components/work/ScrubFrame";
 import { BLURRED, BlurredFilm, STAGE } from "@/components/work/BlurredFilm";
-import { GLASS_PANEL, GLASS_PILL, MENU_IN, useMenu } from "@/lib/menu";
+import { GLASS_PANEL, MENU_IN } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 import { PlayButton } from "@/components/work/PlayButton";
 
@@ -589,90 +589,6 @@ export function Chip({
   );
 }
 
-/*
-  A row that scrolls sideways (chips, a shelf of films): by swiping, or on
-  wider screens with round arrow buttons at its ends, which show only while
-  there's more that way. The ends fade.
-*/
-export function Scroller({
-  children,
-  className,
-  gap = "gap-3",
-  step = 0.8,
-  label,
-}: {
-  children: ReactNode;
-  className?: string;
-  gap?: string;
-  step?: number;
-  label: string;
-}) {
-  const el = useRef<HTMLUListElement>(null);
-  const [ends, setEnds] = useState({ left: false, right: false });
-  const update = useCallback(() => {
-    const s = el.current;
-    if (!s) return;
-    setEnds({
-      left: s.scrollLeft > 4,
-      right: s.scrollLeft + s.clientWidth < s.scrollWidth - 4,
-    });
-  }, []);
-  useEffect(() => {
-    const s = el.current;
-    if (!s) return;
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(s);
-    return () => ro.disconnect();
-  }, [update]);
-  const go = (dir: 1 | -1) =>
-    el.current?.scrollBy({ left: dir * el.current.clientWidth * step, behavior: "smooth" });
-
-  const arrow = (dir: 1 | -1) => (
-    <button
-      type="button"
-      aria-label={dir > 0 ? "More" : "Back"}
-      onClick={() => go(dir)}
-      className={cn(
-        "absolute top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white text-[#0a0a0a] shadow-[0_2px_10px_rgba(20,23,46,0.18)] ring-1 ring-black/5 transition hover:bg-[#f4f3fa] sm:grid",
-        dir > 0 ? "-right-2" : "-left-2",
-      )}
-    >
-      <svg
-        aria-hidden
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-      >
-        <path d={dir > 0 ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} />
-      </svg>
-    </button>
-  );
-
-  return (
-    <div className={cn("relative", className)}>
-      {ends.left && arrow(-1)}
-      <ul
-        ref={el}
-        aria-label={label}
-        onScroll={update}
-        className={cn(
-          "flex snap-x overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-          gap,
-        )}
-        style={{
-          maskImage: `linear-gradient(90deg, ${ends.left ? "transparent, #000 40px" : "#000, #000"}, #000 calc(100% - 40px), ${ends.right ? "transparent" : "#000"})`,
-        }}
-      >
-        {children}
-      </ul>
-      {ends.right && arrow(1)}
-    </div>
-  );
-}
-
 /* ---------- a film's picture ---------- */
 
 /*
@@ -917,6 +833,64 @@ export function VideoCard({
           </p>
         </div>
         <CardMenu project={project} />
+      </div>
+    </article>
+  );
+}
+
+/*
+  A film we've made that the client hasn't released yet (content/projects.ts
+  `UPCOMING`), as a video card that's locked: its picture dimmed and softened,
+  a lock and "Coming soon" over it; its title, client, kind and year under it.
+  Nothing plays (no film, no preview on hover) and nothing opens.
+*/
+export function LockedCard({ project, sizes }: { project: Project; sizes: string }) {
+  const client = clientOf(project);
+  return (
+    <article aria-label={`${project.title}: coming soon`}>
+      <span className="relative -mx-4 block aspect-video w-[calc(100%+2rem)] overflow-hidden bg-[#0d0d16] sm:mx-0 sm:w-full sm:rounded-xl">
+        {coverSources(project) && (
+          <Cover
+            project={project}
+            sizes={sizes}
+            className="absolute inset-0 h-full w-full scale-105 object-cover blur-[3px] brightness-[0.5] saturate-[0.8]"
+          />
+        )}
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-white/10"
+        />
+        <span className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 text-white">
+          <svg
+            aria-hidden
+            viewBox="0 0 24 24"
+            className="h-8 w-8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="5" y="10.5" width="14" height="10" rx="2.2" />
+            <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+            <path d="M12 14.5v2.5" />
+          </svg>
+          <span className="tracked text-[11px] font-medium">Coming soon</span>
+        </span>
+      </span>
+      <div className="mt-3 flex items-start gap-3">
+        <Avatar client={client} size={36} className="mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 text-[16px] font-medium leading-[1.3] tracking-tight">
+            {project.title}
+          </h3>
+          <p className="tracked mt-1.5 truncate text-[10px] leading-[1.6]" style={{ color: MUTED }}>
+            {project.client ?? "Insight Lab"}
+          </p>
+          <p className="truncate text-[13px] leading-[1.5]" style={{ color: MUTED }}>
+            {[kindOf(project), project.year].filter(Boolean).join(" · ")}
+          </p>
+        </div>
       </div>
     </article>
   );
@@ -1205,66 +1179,6 @@ export function FilmBox({
   );
 }
 
-/* ---------- sorting ---------- */
-
-/*
-  Sort by: a glass button showing the current order ("Year (Newest First)",
-  or just "Newest" on phones, where "Sort by:" hides too), opening a glass
-  menu of the orders with a check by the current one. (lib/menu.ts)
-*/
-export function SortMenu({ value, onChange }: { value: SortKey; onChange: (k: SortKey) => void }) {
-  const m = useMenu();
-  return (
-    <div ref={m.root} className="relative flex items-center gap-2.5" style={UI}>
-      <span className="hidden text-sm font-medium text-black/80 sm:inline">Sort by:</span>
-      <button
-        ref={m.trigger}
-        type="button"
-        onClick={() => m.setOpen((o) => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={m.open}
-        aria-label={`Sort by: ${SORTS[value].label}`}
-        className={cn(
-          "flex h-9 items-center gap-1 rounded-full pl-3 pr-2 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-[#6d7bff]/50 sm:gap-1.5 sm:pl-4 sm:pr-3 sm:text-sm",
-          GLASS_PILL,
-        )}
-      >
-        <span className="whitespace-nowrap sm:hidden">{SORTS[value].short}</span>
-        <span className="hidden whitespace-nowrap sm:inline">{SORTS[value].label}</span>
-        <Chevron className={cn("transition-transform", m.open && "rotate-180")} />
-      </button>
-      {m.open && (
-        <div
-          role="listbox"
-          aria-label="Sort by"
-          className={cn(
-            "absolute right-0 top-full z-30 mt-2 w-56 origin-top-right rounded-2xl p-1.5",
-            GLASS_PANEL,
-            MENU_IN,
-          )}
-        >
-          {(Object.keys(SORTS) as SortKey[]).map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="option"
-              aria-selected={k === value}
-              onClick={() => {
-                onChange(k);
-                m.choose();
-              }}
-              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[14px] font-medium outline-none hover:bg-white/80 focus-visible:bg-white/80"
-            >
-              <Check on={k === value} />
-              {SORTS[k].label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* The rules under a client's words, as on their badges */
 const RULES = {
   tricolour: "linear-gradient(90deg, #ff7a1a, #ffb27a 28%, #f3f1ea 50%, #86c98a 72%, #1e8a3c)",
@@ -1351,39 +1265,5 @@ export function ClientBadge({
         </>
       )}
     </span>
-  );
-}
-
-/* ⌄ */
-export function Chevron({ className }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      className={cn("h-4 w-4 shrink-0", className)}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-
-/* ✓ by the chosen option (an empty space by the others, so they line up) */
-export function Check({ on }: { on: boolean }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      className={cn("h-4 w-4 shrink-0 text-[#4b5bff]", !on && "invisible")}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M5 12.5l4.5 4.5L19 7.5" />
-    </svg>
   );
 }
